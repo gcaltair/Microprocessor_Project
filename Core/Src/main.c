@@ -49,7 +49,10 @@ DMA_HandleTypeDef hdma_usart2_tx;
 uint8_t speed =65;
 
 /* USER CODE BEGIN PV */
-
+// 蓝牙接收缓冲区
+#define BT_RX_BUFFER_SIZE 20
+uint8_t btRxBuffer[BT_RX_BUFFER_SIZE];
+uint8_t btRxData; // 单字节接收缓冲区（用于中断接收模式）
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -64,6 +67,46 @@ static void MX_TIM3_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+// 处理蓝牙命令
+void ProcessBluetoothCommand(uint8_t* cmd, uint16_t size)
+{
+  // 简单示例: 通过单字节命令控制车辆
+  // 'F': 前进, 'B': 后退, 'L': 左转, 'R': 右转, 'S': 停止
+  if(size > 0)
+  {
+    switch(cmd[0])
+    {
+      case 'F': // 前进
+        Motor_Control(MOTOR_LEFT, MOTOR_FORWARD, speed);
+        Motor_Control(MOTOR_RIGHT, MOTOR_FORWARD, speed);
+        break;
+      case 'B': // 后退
+        Motor_Control(MOTOR_LEFT, MOTOR_BACKWARD, speed);
+        Motor_Control(MOTOR_RIGHT, MOTOR_BACKWARD, speed);
+        break;
+      case 'L': // 左转
+        Motor_Control(MOTOR_LEFT, MOTOR_BACKWARD, speed);
+        Motor_Control(MOTOR_RIGHT, MOTOR_FORWARD, speed);
+        break;
+      case 'R': // 右转
+        Motor_Control(MOTOR_LEFT, MOTOR_FORWARD, speed);
+        Motor_Control(MOTOR_RIGHT, MOTOR_BACKWARD, speed);
+        break;
+      case 'S': // 停止
+        Motor_Control(MOTOR_LEFT, MOTOR_STOP, 0);
+        Motor_Control(MOTOR_RIGHT, MOTOR_STOP, 0);
+        break;
+      default:
+        break;
+    }
+    
+    // 如果收到速度调节命令 (比如'0'-'9')
+    if(cmd[0] >= '0' && cmd[0] <= '9')
+    {
+      speed = (cmd[0] - '0') * 10 + 10; // 10-100的速度范围
+    }
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -101,6 +144,13 @@ int main(void)
   // 初始化电机
   Motor_Init();
   
+  // 启动蓝牙接收(选择以下方式之一)
+  // 方式1: 使用DMA持续接收
+  HAL_UART_Receive_DMA(&huart2, btRxBuffer, BT_RX_BUFFER_SIZE);
+  
+  // 或方式2: 使用中断接收单个字节
+  // HAL_UART_Receive_IT(&huart2, &btRxData, 1);
+  
   // 测试电机
   HAL_Delay(2000); // 等待系统稳定
   /* USER CODE END 2 */
@@ -112,11 +162,13 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-    Car_test();
-      //Motor_Control(MOTOR_RIGHT,MOTOR_FORWARD,80);
-
+    // 注释掉自动测试，改为通过蓝牙控制
+    // Car_test();
+    
+    // 可以在这里添加非阻塞处理代码
+    HAL_Delay(10); // 短暂延时，防止CPU过载
+    
     /* USER CODE BEGIN 3 */
-
   }
   /* USER CODE END 3 */
 }
@@ -337,7 +389,22 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+// UART接收完成回调
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if(huart->Instance == USART2)
+  {
+    // 使用DMA模式时的回调处理
+    ProcessBluetoothCommand(btRxBuffer, BT_RX_BUFFER_SIZE);
+    HAL_UART_Receive_DMA(&huart2, btRxBuffer, BT_RX_BUFFER_SIZE);
+    
+    // 或者使用中断模式时的处理
+    /*
+    ProcessBluetoothCommand(&btRxData, 1);
+    HAL_UART_Receive_IT(&huart2, &btRxData, 1);
+    */
+  }
+}
 /* USER CODE END 4 */
 
 /**

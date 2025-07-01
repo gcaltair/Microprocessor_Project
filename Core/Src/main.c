@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "motor.h"
+#include "hc04.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,14 +44,20 @@
 TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart5;
+DMA_HandleTypeDef hdma_uart5_rx;
+DMA_HandleTypeDef hdma_uart5_tx;
 
 /* USER CODE BEGIN PV */
-
+uint8_t speed = 50; // 默认速度为50%
+uint8_t buffer[100]; // 单字节接收缓冲区
+uint8_t rxData[100]; // 接收数据缓冲
+uint16_t rxIndex = 0; // 接收数据索引
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_UART5_Init(void);
 /* USER CODE BEGIN PFP */
@@ -59,6 +66,23 @@ static void MX_UART5_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
+//{
+//    if(huart->Instance == UART5)
+//    {
+//        HAL_UART_Transmit_DMA(&huart5,buffer,2);
+//        HAL_UART_Receive_DMA(&huart5, buffer, 2);
+//    }
+//}
+//void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef* huart, uint16_t size)
+//{
+//    if(huart==&huart5)
+//    {
+//        HAL_UART_Transmit_DMA(&huart5,buffer,size);
+//        HAL_UARTEx_ReceiveToIdle_DMA(&huart5,buffer,sizeof(buffer)); //一次能接收的最大
+//        __HAL_DMA_DISABLE_IT(&hdma_uart5_rx,DMA_IT_HT); //关闭传输过半中断
+//    }
+//}
 /* USER CODE END 0 */
 
 /**
@@ -69,7 +93,6 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -89,14 +112,22 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM3_Init();
   MX_UART5_Init();
   /* USER CODE BEGIN 2 */
   // 初始化电机
   Motor_Init();
-  HAL_Delay(2000); // 等待系统稳定
-  //开始工作
-    HAL_GPIO_WritePin(GPIOA,LD2_Pin,GPIO_PIN_SET);
+
+  // 蓝牙初始化
+  hc04_init();
+
+  
+
+
+  
+  // 开始工作
+  HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_SET);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -106,10 +137,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-      uint8_t test_msg[] = "Hello Bluetooth!\r\n"; // \r\n 是回车换行，在串口助手中更容易观察
-      HAL_UART_Transmit(&huart5, test_msg, sizeof(test_msg) - 1, 10000); // 发送这个固定的测试消息
-// sizeof(test_msg)-1 是为了去掉字符串结尾的'\0'
-      HAL_Delay(2000);
+      HAL_Delay(100);
 
   }
   /* USER CODE END 3 */
@@ -263,6 +291,25 @@ static void MX_UART5_Init(void)
   /* USER CODE BEGIN UART5_Init 2 */
 
   /* USER CODE END UART5_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+  /* DMA1_Stream7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream7_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream7_IRQn);
 
 }
 

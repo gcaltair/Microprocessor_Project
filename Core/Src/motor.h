@@ -13,11 +13,11 @@
 #define MOTOR_STOP        2
 
 // 电机编号定义
-#define MOTOR_LEFT        0
 #define MOTOR_RIGHT       1
+#define MOTOR_LEFT        0
 
 // 电机控制函数声明
-void Car_test();
+void Car_test(uint8_t speed);
 void Motor_Init(void);
 void Motor_SetSpeed(uint8_t motor, uint8_t speed);
 void Motor_SetDirection(uint8_t motor, uint8_t direction);

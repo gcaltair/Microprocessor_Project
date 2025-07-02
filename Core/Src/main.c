@@ -48,7 +48,7 @@ DMA_HandleTypeDef hdma_uart5_rx;
 DMA_HandleTypeDef hdma_uart5_tx;
 
 /* USER CODE BEGIN PV */
-uint8_t speed = 50; // 默认速度为50%
+//uint8_t speed = 50; // 默认速度为50%
 uint8_t buffer[100]; // 单字节接收缓冲区
 uint8_t rxData[100]; // 接收数据缓冲
 uint16_t rxIndex = 0; // 接收数据索引
@@ -93,6 +93,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -128,6 +129,7 @@ int main(void)
   
   // 开始工作
   HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_SET);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -137,7 +139,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-      HAL_Delay(100);
+      //Motor_Control(MOTOR_LEFT,MOTOR_BACKWARD,50);
+      //Car_test(60);
+      //HAL_Delay(100);
+      check_auto_stop(); // 检查是否需要自动停车
 
   }
   /* USER CODE END 3 */

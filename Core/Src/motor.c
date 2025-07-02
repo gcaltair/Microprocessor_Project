@@ -6,7 +6,7 @@
 
 // 外部变量声明
 extern TIM_HandleTypeDef htim3;
-extern uint8_t speed;
+
 // 电机引脚映射（根据实际硬件连接修改）
 // 假设：
 // 左电机使用 TIM3 的 CH1(PWM1) 和 CH2(PWM2)
@@ -110,19 +110,20 @@ void Motor_Control(uint8_t motor, uint8_t direction, uint8_t speed)
     if (speed > 100)
         speed = 100;
     
-    if (motor == MOTOR_LEFT)
+    if (motor == MOTOR_RIGHT)
     {
         switch (direction)
         {
             case MOTOR_FORWARD:
                 // 修改为实际前进对应的PWM通道
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, speed);
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
+                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, speed);
+                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
                 break;
             case MOTOR_BACKWARD:
                 // 修改为实际后退对应的PWM通道
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, speed);
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
+
+                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, speed);
+                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
                 break;
             case MOTOR_STOP:
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
@@ -130,19 +131,19 @@ void Motor_Control(uint8_t motor, uint8_t direction, uint8_t speed)
                 break;
         }
     }
-    else if (motor == MOTOR_RIGHT)
+    else if (motor == MOTOR_LEFT)
     {
         switch (direction)
         {
             case MOTOR_FORWARD:
                 // 修改为实际前进对应的PWM通道
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, speed);
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
+                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, speed);
                 break;
             case MOTOR_BACKWARD:
                 // 修改为实际后退对应的PWM通道
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, speed);
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
+                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, speed);
                 break;
             case MOTOR_STOP:
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
@@ -191,6 +192,8 @@ void Car_Forward(uint8_t speed)
  */
 void Car_Backward(uint8_t speed)
 {
+
+
     Motor_Control(MOTOR_LEFT, MOTOR_BACKWARD, speed);
     Motor_Control(MOTOR_RIGHT, MOTOR_BACKWARD, speed);
 }
@@ -202,9 +205,8 @@ void Car_Backward(uint8_t speed)
  */
 void Car_TurnLeft(uint8_t speed)
 {
-    // 修改为实际左转对应的电机控制
-    Motor_Control(MOTOR_LEFT, MOTOR_STOP, 0);  // 左电机停止
-    Motor_Control(MOTOR_RIGHT, MOTOR_FORWARD, speed); // 右电机前进
+    Motor_Control(MOTOR_LEFT, MOTOR_STOP, 0); // 左电机前进
+    Motor_Control(MOTOR_RIGHT, MOTOR_FORWARD, speed);  // 右电机停止
 }
 
 /**
@@ -214,9 +216,11 @@ void Car_TurnLeft(uint8_t speed)
  */
 void Car_TurnRight(uint8_t speed)
 {
-    // 修改为实际右转对应的电机控制
-    Motor_Control(MOTOR_LEFT, MOTOR_FORWARD, speed); // 左电机前进
-    Motor_Control(MOTOR_RIGHT, MOTOR_STOP, 0);  // 右电机停止
+
+    // 修改为实际左转对应的电机控制
+    Motor_Control(MOTOR_LEFT, MOTOR_FORWARD, speed);  // 左电机停止
+    Motor_Control(MOTOR_RIGHT, MOTOR_STOP, 0); // 右电机前进
+
 }
 
 /**
@@ -228,7 +232,7 @@ void Car_Stop(void)
 {
     Motor_StopAll();
 }
-void Car_test()
+void Car_test(uint8_t speed)
 {
     // 测试小车运动
     Car_Forward(speed);    // 前进

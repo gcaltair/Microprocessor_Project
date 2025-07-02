@@ -2,13 +2,26 @@
 // Created by G on 25-7-1.
 //
 
-#ifndef FINAL_FINA_HC04_H
-#define FINAL_FINA_HC04_H
+#ifndef HC04_H
+#define HC04_H
 
-#include "stm32f4xx_hal.h"
+#include "stdint.h"
 
-extern uint8_t buffer[100]; // Declare buffer as extern to avoid redefinition
+// Buffer for Bluetooth data reception
+extern uint8_t buffer[100];
+
+// Initialize HC-04/HC-05 Bluetooth module
 void hc04_init(void);
-void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef* huart, uint16_t size); // Add function prototype
 
-#endif //FINAL_FINA_HC04_H
+// Transmit message over UART
+void transmit(char* message);
+
+void transmit_uint8(uint8_t * message,uint8_t size);
+
+// Process received command
+void process_command(uint8_t *cmd, uint16_t size);
+
+// 检查是否需要自动停车
+void check_auto_stop(void);
+
+#endif // HC04_H

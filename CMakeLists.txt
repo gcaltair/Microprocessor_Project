@@ -27,6 +27,14 @@ include("cmake/gcc-arm-none-eabi.cmake")
 # Enable compile command to ease indexing with e.g. clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
+# Define eMD6 related files
+file(GLOB_RECURSE EMD6_SOURCES
+    "Core/Src/eMD6/core/driver/eMPL/*.c"
+    "Core/Src/eMD6/core/driver/stm32L/*.c"
+    "Core/Src/eMD6/core/eMPL-hal/*.c"
+    "Core/Src/eMD6/core/mllite/*.c"
+)
+
 # Core project settings
 project(${CMAKE_PROJECT_NAME})
 message("Build type: " ${CMAKE_BUILD_TYPE})
@@ -37,8 +45,11 @@ enable_language(C ASM)
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME}
         Core/Src/hc04.c
-        Core/Src/hc04.c
         Core/Src/hc04.h
+        ${EMD6_SOURCES}
+        Core/Src/encoder.c
+        Core/Src/encoder.c
+        Core/Src/encoder.h
 )
 
 # Add STM32CubeMX generated sources
@@ -59,11 +70,21 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     Core/Src
+    Core/Inc
+    Core/Src/eMD6
+    Core/Src/eMD6/core
+    Core/Src/eMD6/core/driver/include
+    Core/Src/eMD6/core/driver/eMPL
+    Core/Src/eMD6/core/driver/stm32L
+    Core/Src/eMD6/core/eMPL-hal
+    Core/Src/eMD6/core/mllite
+    Core/Src/eMD6/core/mpl
 )
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+    MPU6500
 )
 
 # Add linked libraries

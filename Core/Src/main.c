@@ -138,8 +138,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-      // 使用SysTick方式更新编码器速度，每100ms更新一次
-      // 只有当速度更新时才发送数据
+
+
       uint32_t currentTick = HAL_GetTick();
       
       if(encoder_UpdateSpeed_SysTick())

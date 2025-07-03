@@ -164,7 +164,7 @@ uint8_t encoder_UpdateSpeed_SysTick(void) {
     uint32_t currentTick = HAL_GetTick();
     
     // 检查是否已经过了采样周期
-    if ((currentTick - lastUpdateTick) >= 200) {
+    if ((currentTick - lastUpdateTick) >= 1000) {
          // 检查溢出
          char msg[50];
          sprintf(msg,"lastCountA: %d, lastCountB: %d\r\n",lastCountA,lastCountB);

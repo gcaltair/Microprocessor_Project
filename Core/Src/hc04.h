@@ -24,4 +24,5 @@ void process_command(uint8_t *cmd, uint16_t size);
 // 检查是否需要自动停车
 void check_auto_stop(void);
 
+void process_complex_command(uint8_t *cmd, uint16_t size);
 #endif // HC04_H

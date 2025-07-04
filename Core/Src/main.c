@@ -17,8 +17,6 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-#include <memory.h>
-#include <stdlib.h>
 #include "main.h"
 #include "dma.h"
 #include "i2c.h"
@@ -33,6 +31,7 @@
 #include "hc04.h"
 #include "encoder.h"
 #include "MPU6500.h"
+#include "lidar.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -124,6 +123,7 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_SPI2_Init();
+  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
 
   Motor_Init();// 初始化电机
@@ -131,16 +131,14 @@ int main(void)
   encoder_init(); //编码器初始化
   MPU6500_Init();
   SystemClock_Config();
-
+    //Lidar_Init(&huart6);
 
   
   // 开始工作
   HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_SET);
     //Car_Forward(100);
-
-
-    MPU6500_Read_Accel(&accelData);
-
+    Lidar_Init(&huart6);
+   // Lidar_StartScan_Express();
   /* USER CODE END 2 */
 
   /* Infinite loop */

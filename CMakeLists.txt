@@ -44,6 +44,10 @@ add_executable(${CMAKE_PROJECT_NAME}
         Core/Src/encoder.h
         Core/Src/MPU6500.c
         Core/Src/MPU6500.h
+        Core/Src/lidar.c
+        Core/Src/lidar.h
+        Core/Src/lidar.c
+        Core/Src/lidar.h
 )
 
 # Add STM32CubeMX generated sources

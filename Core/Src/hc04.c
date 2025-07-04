@@ -7,7 +7,7 @@
 #include "main.h"
 #include "string.h"
 #include "motor.h" // Include the motor control functions
-
+#include "lidar.h"
 extern UART_HandleTypeDef huart5;
 //extern uint8_t speed;
 // Car control command flags
@@ -19,7 +19,7 @@ extern UART_HandleTypeDef huart5;
 #define CMD_SPEED     'V'
 uint8_t speed = 65;
 uint32_t period = 500;
-
+uint8_t status_enable=0;
 // 自动停车控制变量
 uint32_t auto_stop_time = 0;      // 自动停车的时间点
 uint8_t auto_stop_pending = 0;    // 是否有待执行的自动停车
@@ -75,7 +75,19 @@ void process_command(uint8_t *cmd, uint16_t size)
                 // Cancel auto-stop
                 auto_stop_pending = 0;
                 break;
-
+            case 'N':
+                Lidar_StopScan();
+                transmit("Lidar Stopped\r\n");
+                break;
+            case 'M':
+                RPLIDAR_RequestScan();
+                break;
+            case 'P':
+                status_enable=1;
+                break;
+            case 'Q':
+                status_enable=0;
+                break;
 //            case 'D': // Check LIDAR connection
 //                if (AX_LASER_CheckConnection()) {
 //                    transmit("LIDAR Status: Connected\r\n");
@@ -135,10 +147,11 @@ void process_command(uint8_t *cmd, uint16_t size)
                 transmit("S: Stop\r\n");
                 transmit("V+number: Set Speed (1-100)\r\n");
                 transmit("T+number: Set Auto-stop Time (ms)\r\n");
-                transmit("D: Check LIDAR Connection\r\n");
                 transmit("M: Start LIDAR\r\n");
                 transmit("N: Stop LIDAR\r\n");
-                transmit("P+number: Get LIDAR Data in Front Angle\r\n");
+                //transmit("P+number: Get LIDAR Data in Front Angle\r\n");
+                transmit("P: Show status\r\n");
+                transmit("Q: Disable status\r\n");
                 transmit("H: Show This Help\r\n");
                 break;
 

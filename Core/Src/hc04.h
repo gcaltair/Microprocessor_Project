@@ -12,7 +12,7 @@ extern uint8_t buffer[100];
 
 // Initialize HC-04/HC-05 Bluetooth module
 void hc04_init(void);
-
+extern uint8_t status_enable;
 // Transmit message over UART
 void transmit(char* message);
 

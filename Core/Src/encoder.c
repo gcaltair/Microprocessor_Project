@@ -5,6 +5,8 @@
 
 #include "encoder.h"
 #include "hc04.h"
+
+
 // 编码器参数定义
 #define ENCODER_PULSES_PER_REV  330     // 编码器每转脉冲数
 #define ENCODER_SAMPLING_PERIOD 100     // 采样周期(ms)
@@ -164,11 +166,11 @@ uint8_t encoder_UpdateSpeed_SysTick(void) {
     uint32_t currentTick = HAL_GetTick();
     
     // 检查是否已经过了采样周期
-    if ((currentTick - lastUpdateTick) >= 1000) {
+    if (status_enable&&(currentTick - lastUpdateTick) >= 1000) {
          // 检查溢出
-         char msg[50];
-         sprintf(msg,"lastCountA: %d, lastCountB: %d\r\n",lastCountA,lastCountB);
-         transmit(msg);
+//         char msg[50];
+//         sprintf(msg,"lastCountA: %d, lastCountB: %d\r\n",lastCountA,lastCountB);
+//         transmit(msg);
 
         calculate_diffA();
         calculate_diffB();

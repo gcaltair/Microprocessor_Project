@@ -107,21 +107,18 @@ void Motor_Control(uint8_t motor, uint8_t direction, uint8_t speed)
 //左电机CHANNEL4是IN1 CHANEEL3 是IN2
 
     // 限制速度范围
-    if (speed > 100)
-        speed = 100;
+    if (speed > 1000)
+        speed = 1000;
     
     if (motor == MOTOR_RIGHT)
     {
         switch (direction)
         {
             case MOTOR_FORWARD:
-                // 修改为实际前进对应的PWM通道
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, speed);
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
                 break;
             case MOTOR_BACKWARD:
-                // 修改为实际后退对应的PWM通道
-
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, speed);
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
                 break;
@@ -179,7 +176,7 @@ void Motor_StopAll(void)
  * @param  speed: 速度值 (0-100)
  * @retval None
  */
-void Car_Forward(uint8_t speed)
+void Car_Forward(uint16_t speed)
 {
     Motor_Control(MOTOR_LEFT, MOTOR_FORWARD, speed);
     Motor_Control(MOTOR_RIGHT, MOTOR_FORWARD, speed);

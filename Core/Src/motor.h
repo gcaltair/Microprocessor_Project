@@ -26,7 +26,7 @@ void Motor_Stop(uint8_t motor);
 void Motor_StopAll(void);
 
 // 小车运动控制函数
-void Car_Forward(uint8_t speed);
+void Car_Forward(uint16_t speed);
 void Car_Backward(uint8_t speed);
 void Car_TurnLeft(uint8_t speed);
 void Car_TurnRight(uint8_t speed);

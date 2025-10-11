@@ -27,11 +27,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "motor.h"
-#include "hc04.h"
-#include "encoder.h"
-#include "MPU6500.h"
-#include "lidar.h"
+#include "system.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,7 +48,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-//uint8_t speed = 50; // 默认速度为50%
+
 uint8_t buffer[100]; // 单字节接收缓冲区
 uint8_t rxData[100]; // 接收数据缓冲
 uint16_t rxIndex = 0; // 接收数据索引
@@ -68,23 +64,7 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-//void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
-//{
-//    if(huart->Instance == UART5)
-//    {
-//        HAL_UART_Transmit_DMA(&huart5,buffer,2);
-//        HAL_UART_Receive_DMA(&huart5, buffer, 2);
-//    }
-//}
-//void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef* huart, uint16_t size)
-//{
-//    if(huart==&huart5)
-//    {
-//        HAL_UART_Transmit_DMA(&huart5,buffer,size);
-//        HAL_UARTEx_ReceiveToIdle_DMA(&huart5,buffer,sizeof(buffer)); //一次能接收的最大
-//        __HAL_DMA_DISABLE_IT(&hdma_uart5_rx,DMA_IT_HT); //关闭传输过半中断
-//    }
-//}
+
 /* USER CODE END 0 */
 
 /**
@@ -95,8 +75,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-  AccelData accelData;
-  GyroData gyroData;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -124,22 +103,23 @@ int main(void)
   MX_TIM2_Init();
   MX_SPI2_Init();
   MX_USART6_UART_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-
   Motor_Init();// 初始化电机
   hc04_init();// 蓝牙初始化
   encoder_init(); //编码器初始化
   MPU6500_Init();
   SystemClock_Config();
-    //Lidar_Init(&huart6);
   RPLIDAR_Init();
   
   // 开始工作
   HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
-
-    //Lidar_StartScan_Standard();
-    //Car_Forward(100);
-   // Lidar_StartScan_Express();
+  HAL_TIM_Base_Start_IT(&htim4); //同时使能中断
+  PID_Init(&pid_speed_left,  5.5, 1.4f, 0.5f, -1000.0f, 1000.0f);
+  //PID_Init(&pid_speed_right, 0.5, 0.0f, 0.0f, -100.0f, 100.0f);
+  pid_speed_left.setpoint = 1.0f;  // 让左轮以 20 的速度转
+  //pid_speed_right.setpoint = 20.0f; // 让右轮以 20 的速度转
+  //Car_Forward(1000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -149,71 +129,18 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-
-      uint32_t currentTick = HAL_GetTick();
-//
-      if(encoder_UpdateSpeed_SysTick())
+      if(g_system_update_flag)
       {
-          MPU6500_Read_Accel(&accelData);
-          MPU6500_PrintAccelData(&accelData);
-          MPU6500_Read_Gyro(&gyroData);
-          MPU6500_PrintGyroData(&gyroData);
+        // MPU6500_Read_Accel(&g_accel_data);
+        // MPU6500_Read_Gyro(&g_gyro_data);
+        // MPU6500_PrintAccelData(&g_accel_data);
+        // MPU6500_PrintGyroData(&g_gyro_data);
 
-          char msg[150]; // 增加缓冲区大小，确保有足够空间
-          int32_t speedA = encoderA_GetSpeed();
-          int32_t speedB = encoderB_GetSpeed();
-          // 输出详细信息，包括系统tick计数
-          sprintf(msg, "Tick:%lu SpeedA:%d SpeedB:%d\r\n",
-                 currentTick, speedA, speedB);
-//          // 发送数据
-            transmit(msg);
+        encoder_update_speed();
+        Speed_Control_Loop();
+        uart_printf("%.2lf,%.2lf,%d,%d\n", g_left_speed, g_right_speed,pwm_output_left,pwm_output_right);
+        g_system_update_flag=false;
       }
-//      // 检查雷达是否完成了一圈扫描
-//      if (g_lidar_scan_ready == 1)
-//      {
-//          // 立即清除标志位，为下一圈数据做准备
-//          g_lidar_scan_ready = 0;
-//
-//          // 创建一个用于发送的数据包缓冲区
-//          uint8_t tx_buffer[8];
-//
-//          // 遍历所有有效的雷达数据点
-//          for (int i = 0; i < 300; i++)
-//          {
-//              // 只发送距离大于0的有效数据点
-//              if (g_lidar_points[i].distance > 0)
-//              {
-//                  // 1. 按照我们定义的协议打包数据
-//                  tx_buffer[0] = 0x5A; // 帧头1
-//                  tx_buffer[1] = 0xA5; // 帧头2
-//
-//                  // 角度 (高字节在前)
-//                  tx_buffer[2] = (g_lidar_points[i].angle >> 8) & 0xFF;
-//                  tx_buffer[3] = g_lidar_points[i].angle & 0xFF;
-//
-//                  // 距离 (高字节在前)
-//                  tx_buffer[4] = (g_lidar_points[i].distance >> 8) & 0xFF;
-//                  tx_buffer[5] = g_lidar_points[i].distance & 0xFF;
-//
-//                  // 计算校验和
-//                  tx_buffer[6] = tx_buffer[0] ^ tx_buffer[1] ^ tx_buffer[2] ^ tx_buffer[3] ^ tx_buffer[4] ^ tx_buffer[5];
-//
-//                  tx_buffer[7] = 0xFF; // 帧尾
-//
-//                  // 2. 通过 UART5 将数据包发送出去
-//                  HAL_UART_Transmit(&huart5, tx_buffer, sizeof(tx_buffer), 10); // 10ms超时
-//              }
-//          }
-//      }
-
-
-      
-      // 检查是否需要自动停车
-      check_auto_stop();
-      
-      // 加入短暂延时，避免CPU过载，但不要影响测速定时精度
-      HAL_Delay(10);
   }
   /* USER CODE END 3 */
 }

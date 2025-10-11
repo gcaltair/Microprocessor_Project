@@ -11,8 +11,8 @@
 void encoder_init(void);
 
 // 获取编码器计数
-uint32_t encoderA_GetCount(void);
-uint32_t encoderB_GetCount(void);
+uint32_t encoder_left_get_count(void);
+uint32_t encoder_right_get_count(void);
 
 // 检测编码器溢出
 void calculate_diffA(void);
@@ -31,7 +31,7 @@ float encoderA_GetSpeed(void);
 float encoderB_GetSpeed(void);
 
 // 更新两个编码器的速度（需定时调用）
-void encoder_UpdateSpeed(void);
+void encoder_update_speed(void);
 
 // 基于SysTick的周期性速度更新（在主循环中调用）
 uint8_t encoder_UpdateSpeed_SysTick(void);

@@ -8,6 +8,8 @@
 #include "string.h"
 #include "motor.h" // Include the motor control functions
 #include "lidar.h"
+#include <stdarg.h>     // 用于 va_list, va_start, va_arg, va_end
+
 extern UART_HandleTypeDef huart5;
 //extern uint8_t speed;
 // Car control command flags
@@ -88,55 +90,6 @@ void process_command(uint8_t *cmd, uint16_t size)
             case 'Q':
                 status_enable=0;
                 break;
-//            case 'D': // Check LIDAR connection
-//                if (AX_LASER_CheckConnection()) {
-//                    transmit("LIDAR Status: Connected\r\n");
-//
-//                    // Get health status
-//                    LaserHealthTypeDef health;
-//                    if(AX_LASER_GetHealth(&health)) {
-//                        char health_msg[50];
-//                        sprintf(health_msg, "Health: %d (0=Good,1=Warning,2=Error), Error Code: %d\r\n",
-//                                health.status, health.error_code);
-//                        transmit(health_msg);
-//                    }
-//
-//                    // Send some LIDAR data samples
-//                    char data_msg[100];
-//                    uint8_t samples_sent = 0;
-//                    transmit("LIDAR Data Samples:\r\n");
-//
-//                    for (int i = 0; i < 250 && samples_sent < 5; i++) {
-//                        if (ax_ls_point[i].distance > 0) {
-//                            sprintf(data_msg, "Angle: %d deg, Distance: %dmm, Quality: %d\r\n",
-//                                    ax_ls_point[i].angle/100, ax_ls_point[i].distance, ax_ls_point[i].quality);
-//                            transmit(data_msg);
-//                            samples_sent++;
-//                        }
-//                    }
-//
-//                    if (samples_sent == 0) {
-//                        transmit("No valid LIDAR data found\r\n");
-//                    }
-//                } else {
-//                    transmit("LIDAR Status: Disconnected\r\n");
-//                    transmit("Attempting to reinitialize LIDAR...\r\n");
-//
-//                    // Try to reinitialize
-//                    AX_LASER_Init();
-//                    AX_LASER_Start();
-//                }
-//                break;
-
-//            case 'M': // Start LIDAR
-//                transmit("Starting LIDAR...\r\n");
-//                AX_LASER_Start();
-//                break;
-
-//            case 'N': // Stop LIDAR
-//                transmit("Stopping LIDAR...\r\n");
-//                AX_LASER_Stop();
-//                break;
 
             case 'H': // Show help
                 transmit("\r\n--- Bluetooth Control Commands ---\r\n");
@@ -179,10 +132,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef* huart, uint16_t size)
         transmit("Have Received:");
         HAL_UART_Transmit(&huart5,buffer,size,1000);
         transmit("\n");
-
         process_command(buffer, size);
-
-
         HAL_UARTEx_ReceiveToIdle_DMA(&huart5, buffer, sizeof(buffer)); 
         __HAL_DMA_DISABLE_IT(huart->hdmarx, DMA_IT_HT); // Disable half-transfer interrupt
     }
@@ -251,38 +201,37 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
             transmit("Invalid period value. Use 1-10000\r\n");
         }
     }
-//        // Process get LIDAR scan data command: P30 (get LIDAR data within 30 degrees in front)
-//    else if(size >= 2 && cmd[0] == 'P') {
-//        // Extract the numeric part (angle range)
-//        uint16_t angle_range = 30; // Default 30 degrees
-//        for(int i = 1; i < size; i++) {
-//            if(cmd[i] >= '0' && cmd[i] <= '9') {
-//                angle_range = angle_range * 10 + (cmd[i] - '0');
-//            }
-//        }
-//
-//        // Limit range to 1-180 degrees
-//        if(angle_range < 1) angle_range = 1;
-//        if(angle_range > 180) angle_range = 180;
-//
-//        // Send scan data
-//        transmit("LIDAR Scan Data:\r\n");
-//
-//        uint8_t data_count = 0;
-//        for(int i = 0; i < 250 && data_count < 10; i++) {
-//            // Only get points within the specified angle range in front
-//            uint16_t angle_deg = ax_ls_point[i].angle / 100;
-//            if((angle_deg < angle_range || angle_deg > (360-angle_range)) &&
-//               ax_ls_point[i].distance > 0) {
-//                sprintf(reply, "Angle:%d deg Distance:%dmm Quality:%d\r\n",
-//                        angle_deg, ax_ls_point[i].distance, ax_ls_point[i].quality);
-//                transmit(reply);
-//                data_count++;
-//            }
-//        }
-//
-//        if(data_count == 0) {
-//            transmit("No valid data detected\r\n");
-//        }
-//    }
+}
+#define UART_PRINTF_BUFFER_SIZE 256
+
+/**
+ * @brief 自定义的串口 printf 函数
+ * @param format 格式化字符串，用法同 printf
+ * @param ...    可变参数
+ * @retval None
+ */
+void uart_printf(const char *format, ...)
+{
+    char buffer[UART_PRINTF_BUFFER_SIZE];
+    va_list args;
+    int len;
+
+    // 1. 从 format 参数之后开始解析可变参数
+    va_start(args, format);
+
+    // 2. 使用 vsnprintf 将格式化字符串和可变参数合成一个完整的字符串
+    //    vsnprintf 是 printf 的一个安全版本，可以防止缓冲区溢出
+    //    它会将结果存入 buffer，并返回最终字符串的长度
+    len = vsnprintf(buffer, sizeof(buffer), format, args);
+
+    // 3. 结束解析可变参数
+    va_end(args);
+
+    // 4. 检查长度是否有效
+    if (len > 0)
+    {
+        // 5. 调用 HAL 库函数，通过 UART 将 buffer 中的数据发送出去
+        //    我们只发送实际生成的长度 (len)
+        HAL_UART_Transmit(&huart5, (uint8_t *)buffer, len, HAL_MAX_DELAY);
+    }
 }

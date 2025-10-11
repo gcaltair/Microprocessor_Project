@@ -1,9 +1,7 @@
-#include "MPU6500.h"
-#include <stdio.h>
-#include <string.h>
-#include "usart.h"
-#include "hc04.h"
+#include "system.h"
 
+AccelData g_accel_data;
+GyroData g_gyro_data;
 // 读取MPU6500寄存器的一个字节数据
 // reg: 要读取的寄存器地址
 // 返回值: 读取到的数据
@@ -18,9 +16,7 @@ uint8_t MPU_Read_Byte(uint8_t reg)
     return rx; // 返回读取到的数据
 }
 
-// 向MPU6500寄存器写入一个字节数据
-// reg: 要写入的寄存器地址
-// data: 要写入的数据
+
 void MPU_Write_Byte(uint8_t reg, uint8_t data)
 {
     uint8_t buf[2];
@@ -88,8 +84,7 @@ void MPU6500_Read_Accel(AccelData *accel)
 
 }
 
-// 读取陀螺仪数据（单位:°/s），结果存入gyro结构体
-// gyro: 存放陀螺仪数据的结构体指针
+
 void MPU6500_Read_Gyro(GyroData *gyro)
 {
     uint8_t buf[6]; // 存放读取的6字节原始数据
@@ -114,8 +109,6 @@ void MPU6500_Read_Gyro(GyroData *gyro)
 // ax, ay, az: 三轴原始加速度数据（int16_t）
 void MPU6500_PrintAccelData(AccelData* accelData) {
     char str[64];
-
-
     // 格式化输出字符串
     snprintf(str, sizeof(str), "ACC X:%.2fg Y:%.2fg Z:%.2fg\r\n", accelData->ax, accelData->ay, accelData->az);
 

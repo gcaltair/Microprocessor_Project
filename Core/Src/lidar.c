@@ -57,7 +57,7 @@ void RPLIDAR_ProcessByte(uint8_t byte) {
         }
     }
 
-    HAL_UART_Receive_IT(&huart6, &rplidar_rx_byte, 1);  // ????
+//    HAL_UART_Receive_IT(&huart6, &rplidar_rx_byte, 1);  // ????
 }
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {

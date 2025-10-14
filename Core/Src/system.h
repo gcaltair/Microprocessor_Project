@@ -25,8 +25,8 @@ extern float g_left_speed;
 extern float g_right_speed;
 extern AccelData g_accel_data;
 extern GyroData g_gyro_data;
-extern PID_Controller pid_speed_left;
-extern PID_Controller pid_speed_right;
+extern PID_Controller g_pid_speed_left;
+extern PID_Controller g_pid_speed_right;
 extern int pwm_output_left,pwm_output_right;
 
 #endif //SYSTEM_H

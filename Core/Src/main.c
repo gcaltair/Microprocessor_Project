@@ -64,7 +64,17 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+void system_init()
+{
+  Motor_Init();// 初始化电机
+  hc04_init();// 蓝牙初始化
+  encoder_init(); //编码器初始化
+  MPU6500_Init();
+  SystemClock_Config();
+  RPLIDAR_Init();
+  HAL_TIM_Base_Start_IT(&htim4); //同时使能中断
+  HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
+}
 /* USER CODE END 0 */
 
 /**
@@ -105,21 +115,13 @@ int main(void)
   MX_USART6_UART_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-  Motor_Init();// 初始化电机
-  hc04_init();// 蓝牙初始化
-  encoder_init(); //编码器初始化
-  MPU6500_Init();
-  SystemClock_Config();
-  RPLIDAR_Init();
-  
+  system_init();
   // 开始工作
-  HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
-  HAL_TIM_Base_Start_IT(&htim4); //同时使能中断
-  PID_Init(&pid_speed_left,  5.5, 1.4f, 0.5f, -1000.0f, 1000.0f);
-  //PID_Init(&pid_speed_right, 0.5, 0.0f, 0.0f, -100.0f, 100.0f);
-  pid_speed_left.setpoint = 1.0f;  // 让左轮以 20 的速度转
-  //pid_speed_right.setpoint = 20.0f; // 让右轮以 20 的速度转
-  //Car_Forward(1000);
+  PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
+  PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
+  g_pid_speed_left.setpoint = 2.0f;
+  g_pid_speed_right.setpoint = 2.0f;
+  //Car_Forward(10000);
   /* USER CODE END 2 */
 
   /* Infinite loop */

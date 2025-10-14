@@ -21,7 +21,7 @@ void Car_test(uint8_t speed);
 void Motor_Init(void);
 void Motor_SetSpeed(uint8_t motor, uint8_t speed);
 void Motor_SetDirection(uint8_t motor, uint8_t direction);
-void Motor_Control(uint8_t motor, uint8_t direction, uint8_t speed);
+void Motor_Control(uint8_t motor, uint8_t direction, int speed);
 void Motor_Stop(uint8_t motor);
 void Motor_StopAll(void);
 

@@ -102,13 +102,13 @@ void Motor_SetDirection(uint8_t motor, uint8_t direction)
  * @param  speed: 速度值 (0-100)
  * @retval None
  */
-void Motor_Control(uint8_t motor, uint8_t direction, uint8_t speed)
+void Motor_Control(uint8_t motor, uint8_t direction, int speed)
 {
 //左电机CHANNEL4是IN1 CHANEEL3 是IN2
 
     // 限制速度范围
-    if (speed > 1000)
-        speed = 1000;
+    if (speed > 10000)
+        speed = 10000;
     
     if (motor == MOTOR_RIGHT)
     {

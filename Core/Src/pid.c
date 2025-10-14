@@ -10,8 +10,8 @@
  */
 #define MOTOR_DEAD_ZONE 38
 /* 定义左右轮速度环的PID控制器实例 */
-PID_Controller pid_speed_left;
-PID_Controller pid_speed_right;
+PID_Controller g_pid_speed_left;
+PID_Controller g_pid_speed_right;
 
 // PID_Init 函数保持不变，它使用float进行初始化
 void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, float out_max)
@@ -26,7 +26,6 @@ void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, 
     pid->output_max = out_max;
     pid->integral_max = out_max;
 }
-
 
 /**
  * @brief  计算PID控制器的输出 (修改版)
@@ -77,8 +76,8 @@ int pwm_output_left,pwm_output_right;
 void Speed_Control_Loop(void)
 {
     // 1. 计算PID控制器的输出 (这部分保持不变)
-    pwm_output_left = PID_Calculate(&pid_speed_left, g_left_speed);
-    pwm_output_right = PID_Calculate(&pid_speed_right, g_right_speed);
+    pwm_output_left = PID_Calculate(&g_pid_speed_left, g_left_speed);
+    pwm_output_right = PID_Calculate(&g_pid_speed_right, g_right_speed);
 
     // --- 2. 根据PID输出，结合死区补偿来控制电机 ---
 

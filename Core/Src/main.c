@@ -72,6 +72,7 @@ void system_init()
   MPU6500_Init();
   SystemClock_Config();
   RPLIDAR_Init();
+  //RPLIDAR_RequestScan();
   HAL_TIM_Base_Start_IT(&htim4); //同时使能中断
   HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
 }
@@ -119,8 +120,8 @@ int main(void)
   // 开始工作
   PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
   PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-  g_pid_speed_left.setpoint = 2.0f;
-  g_pid_speed_right.setpoint = 2.0f;
+  g_pid_speed_left.setpoint = 0.0f;
+  g_pid_speed_right.setpoint = 0.0f;
   //Car_Forward(10000);
   /* USER CODE END 2 */
 
@@ -139,8 +140,8 @@ int main(void)
         // MPU6500_PrintGyroData(&g_gyro_data);
 
         encoder_update_speed();
-        Speed_Control_Loop();
-        uart_printf("%.2lf,%.2lf,%d,%d\n", g_left_speed, g_right_speed,pwm_output_left,pwm_output_right);
+        //Speed_Control_Loop();
+        //uart_printf("%.2lf,%.2lf,%d,%d\n", g_left_speed, g_right_speed,pwm_output_left,pwm_output_right);
         g_system_update_flag=false;
       }
   }

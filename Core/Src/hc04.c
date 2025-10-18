@@ -90,6 +90,15 @@ void process_command(uint8_t *cmd, uint16_t size)
             case 'Q':
                 status_enable=0;
                 break;
+            case 'O': {
+                // 获取并输出自上次查询以来的增量
+                float dl, dr, dth;
+                odom_pop_delta(&dl, &dr, &dth);
+
+                // 输出格式： ODOM,dl,dr,dth
+                uart_printf("ODOM,%.6f,%.6f,%.6f\r\n", dl, dr, dth);
+                break;
+            }
 
             case 'H': // Show help
                 transmit("\r\n--- Bluetooth Control Commands ---\r\n");
@@ -102,6 +111,7 @@ void process_command(uint8_t *cmd, uint16_t size)
                 transmit("T+number: Set Auto-stop Time (ms)\r\n");
                 transmit("M: Start LIDAR\r\n");
                 transmit("N: Stop LIDAR\r\n");
+                transmit("O: Output odometry (dl, dr, dθ)\r\n");
                 //transmit("P+number: Get LIDAR Data in Front Angle\r\n");
                 transmit("P: Show status\r\n");
                 transmit("Q: Disable status\r\n");

@@ -7,36 +7,47 @@
 
 #include <stdint.h>
 
+// 编码器/机械参数
+#define ENCODER_PULSES_PER_REV  380
+#define DIAMETER                0.065f
+#define PI                      3.14159265358979323846f
+#define WHEEL_BASE              0.165f
+#define ENCODER_SAMPLING_PERIOD 0.01f
+
+// 位移换算系数: 每个脉冲对应的线位移(米)
+#define PULSE_TO_DIST_FACTOR    (PI * DIAMETER / ENCODER_PULSES_PER_REV)
+
+// 里程计累计增量(由 encoder_update_speed 周期更新, odom_pop_delta 读取后清零)
+extern volatile float g_dl_acc;   // 左轮累计位移增量(m)
+extern volatile float g_dr_acc;   // 右轮累计位移增量(m)
+extern volatile float g_dth_acc;  // 航向角增量(rad)
+
+// 可选累计姿态(若你在别处要用, 否则可以忽略)
+extern volatile float g_x;
+extern volatile float g_y;
+extern volatile float g_th;
+
+// 过滤后当前轮速(米/秒)
+extern float g_left_speed;
+extern float g_right_speed;
+
+// 获取并清零增量 (返回 dl, dr, dδ)，单位: m, m, rad
+void odom_pop_delta(float *dl, float *dr, float *dth);
+
 // 初始化编码器
 void encoder_init(void);
 
-// 获取编码器计数
+// 获取编码器原始计数
 uint32_t encoder_left_get_count(void);
 uint32_t encoder_right_get_count(void);
 
-// 检测编码器溢出
-void calculate_diffA(void);
-void calculate_diffB(void);
-
-// 获取总计数（包括溢出计数）
-int32_t encoderA_GetTotalCount(void);
-int32_t encoderB_GetTotalCount(void);
-
-// 计算编码器速度
-float encoderA_CalculateSpeed(uint32_t timeIntervalMs);
-float encoderB_CalculateSpeed(uint32_t timeIntervalMs);
-
-// 获取当前速度
-float encoderA_GetSpeed(void);
-float encoderB_GetSpeed(void);
-
-// 更新两个编码器的速度（需定时调用）
+// 更新速度与里程计增量 (需在固定周期调用)
 void encoder_update_speed(void);
+
+// 复位
+void encoder_Reset(void);
 
 // 基于SysTick的周期性速度更新（在主循环中调用）
 uint8_t encoder_UpdateSpeed_SysTick(void);
-
-// 重置编码器
-void encoder_Reset(void);
 
 #endif /* ENCODER_H */

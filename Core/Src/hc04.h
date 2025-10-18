@@ -5,7 +5,8 @@
 #ifndef HC04_H
 #define HC04_H
 
-#include "stdint.h"
+#include <stdint.h>
+#include "encoder.h"  // 修正: 只包含头文件, 不包含 .c
 
 // Buffer for Bluetooth data reception
 extern uint8_t buffer[100];

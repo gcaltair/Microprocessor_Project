@@ -28,6 +28,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "system.h"
+#include "lidar.h"  // 新增
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -144,6 +145,7 @@ int main(void)
         //uart_printf("%.2lf,%.2lf,%d,%d\n", g_left_speed, g_right_speed,pwm_output_left,pwm_output_right);
         g_system_update_flag=false;
       }
+    RPLIDAR_RawTask(); // 新增：周期 flush 雷达原始数据
   }
   /* USER CODE END 3 */
 }

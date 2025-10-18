@@ -5,14 +5,66 @@
 
 #include "hc04.h"
 uint8_t rplidar_rx_byte;
-static uint8_t rplidar_response_header[7];
-static uint8_t scan_started = 0;
+volatile uint8_t lidar_raw_stream_active = 0;
+volatile uint8_t lidar_raw_overflow = 0;
+
+// 环形缓冲区
+#define LIDAR_RAW_BUF_SIZE 1024
+static uint8_t raw_buf[LIDAR_RAW_BUF_SIZE];
+static volatile uint16_t raw_head = 0; // 写入位置
+static volatile uint16_t raw_tail = 0; // 读取位置
+
+// 分片参数（典型 BLE MTU=20）
+#define BLE_MTU_PAYLOAD 20
+static uint32_t last_flush_tick = 0;
+#define RAW_FLUSH_INTERVAL_MS 5  // 最长等待时间
+#define RAW_MIN_BATCH 20         // 满足 MTU 时立即发送
+
+static inline uint16_t raw_count(void) {
+    if(raw_head >= raw_tail) return raw_head - raw_tail;
+    return (uint16_t)(LIDAR_RAW_BUF_SIZE - raw_tail + raw_head);
+}
+
+static void raw_push(uint8_t b) {
+    uint16_t next = (uint16_t)((raw_head + 1) % LIDAR_RAW_BUF_SIZE);
+    if(next == raw_tail) {
+        // 溢出：丢弃最旧一个字节
+        raw_tail = (uint16_t)((raw_tail + 1) % LIDAR_RAW_BUF_SIZE);
+        lidar_raw_overflow = 1;
+    }
+    raw_buf[raw_head] = b;
+    raw_head = next;
+}
+
+static void raw_flush_chunk(uint16_t len) {
+    // len 不超过 raw_count()
+    // 分片发送（最多 BLE_MTU_PAYLOAD）
+    while(len) {
+        uint16_t one = len > BLE_MTU_PAYLOAD ? BLE_MTU_PAYLOAD : len;
+        // 处理环形 wrap
+        uint16_t contiguous = (raw_head >= raw_tail) ? (raw_head - raw_tail) : (LIDAR_RAW_BUF_SIZE - raw_tail);
+        if(one > contiguous) one = contiguous;
+        HAL_UART_Transmit(&huart5, &raw_buf[raw_tail], one, 20);
+        raw_tail = (uint16_t)((raw_tail + one) % LIDAR_RAW_BUF_SIZE);
+        len -= one;
+    }
+}
+
+static void raw_try_flush(void) {
+    uint16_t cnt = raw_count();
+    if(!cnt) return;
+    // 满 MTU 或超时都 flush
+    uint32_t now = HAL_GetTick();
+    if(cnt >= RAW_MIN_BATCH || (now - last_flush_tick) >= RAW_FLUSH_INTERVAL_MS) {
+        raw_flush_chunk(cnt);
+        last_flush_tick = now;
+    }
+}
 
 void RPLIDAR_Init(void)
 {
     HAL_Delay(100);
     HAL_UART_Receive_IT(&huart6, &rplidar_rx_byte, 1);
-    //RPLIDAR_RequestScan();
 }
 
 void RPLIDAR_RequestScan(void)
@@ -21,66 +73,44 @@ void RPLIDAR_RequestScan(void)
     HAL_UART_Transmit(&huart6, cmd, 2, HAL_MAX_DELAY);
 }
 
-void RPLIDAR_ProcessByte(uint8_t byte) {
-    static uint8_t buffer[5];
-    static int index = 0;
-    static int header_index = 0;
-    static int print_count = 0;
-
-    if (!scan_started) {
-        rplidar_response_header[header_index++] = byte;
-        if (header_index == 7) {
-            header_index = 0;
-            if (rplidar_response_header[0] == 0xA5 && rplidar_response_header[1] == 0x5A) {
-                scan_started = 1;
-            }
-        }
-    } else {
-        buffer[index++] = byte;
-        if (index == 5) {
-            index = 0;
-
-            if ((buffer[1] & 0x01) == 0 || ((buffer[0] & 0x01) == ((buffer[0] >> 1) & 0x01))) {
-                return; // 如果任意一个校验失败，则丢弃该包
-            }
-
-            uint16_t angle_q6 = ((buffer[1] >> 1) | ((uint16_t)buffer[2] << 7));
-
-            uint16_t distance_q2 = (buffer[3] | ((uint16_t)buffer[4] << 8));
-
-            float angle = angle_q6 / 64.0f;
-            float distance = distance_q2 / 4.0f;
-
-            print_count++;
-            if (print_count >= 10) {
-                char msg[64];
-                snprintf(msg, sizeof(msg), "Angle: %.1f deg  Dist: %.1f mm\r\n", angle, distance);
-
-                HAL_UART_Transmit(&huart5, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
-                print_count = 0;
-            }
-        }
-    }
-
-}
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+void RPLIDAR_StartRaw(void)
 {
-    // 确认是雷达所在的串口(USART6)触发的中断
-    if (huart->Instance == USART6)
-    {
-        // === 核心修改在这里 ===
-        // 直接将接收到的字节通过串口5发送出去
-        // 这是一个简单的数据转发，不需要使用 printf
-        // 使用一个较短的超时时间（例如 10ms），避免在中断中长时间阻塞
-        HAL_UART_Transmit(&huart5, &rplidar_rx_byte, 1, 10);
-
-        // 接收完一个字节后，必须立即重新开启下一次接收，为接收下一个字节做准备
-        HAL_UART_Receive_IT(&huart6, (uint8_t *)&rplidar_rx_byte, 1);
-    }
+    lidar_raw_stream_active = 1;
+    lidar_raw_overflow = 0;
+    raw_head = raw_tail = 0;
+    RPLIDAR_RequestScan(); // 发送启动命令，等待输出头 a5 5a ...
 }
+
+void RPLIDAR_StopRaw(void)
+{
+    Lidar_StopScan();
+    lidar_raw_stream_active = 0;
+    // 结束前 flush 剩余
+    raw_try_flush();
+}
+
 void Lidar_StopScan(void)
 {
     uint8_t stop_cmd[] = {0xA5, RPLIDAR_CMD_STOP};
-    HAL_UART_Transmit(&huart6, stop_cmd, sizeof(stop_cmd), 100);
-    scan_started = 0;
+    HAL_UART_Transmit(&huart6, stop_cmd, sizeof(stop_cmd), 50);
+}
+
+void RPLIDAR_RawTask(void)
+{
+    if(lidar_raw_stream_active) {
+        raw_try_flush();
+    }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART6)
+    {
+        uint8_t b = rplidar_rx_byte;
+        if(lidar_raw_stream_active) {
+            raw_push(b); // 仅入缓冲，不阻塞
+        }
+        // 若未开启透传可忽略或实现其它功能（此处忽略）
+        HAL_UART_Receive_IT(&huart6, (uint8_t *)&rplidar_rx_byte, 1);
+    }
 }

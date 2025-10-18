@@ -28,6 +28,20 @@ uint8_t auto_stop_pending = 0;    // 是否有待执行的自动停车
 
 void process_command(uint8_t *cmd, uint16_t size)
 {
+    // 原始透传期间只允许 M(重启) / N(停止)，且不回显
+    if(lidar_raw_stream_active) {
+        if(size==1) {
+            if(cmd[0]=='N') {
+                RPLIDAR_StopRaw();
+            } else if(cmd[0]=='M') {
+                RPLIDAR_StopRaw();
+                HAL_Delay(5);
+                RPLIDAR_StartRaw();
+            }
+        }
+        return;
+    }
+
     transmit_uint8(cmd,size);
 
     // Process complex commands (commands with parameters)
@@ -78,11 +92,12 @@ void process_command(uint8_t *cmd, uint16_t size)
                 auto_stop_pending = 0;
                 break;
             case 'N':
-                Lidar_StopScan();
+                RPLIDAR_StopRaw();
                 transmit("Lidar Stopped\r\n");
                 break;
             case 'M':
-                RPLIDAR_RequestScan();
+                RPLIDAR_StartRaw();
+                // 不输出启动提示，保持后续数据纯净
                 break;
             case 'P':
                 status_enable=1;
@@ -139,12 +154,11 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef* huart, uint16_t size)
 {
     if(huart->Instance==UART5)
     {
-        transmit("Have Received:");
-        HAL_UART_Transmit(&huart5,buffer,size,1000);
-        transmit("\n");
+        // 删除 "Have Received:" 回显，避免干扰原始流
+        // 仅处理命令
         process_command(buffer, size);
-        HAL_UARTEx_ReceiveToIdle_DMA(&huart5, buffer, sizeof(buffer)); 
-        __HAL_DMA_DISABLE_IT(huart->hdmarx, DMA_IT_HT); // Disable half-transfer interrupt
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart5, buffer, sizeof(buffer));
+        __HAL_DMA_DISABLE_IT(huart->hdmarx, DMA_IT_HT);
     }
 }
 

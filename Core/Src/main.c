@@ -122,9 +122,12 @@ int main(void)
   // 开始工作
   PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
   PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-  PID_Init(&g_pid_angle, 10.0f, 0.0f, 100.0f, -2000.0f, 2000.0f);
-  g_pid_speed_left.setpoint = 0.0f;
-  g_pid_speed_right.setpoint = 0.0f;
+  PID_Init(&g_pid_angle,
+           1.8f,      // Kp, Ki, Kd 也需要重新设置，从一个非常小的值开始
+           0.00f,
+           0.20f,      // Kd也需要很小
+           -3.0f,     // <-- 修改这里，这是速度修正的下限
+           3.0f);     // <-- 修改这里，这是速度修正的上限  g_pid_speed_left.setpoint = 0.0f;
   //Car_Forward(10000);
   /* USER CODE END 2 */
 
@@ -141,7 +144,7 @@ int main(void)
         //MPU6500_PrintGyroData(&g_gyro_data);
         encoder_update_speed();
         angle_z += g_gyro_data.gz * dt;
-        float base_car_speed = 1.0f; // 设置期望前进速度，单位与编码器速度单位一致
+        float base_car_speed = 3.0f; // 设置期望前进速度，单位与编码器速度单位一致
         Angle_Speed_Cascade_Control(angle_z, base_car_speed);
         //uart_printf("%.2lf,%.2lf,%d,%d\n", g_left_speed, g_right_speed,pwm_output_left,pwm_output_right);
         g_system_update_flag=false;

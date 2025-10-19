@@ -28,5 +28,6 @@ extern GyroData g_gyro_data;
 extern PID_Controller g_pid_speed_left;
 extern PID_Controller g_pid_speed_right;
 extern int pwm_output_left,pwm_output_right;
-
+extern volatile uint32_t overflow_count;
+extern PID_Controller g_pid_angle;
 #endif //SYSTEM_H

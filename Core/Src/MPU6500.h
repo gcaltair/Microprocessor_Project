@@ -72,6 +72,7 @@ void MPU_Write_Byte(uint8_t reg, uint8_t data);
 void MPU6500_PrintAccelData(AccelData* accelData);
 
 void MPU6500_PrintGyroData(GyroData* gyroData);
+void MPU_update();
 
 
 #endif

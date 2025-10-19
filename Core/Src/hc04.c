@@ -154,7 +154,6 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef* huart, uint16_t size)
 {
     if(huart->Instance==UART5)
     {
-        // 删除 "Have Received:" 回显，避免干扰原始流
         // 仅处理命令
         process_command(buffer, size);
         HAL_UARTEx_ReceiveToIdle_DMA(&huart5, buffer, sizeof(buffer));

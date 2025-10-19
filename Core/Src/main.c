@@ -53,7 +53,8 @@
 uint8_t buffer[100]; // 单字节接收缓冲区
 uint8_t rxData[100]; // 接收数据缓冲
 uint16_t rxIndex = 0; // 接收数据索引
-
+const float dt = 0.01f;
+float angle_z = 0.0f; // 用于积分存储Z轴角度
 
 /* USER CODE END PV */
 
@@ -121,6 +122,7 @@ int main(void)
   // 开始工作
   PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
   PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
+  PID_Init(&g_pid_angle, 10.0f, 0.0f, 100.0f, -2000.0f, 2000.0f);
   g_pid_speed_left.setpoint = 0.0f;
   g_pid_speed_right.setpoint = 0.0f;
   //Car_Forward(10000);
@@ -135,20 +137,24 @@ int main(void)
     /* USER CODE BEGIN 3 */
       if(g_system_update_flag)
       {
-        // MPU6500_Read_Accel(&g_accel_data);
-        // MPU6500_Read_Gyro(&g_gyro_data);
-        // MPU6500_PrintAccelData(&g_accel_data);
-        // MPU6500_PrintGyroData(&g_gyro_data);
-
+        MPU_update();
+        //MPU6500_PrintGyroData(&g_gyro_data);
         encoder_update_speed();
-        //Speed_Control_Loop();
+        angle_z += g_gyro_data.gz * dt;
+        float base_car_speed = 1.0f; // 设置期望前进速度，单位与编码器速度单位一致
+        Angle_Speed_Cascade_Control(angle_z, base_car_speed);
         //uart_printf("%.2lf,%.2lf,%d,%d\n", g_left_speed, g_right_speed,pwm_output_left,pwm_output_right);
         g_system_update_flag=false;
+        // 在你的主循环或一个定时任务中
+        // if(overflow_count > 0) {
+        // //    // 通过某种方式（比如发送特定字符串或LED闪烁）来报告溢出
+        //   uart_printf("LIDAR buffer overflow count: %lu\n", overflow_count);
+        }
       }
-    RPLIDAR_RawTask(); // 新增：周期 flush 雷达原始数据
+    //RPLIDAR_RawTask(); // 新增：周期 flush 雷达原始数据
   }
   /* USER CODE END 3 */
-}
+
 
 /**
   * @brief System Clock Configuration

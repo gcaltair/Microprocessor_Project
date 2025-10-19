@@ -12,7 +12,7 @@
 /* 定义左右轮速度环的PID控制器实例 */
 PID_Controller g_pid_speed_left;
 PID_Controller g_pid_speed_right;
-
+PID_Controller g_pid_angle;
 // PID_Init 函数保持不变，它使用float进行初始化
 void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, float out_max)
 {
@@ -111,4 +111,27 @@ void Speed_Control_Loop(void)
     {
         Motor_Control(MOTOR_RIGHT, MOTOR_STOP, 0);
     }
+}
+
+/**
+ * @brief  新增：角度-速度串级控制循环
+ * @param  angle_current 当前测量的角度
+ * @param  base_speed    基础前进/后退速度
+ */
+void Angle_Speed_Cascade_Control(float angle_current, float base_speed)
+{
+    // 1. --- 外环：角度环PID计算 ---
+    // 角度环的目标是保持角度为0
+    g_pid_angle.setpoint = 0.0f;
+    // 计算出一个转向修正量。这个值代表了速度差
+    int turn_output = PID_Calculate(&g_pid_angle, angle_current);
+
+    // 2. --- 设定内环（速度环）的目标值 ---
+    // 通过将基础速度与转向修正量结合，来为左右轮设定不同的目标速度
+    g_pid_speed_left.setpoint  = base_speed - turn_output;
+    g_pid_speed_right.setpoint = base_speed + turn_output;
+
+    // 3. --- 内环：调用速度环PID ---
+    // 速度环会根据新的目标值，自动计算PWM并驱动电机
+    Speed_Control_Loop();
 }

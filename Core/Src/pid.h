@@ -36,6 +36,7 @@ void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, 
 int PID_Calculate(PID_Controller *pid, float current_value);
 
 void Speed_Control_Loop(void);
+void Angle_Speed_Cascade_Control(float angle_current, float base_speed);
 
 
 #endif // __PID_H

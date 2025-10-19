@@ -17,6 +17,7 @@ static volatile uint16_t raw_tail = 0; // 读取位置
 // 分片参数（典型 BLE MTU=20）
 #define BLE_MTU_PAYLOAD 20
 static uint32_t last_flush_tick = 0;
+volatile uint32_t overflow_count = 0;
 #define RAW_FLUSH_INTERVAL_MS 5  // 最长等待时间
 #define RAW_MIN_BATCH 20         // 满足 MTU 时立即发送
 
@@ -31,6 +32,7 @@ static void raw_push(uint8_t b) {
         // 溢出：丢弃最旧一个字节
         raw_tail = (uint16_t)((raw_tail + 1) % LIDAR_RAW_BUF_SIZE);
         lidar_raw_overflow = 1;
+        overflow_count++; // 增加计数器
     }
     raw_buf[raw_head] = b;
     raw_head = next;

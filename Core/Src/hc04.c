@@ -97,7 +97,7 @@ void process_command(uint8_t *cmd, uint16_t size)
                 break;
             case 'M':
                 RPLIDAR_StartRaw();
-                // 不输出启动提示，保持后续数据纯净
+
                 break;
             case 'P':
                 status_enable=1;

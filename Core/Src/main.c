@@ -122,15 +122,9 @@ int main(void)
   // 开始工作
   PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
   PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-  PID_Init(&g_pid_angle,
-           1.8f,      // Kp, Ki, Kd 也需要重新设置，从一个非常小的值开始
-           0.00f,
-           0.20f,      // Kd也需要很小
-           -3.0f,     // <-- 修改这里，这是速度修正的下限
-           3.0f);     // <-- 修改这里，这是速度修正的上限  g_pid_speed_left.setpoint = 0.0f;
+  PID_Init(&g_pid_angle,1.8f,0.00f,0.80f,-3.0f,3.0f);
   //Car_Forward(10000);
   /* USER CODE END 2 */
-
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -149,15 +143,16 @@ int main(void)
         //uart_printf("%.2lf,%.2lf,%d,%d\n", g_left_speed, g_right_speed,pwm_output_left,pwm_output_right);
         g_system_update_flag=false;
         // 在你的主循环或一个定时任务中
-        // if(overflow_count > 0) {
-        // //    // 通过某种方式（比如发送特定字符串或LED闪烁）来报告溢出
+        // if(overflow_count > 0)
+        // {
         //   uart_printf("LIDAR buffer overflow count: %lu\n", overflow_count);
-        }
+        // }
       }
-    //RPLIDAR_RawTask(); // 新增：周期 flush 雷达原始数据
+        RPLIDAR_RawTask(); // 新增：周期 flush 雷达原始数据
+  }
+
   }
   /* USER CODE END 3 */
-
 
 /**
   * @brief System Clock Configuration

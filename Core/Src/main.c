@@ -152,7 +152,6 @@ int main(void)
         MPU_update();
         encoder_update_speed();
         Odometry_Update(dt);
-        //if (fabsf(g_gyro_data.gz)>1) angle_z += g_gyro_data.gz * dt;
         if (g_control_mode == CONTROL_MODE_POSITION)
         {
           Update_Relative_Move_PID(dt);

@@ -84,6 +84,7 @@ void PID_system_init()
   PID_Init(&g_pid_angle,0.0575f,0.00f,0.001f,-0.4f,0.4f);
   PID_Init(&g_pid_speed_left,  8000,33705, 33, -10000.0f, 10000.0f);
   PID_Init(&g_pid_speed_right,  8000,33705, 33, -10000.0f, 10000.0f);
+  PID_Init(&g_pid_position, 0.8f, 0.00f, 0.0f, 0.0f, MAX_BASE_SPEED);
   //PID_Init(&g_pid_speed_right,  4251, 675.0f, 0.0f,-10000.0f, 10000.0f);
   //PID_Init(&g_pid_speed_left,  10801, 1895, 0, -10000.0f, 10000.0f);
   //PID_Init(&g_pid_speed_right,  10801, 1895, 0, -10000.0f, 10000.0f);
@@ -135,7 +136,8 @@ int main(void)
   system_init();
   PID_system_init();
 
-
+  g_target_x=0.6;
+  g_target_y=0.0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -149,13 +151,21 @@ int main(void)
       {
         MPU_update();
         encoder_update_speed();
-        if (fabsf(g_gyro_data.gz)>1) angle_z += g_gyro_data.gz * dt;
-        Angle_Speed_Cascade_Control(angle_z, base_car_speed, dt);
+        Odometry_Update(dt);
+        //if (fabsf(g_gyro_data.gz)>1) angle_z += g_gyro_data.gz * dt;
+        if (g_control_mode == CONTROL_MODE_POSITION)
+        {
+          Update_Relative_Move_PID(dt);
+        }
+        else
+        {
+          Angle_Speed_Cascade_Control(g_th_continuous, base_car_speed, dt);
+        }
         //uart_printf("%.4lf,%.2lf,%.4lf,%.2lf,%.2lf,%.2lf,%d,%d\n", g_left_speed, g_pid_speed_left.setpoint,g_right_speed,g_pid_speed_right.setpoint,g_pid_angle.setpoint,angle_z,pwm_output_left,pwm_output_right);
         g_system_update_flag=false;
       }
 
-        RPLIDAR_RawTask(); // 新增：周期 flush 雷达原始数据
+        RPLIDAR_RawTask();
   }
 
 

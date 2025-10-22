@@ -2,6 +2,12 @@
 #ifndef __PID_H
 #define __PID_H
 
+#define SPEED_ERROR_DEADBAND 0.01f
+#define ANGLE_CONTROL_DEADBAND 1.0f // 原先是2
+#define MOTOR_DEAD_ZONE 686
+#define POSITION_REACHED_THRESHOLD 0.05f // 到达目标的判断阈值 (2厘米)
+#define MAX_BASE_SPEED             0.4f  // 位置控制时允许的最大前进速度 (0.4 m/s)
+#define MIN_BASE_SPEED             0.05f // 避免速度过低停转的最小速度
 /*
  * @brief PID控制器结构体
  * (结构体内部保持float，以保证增益和积分的精度)
@@ -36,6 +42,8 @@ void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, 
 float PID_Calculate(PID_Controller *pid, float current_value, float dt);
 void Speed_Control_Loop(float dt);
 void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt);
-
+//void Position_Control_Loop(float target_x, float target_y, float dt); // 新增：位置控制总函数
+void Update_Relative_Move_PID(float dt);
+void Start_Relative_Move(float dx, float dy);
 
 #endif // __PID_H

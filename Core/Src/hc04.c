@@ -48,30 +48,35 @@ void process_command(uint8_t *cmd, uint16_t size)
             case 'F': // 【PID 简化】
                 base_car_speed = speed_magnitude;  // 设置PID速度 (正向)
                 g_pid_angle.setpoint = 0.0f;         // 设置PID角度 (直线)
+
                 transmit("Moving forward (PID)\r\n");
+                g_control_mode = CONTROL_MODE_MANUAL;
                 break;
 
             case 'B': // 【PID 简化】
                 base_car_speed = -speed_magnitude; // 设置PID速度 (反向)
                 g_pid_angle.setpoint = 0.0f;         // 设置PID角度 (直线)
                 transmit("Moving backward (PID)\r\n");
+                g_control_mode = CONTROL_MODE_MANUAL;
                 break;
 
             case 'L': // 【PID 简化】
                 base_car_speed = 0.0f;               // 设置PID速度 (原地)
                 g_pid_angle.setpoint = -PID_DEFAULT_TURN_SETPOINT; // 设置PID角度 (左转)
                 transmit("Turning left (PID)\r\n");
+                g_control_mode = CONTROL_MODE_MANUAL;
                 break;
 
             case 'R': // 【PID 简化】
                 base_car_speed = 0.0f;               // 设置PID速度 (原地)
                 g_pid_angle.setpoint = PID_DEFAULT_TURN_SETPOINT;  // 设置PID角度 (右转)
                 transmit("Turning right (PID)\r\n");
+                g_control_mode = CONTROL_MODE_MANUAL;
                 break;
 
             case 'S': // 【PID 简化】
                 base_car_speed = 0.0f;       // 设置PID速度 (停止)
-                g_pid_angle.setpoint = 0.0f; // 设置PID角度 (停止转向)
+                g_pid_angle.setpoint = g_th * 180.0f / PI;
                 transmit("Stopped (PID)\r\n");
                 break;
 
@@ -83,22 +88,13 @@ void process_command(uint8_t *cmd, uint16_t size)
             case 'M':
                 RPLIDAR_StartRaw();
                 break;
-            case 'O': {
-                float dl, dr, dth;
-                odom_pop_delta(&dl, &dr, &dth);
-                uart_printf("ODOM,%.6f,%.6f,%.6f\r\n", dl, dr, dth);
-                break;
-            }
 
             case 'H': // 【更新帮助信息】
                 transmit("\r\n--- Bluetooth PID Control ---\r\n");
-                transmit("F: Move Forward\r\n");
-                transmit("B: Move Backward\r\n");
-                transmit("L: Turn Left (In-place)\r\n");
-                transmit("R: Turn Right (In-place)\r\n");
-                transmit("S: Stop\r\n");
-                transmit("A+number: Set Angle (-360.00-360.00)\r\n");
-                transmit("V+number: Set Speed (0.00-10.00)\r\n");
+                transmit("F/B/L/R/S: Manual Control\r\n");
+                transmit("A+angle: Set relative angle turn\r\n");
+                transmit("V+speed: Set speed for manual mode\r\n");
+                transmit("P{x},{y}: Set absolute target point (e.g., P0.5,1.2)\r\n"); // <-- 新命令
                 // 'T' 命令已移除
                 transmit("M: Start LIDAR\r\n");
                 transmit("N: Stop LIDAR\r\n");
@@ -236,7 +232,16 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
             transmit("Invalid angle value. Use -360.0 to 360.0\r\n");
         }
     }
-
+    else if (size > 2 && cmd[0] == 'P') { // M for Move Relative
+        float dx, dy;
+        if (sscanf((char*)cmd, "P%f,%f", &dx, &dy) == 2) {
+            Start_Relative_Move(dx, dy); // 启动相对移动任务
+            g_control_mode = CONTROL_MODE_POSITION;
+            transmit("Relative move started.\r\n");
+        } else {
+            transmit("Invalid format. Use M{dx},{dy}\r\n");
+        }
+    }
     else if(size >= 2 && cmd[0] == 'T') {
         transmit("Auto-stop 'T' command is disabled.\r\n");
     }

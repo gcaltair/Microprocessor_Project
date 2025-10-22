@@ -15,16 +15,14 @@ volatile float g_dth_acc = 0.0f;
 volatile float g_x = 0.0f;
 volatile float g_y = 0.0f;
 volatile float g_th = 0.0f;
+volatile float g_th_continuous=0.0f;
+
 float g_left_speed = 0.0f;
 float g_right_speed = 0.0f;
-
+const float delta_t = 0.01f;
 // 上次计数
 static int16_t last_left_count = 0;
 static int16_t last_right_count = 0;
-
-/**
- * @brief 编码器初始化
- */
 void encoder_init()
 {
     HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
@@ -58,11 +56,9 @@ void encoder_update_speed(void) {
     g_right_speed = (1.0f - SPEED_FILTER_ALPHA) * g_right_speed + SPEED_FILTER_ALPHA * raw_right_speed;
 
     // 位移增量(单位: 米). 正: 轮按前进方向转动; 负: 反向
-    float dl = left_pulse_delta  * PULSE_TO_DIST_FACTOR;
-    float dr = right_pulse_delta * PULSE_TO_DIST_FACTOR;
+    float dl = g_left_speed *delta_t;
+    float dr = g_right_speed *delta_t;
 
-    // 航向角增量 dδ (单位: 弧度). dδ = (dr - dl)/轮距
-    // 右轮比左轮前进多 => 车体逆时针 => dδ 为正
     float dth = (dr - dl) / WHEEL_BASE;
 
     g_dl_acc  += dl;
@@ -95,17 +91,32 @@ uint32_t encoder_left_get_count(void)  { return __HAL_TIM_GET_COUNTER(&htim1); }
  */
 uint32_t encoder_right_get_count(void) { return __HAL_TIM_GET_COUNTER(&htim2); }
 
-// 读出自上次查询以来的增量并清零
-void odom_pop_delta(float *dl, float *dr, float *dth)
+void Odometry_Update(float dt)
 {
-    __disable_irq();
-    *dl  = g_dl_acc;
-    *dr  = g_dr_acc;
-    *dth = g_dth_acc;
-    g_dl_acc = g_dr_acc = g_dth_acc = 0.0f;
-    __enable_irq();
-}
+    float dl, dr, ds, dth;
+    dth=0.0;
 
+    dl = g_dl_acc;
+    dr = g_dr_acc;
+    g_dl_acc = 0.0f;
+    g_dr_acc = 0.0f;
+
+    ds = (dl + dr) / 2.0f;
+    if (fabsf(g_gyro_data.gz) > 1.0f)
+    {
+        dth = g_gyro_data.gz * dt;
+        g_th_continuous += dth;
+        g_th += dth;
+    }
+
+
+    // 2. 更新规范化角度 (给三角函数用)
+    if (g_th > 180)      g_th -= 180;
+    if (g_th < -180)     g_th += 180;
+
+    g_x += ds * cosf((g_th + dth / 2.0f)*PI/180);
+    g_y += ds * sinf((g_th + dth / 2.0f)*PI/180);
+}
 
 // 全局变量:系统更新标志,使用计时器更新
 bool g_system_update_flag = false; 

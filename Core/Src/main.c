@@ -27,6 +27,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <math.h>
+
 #include "system.h"
 #include "lidar.h"  // 新增
 /* USER CODE END Includes */
@@ -77,6 +79,12 @@ void system_init()
   HAL_TIM_Base_Start_IT(&htim4); //同时使能中断
   HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
 }
+void PID_system_init()
+{
+  PID_Init(&g_pid_angle,0.01f,0.00f,0.0f,-0.5f,0.5f);
+  PID_Init(&g_pid_speed_left,  4251, 675.0f, 0.0f, -10000.0f, 10000.0f);
+  PID_Init(&g_pid_speed_right,  4251, 675.0f, 0.0f, -10000.0f, 10000.0f);
+}
 /* USER CODE END 0 */
 
 /**
@@ -118,11 +126,18 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   system_init();
+  PID_system_init();
   // 开始工作
-  PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-  PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-  PID_Init(&g_pid_angle,1.3f,0.10f,0.20f,-3.0f,3.0f);
+  //PID_Init(&g_pid_speed_left,  10801, 1895, 0, -10000.0f, 10000.0f);
+  //PID_Init(&g_pid_speed_right,  10801, 1895, 0, -10000.0f, 10000.0f);
+
+   // PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
+   // PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
+   // PID_Init(&g_pid_angle,0.15f,0.00f,0.05f,-3.0f,3.0f);
+
+
   /* USER CODE END 2 */
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
@@ -133,22 +148,18 @@ int main(void)
       if(g_system_update_flag)
       {
         MPU_update();
-        //MPU6500_PrintGyroData(&g_gyro_data);
         encoder_update_speed();
-        angle_z += g_gyro_data.gz * dt;
-        Angle_Speed_Cascade_Control(angle_z, base_car_speed);
-        //uart_printf("%.2lf,%.2lf,%d,%d\n", g_left_speed, g_right_speed,pwm_output_left,pwm_output_right);
+        if (fabsf(g_gyro_data.gz)>1) angle_z += g_gyro_data.gz * dt;
+        Angle_Speed_Cascade_Control(angle_z, base_car_speed, dt);
+        uart_printf("%.4lf,%.2lf,%.4lf,%.2lf,%.2lf,%.2lf,%d,%d\n", g_left_speed, g_pid_speed_left.setpoint,g_right_speed,g_pid_speed_right.setpoint,g_pid_angle.setpoint,angle_z,pwm_output_left,pwm_output_right);
         g_system_update_flag=false;
-        // 在你的主循环或一个定时任务中
-        // if(overflow_count > 0)
-        // {
-        //   uart_printf("LIDAR buffer overflow count: %lu\n", overflow_count);
-        // }
       }
+
         RPLIDAR_RawTask(); // 新增：周期 flush 雷达原始数据
   }
 
-  }
+
+}
   /* USER CODE END 3 */
 
 /**

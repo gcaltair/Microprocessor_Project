@@ -33,10 +33,9 @@ void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, 
  * @param  current_value: 当前的测量值 (int类型)
  * @retval 计算得到的PID输出值 (int类型)
  */
-int PID_Calculate(PID_Controller *pid, float current_value);
-
-void Speed_Control_Loop(void);
-void Angle_Speed_Cascade_Control(float angle_current, float base_speed);
+float PID_Calculate(PID_Controller *pid, float current_value, float dt);
+void Speed_Control_Loop(float dt);
+void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt);
 
 
 #endif // __PID_H

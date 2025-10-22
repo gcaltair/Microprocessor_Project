@@ -143,7 +143,7 @@ void MPU6500_Read_Gyro(GyroData *gyro)
     float calibrated_gz = gz_raw / 32.8f - g_gyro_z_offset;
 
     // 应用一阶低通滤波
-    const float alpha = 0.90f; // 平滑系数，可调
+    const float alpha = 0.80f; // 平滑系数，可调
     filtered_gx = alpha * calibrated_gx + (1 - alpha) * filtered_gx;
     filtered_gy = alpha * calibrated_gy + (1 - alpha) * filtered_gy;
     filtered_gz = alpha * calibrated_gz + (1 - alpha) * filtered_gz;

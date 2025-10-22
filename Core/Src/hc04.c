@@ -226,7 +226,7 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         // 假设角度限制在 -360 到 360 度之间
         if (new_angle_setpoint >= -360.0f && new_angle_setpoint <= 360.0f) {
             // 设置PID角度目标
-            g_pid_angle.setpoint = new_angle_setpoint;
+            g_pid_angle.setpoint += new_angle_setpoint;
             // 设置为原地转向
             base_car_speed = 0.0f;
 

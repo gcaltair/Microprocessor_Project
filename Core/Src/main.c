@@ -55,7 +55,6 @@ uint8_t rxData[100]; // 接收数据缓冲
 uint16_t rxIndex = 0; // 接收数据索引
 const float dt = 0.01f;
 float angle_z = 0.0f; // 用于积分存储Z轴角度
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -122,8 +121,7 @@ int main(void)
   // 开始工作
   PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
   PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-  PID_Init(&g_pid_angle,1.8f,0.00f,0.80f,-3.0f,3.0f);
-  //Car_Forward(10000);
+  PID_Init(&g_pid_angle,1.3f,0.10f,0.20f,-3.0f,3.0f);
   /* USER CODE END 2 */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -138,7 +136,6 @@ int main(void)
         //MPU6500_PrintGyroData(&g_gyro_data);
         encoder_update_speed();
         angle_z += g_gyro_data.gz * dt;
-        float base_car_speed = 3.0f; // 设置期望前进速度，单位与编码器速度单位一致
         Angle_Speed_Cascade_Control(angle_z, base_car_speed);
         //uart_printf("%.2lf,%.2lf,%d,%d\n", g_left_speed, g_right_speed,pwm_output_left,pwm_output_right);
         g_system_update_flag=false;

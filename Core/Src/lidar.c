@@ -39,8 +39,7 @@ static void raw_push(uint8_t b) {
 }
 
 static void raw_flush_chunk(uint16_t len) {
-    // len 不超过 raw_count()
-    // 分片发送（最多 BLE_MTU_PAYLOAD）
+
     while(len) {
         uint16_t one = len > BLE_MTU_PAYLOAD ? BLE_MTU_PAYLOAD : len;
         // 处理环形 wrap

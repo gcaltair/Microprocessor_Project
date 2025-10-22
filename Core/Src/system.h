@@ -30,4 +30,5 @@ extern PID_Controller g_pid_speed_right;
 extern int pwm_output_left,pwm_output_right;
 extern volatile uint32_t overflow_count;
 extern PID_Controller g_pid_angle;
+extern volatile float base_car_speed;
 #endif //SYSTEM_H

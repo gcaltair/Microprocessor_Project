@@ -13,6 +13,7 @@
 PID_Controller g_pid_speed_left;
 PID_Controller g_pid_speed_right;
 PID_Controller g_pid_angle;
+volatile float base_car_speed = 0.0f;
 // PID_Init 函数保持不变，它使用float进行初始化
 void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, float out_max)
 {
@@ -121,8 +122,6 @@ void Speed_Control_Loop(void)
 void Angle_Speed_Cascade_Control(float angle_current, float base_speed)
 {
     // 1. --- 外环：角度环PID计算 ---
-    // 角度环的目标是保持角度为0
-    g_pid_angle.setpoint = 0.0f;
     // 计算出一个转向修正量。这个值代表了速度差
     int turn_output = PID_Calculate(&g_pid_angle, angle_current);
 

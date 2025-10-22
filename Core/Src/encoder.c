@@ -9,7 +9,7 @@
 #define MAX_REASONABLE_SPEED 12.0f
 #define SPEED_FILTER_ALPHA   0.85f
 
-// 全局变量定义(头文件中为 extern)
+
 volatile float g_dl_acc = 0.0f;
 volatile float g_dr_acc = 0.0f;
 volatile float g_dth_acc = 0.0f;

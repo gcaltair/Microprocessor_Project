@@ -3,13 +3,8 @@
 //
 
 #include <stdio.h>
-#include "hc04.h"
-#include "main.h"
-#include "string.h"
-#include "motor.h" // Include the motor control functions
-#include "lidar.h"
 #include <stdarg.h>     // 用于 va_list, va_start, va_arg, va_end
-
+#include "system.h"
 extern UART_HandleTypeDef huart5;
 //extern uint8_t speed;
 // Car control command flags
@@ -19,115 +14,95 @@ extern UART_HandleTypeDef huart5;
 #define CMD_RIGHT     'R'
 #define CMD_STOP      'S'
 #define CMD_SPEED     'V'
-uint8_t speed = 65;
-uint32_t period = 500;
-uint8_t status_enable=0;
-// 自动停车控制变量
-uint32_t auto_stop_time = 0;      // 自动停车的时间点
-uint8_t auto_stop_pending = 0;    // 是否有待执行的自动停车
+volatile float speed_magnitude = 1.0f; // 默认值 (例如 50.0)
+#define PID_DEFAULT_TURN_SETPOINT 10.0f
+
 
 void process_command(uint8_t *cmd, uint16_t size)
 {
-    // 原始透传期间只允许 M(重启) / N(停止)，且不回显
-    if(lidar_raw_stream_active) {
-        if(size==1) {
-            if(cmd[0]=='N') {
-                RPLIDAR_StopRaw();
-            } else if(cmd[0]=='M') {
-                RPLIDAR_StopRaw();
-                HAL_Delay(5);
-                RPLIDAR_StartRaw();
-            }
-        }
-        return;
-    }
+    // // 原始透传期间... (保持不变)
+    // if(lidar_raw_stream_active) {
+    //     if(size==1) {
+    //         if(cmd[0]=='N') {
+    //             RPLIDAR_StopRaw();
+    //         } else if(cmd[0]=='M') {
+    //             RPLIDAR_StopRaw();
+    //             HAL_Delay(5);
+    //             RPLIDAR_StartRaw();
+    //         }
+    //     }
+    //     return;
+    // }
 
     transmit_uint8(cmd,size);
 
-    // Process complex commands (commands with parameters)
+    // 处理复杂命令 (V)
     if(size > 1) {
         process_complex_command(cmd, size);
         return;
     }
 
-    // Process single character commands
+    // 处理单字符命令
     if (size == 1) {
         switch (cmd[0]) {
-            case 'F':
-                Car_Forward(speed);
-                transmit("Moving forward\r\n");
-                // Set auto-stop
-                auto_stop_time = HAL_GetTick() + period;
-                auto_stop_pending = 1;
+            case 'F': // 【PID 简化】
+                base_car_speed = speed_magnitude;  // 设置PID速度 (正向)
+                g_pid_angle.setpoint = 0.0f;         // 设置PID角度 (直线)
+                transmit("Moving forward (PID)\r\n");
                 break;
 
-            case 'B':
-                Car_Backward(speed);
-                transmit("Moving backward\r\n");
-                // Set auto-stop
-                auto_stop_time = HAL_GetTick() + period;
-                auto_stop_pending = 1;
+            case 'B': // 【PID 简化】
+                base_car_speed = -speed_magnitude; // 设置PID速度 (反向)
+                g_pid_angle.setpoint = 0.0f;         // 设置PID角度 (直线)
+                transmit("Moving backward (PID)\r\n");
                 break;
 
-            case 'L':
-                Car_TurnLeft(65);
-                transmit("Turning left\r\n");
-                // Set auto-stop
-                auto_stop_time = HAL_GetTick() + period/3;
-                auto_stop_pending = 1;
+            case 'L': // 【PID 简化】
+                base_car_speed = 0.0f;               // 设置PID速度 (原地)
+                g_pid_angle.setpoint = -PID_DEFAULT_TURN_SETPOINT; // 设置PID角度 (左转)
+                transmit("Turning left (PID)\r\n");
                 break;
 
-            case 'R':
-                Car_TurnRight(65 );
-                transmit("Turning right\r\n");
-                // Set auto-stop
-                auto_stop_time = HAL_GetTick() + period/3;
-                auto_stop_pending = 1;
+            case 'R': // 【PID 简化】
+                base_car_speed = 0.0f;               // 设置PID速度 (原地)
+                g_pid_angle.setpoint = PID_DEFAULT_TURN_SETPOINT;  // 设置PID角度 (右转)
+                transmit("Turning right (PID)\r\n");
                 break;
 
-            case 'S':
-                Car_Stop();
-                transmit("Stopped\r\n");
-                // Cancel auto-stop
-                auto_stop_pending = 0;
+            case 'S': // 【PID 简化】
+                base_car_speed = 0.0f;       // 设置PID速度 (停止)
+                g_pid_angle.setpoint = 0.0f; // 设置PID角度 (停止转向)
+                transmit("Stopped (PID)\r\n");
                 break;
+
+            // --- 其他 case 保持不变 ---
             case 'N':
                 RPLIDAR_StopRaw();
                 transmit("Lidar Stopped\r\n");
                 break;
             case 'M':
                 RPLIDAR_StartRaw();
-
-                break;
-            case 'P':
-                status_enable=1;
-                break;
-            case 'Q':
-                status_enable=0;
                 break;
             case 'O': {
-                // 获取并输出自上次查询以来的增量
                 float dl, dr, dth;
                 odom_pop_delta(&dl, &dr, &dth);
-
-                // 输出格式： ODOM,dl,dr,dth
                 uart_printf("ODOM,%.6f,%.6f,%.6f\r\n", dl, dr, dth);
                 break;
             }
 
-            case 'H': // Show help
-                transmit("\r\n--- Bluetooth Control Commands ---\r\n");
+            case 'H': // 【更新帮助信息】
+                transmit("\r\n--- Bluetooth PID Control ---\r\n");
                 transmit("F: Move Forward\r\n");
                 transmit("B: Move Backward\r\n");
-                transmit("L: Turn Left\r\n");
-                transmit("R: Turn Right\r\n");
+                transmit("L: Turn Left (In-place)\r\n");
+                transmit("R: Turn Right (In-place)\r\n");
                 transmit("S: Stop\r\n");
-                transmit("V+number: Set Speed (1-100)\r\n");
-                transmit("T+number: Set Auto-stop Time (ms)\r\n");
+                transmit("A+number: Set Angle (-360.00-360.00)\r\n");
+                transmit("V+number: Set Speed (0.00-10.00)\r\n");
+                // 'T' 命令已移除
                 transmit("M: Start LIDAR\r\n");
                 transmit("N: Stop LIDAR\r\n");
                 transmit("O: Output odometry (dl, dr, dθ)\r\n");
-                //transmit("P+number: Get LIDAR Data in Front Angle\r\n");
                 transmit("P: Show status\r\n");
                 transmit("Q: Disable status\r\n");
                 transmit("H: Show This Help\r\n");
@@ -137,16 +112,6 @@ void process_command(uint8_t *cmd, uint16_t size)
                 transmit("Unknown command. Send 'H' for help\r\n");
                 break;
         }
-    }
-}
-
-// 检查是否需要自动停车
-void check_auto_stop(void)
-{
-    if (auto_stop_pending && HAL_GetTick() >= auto_stop_time) {
-        Car_Stop();
-        auto_stop_pending = 0;
-        transmit("Auto stopped\r\n");
     }
 }
 
@@ -185,44 +150,95 @@ void transmit_uint8(uint8_t * message,uint8_t size)
 void process_complex_command(uint8_t *cmd, uint16_t size)
 {
     char reply[100];
-
-    // Process possible command format: V80 (set speed to 80%)
     if(size >= 2 && cmd[0] == 'V') {
-        // Extract the numeric part
-        uint8_t new_speed = 0;
+        float int_part = 0.0f;
+        float frac_part = 0.0f;
+        float frac_divisor = 1.0f;
+        int parsing_frac = 0;
+
+        // 手动解析浮点数 (避免引入 atof)
         for(int i = 1; i < size; i++) {
             if(cmd[i] >= '0' && cmd[i] <= '9') {
-                new_speed = new_speed * 10 + (cmd[i] - '0');
+                if (!parsing_frac) {
+                    // 整数部分
+                    int_part = int_part * 10.0f + (cmd[i] - '0');
+                } else {
+                    // 小数部分
+                    frac_part = frac_part * 10.0f + (cmd[i] - '0');
+                    frac_divisor *= 10.0f;
+                }
+            } else if (cmd[i] == '.' && !parsing_frac) {
+                // 遇到小数点
+                parsing_frac = 1;
+            } else {
+                // 遇到无效字符
+                transmit("Invalid speed format. Use V+number (e.g., V50.75)\r\n");
+                return;
             }
         }
 
-        // Update speed
-        if(new_speed > 0 && new_speed <= 100) {
-            speed = new_speed;
-            sprintf(reply, "Speed set to %d%%\r\n", speed);
+        float new_speed_val = int_part + (frac_part / frac_divisor);
+
+        // 更新速度大小
+        if(new_speed_val >= 0 && new_speed_val <= 10.0) { // 允许 V0 停止
+            speed_magnitude = new_speed_val; // 存储新的速度大小
+            base_car_speed=speed_magnitude;
+
+            sprintf(reply, "base_car_spped is%.2f\r\n", base_car_speed);
             transmit(reply);
         } else {
-            transmit("Invalid speed value. Use 1-100\r\n");
+            transmit("Invalid speed value. Use 0.00-100.00\r\n");
         }
     }
-        // Process delay setting command: T1000 (set delay to 1000ms)
-    else if(size >= 2 && cmd[0] == 'T') {
-        // Extract the numeric part
-        uint32_t new_period = 0;
-        for(int i = 1; i < size; i++) {
+    else if(size >= 2 && cmd[0] == 'A') {
+        float sign = 1.0f;
+        int start_index = 1;
+
+        // 检查负号
+        if (cmd[1] == '-') {
+            sign = -1.0f;
+            start_index = 2; // 从负号之后开始解析
+        }
+
+        float int_part = 0.0f;
+        float frac_part = 0.0f;
+        float frac_divisor = 1.0f;
+        int parsing_frac = 0;
+
+        for(int i = start_index; i < size; i++) {
             if(cmd[i] >= '0' && cmd[i] <= '9') {
-                new_period = new_period * 10 + (cmd[i] - '0');
+                if (!parsing_frac) {
+                    int_part = int_part * 10.0f + (cmd[i] - '0');
+                } else {
+                    frac_part = frac_part * 10.0f + (cmd[i] - '0');
+                    frac_divisor *= 10.0f;
+                }
+            } else if (cmd[i] == '.' && !parsing_frac) {
+                parsing_frac = 1;
+            } else {
+                transmit("Invalid angle format. Use A+number (e.g., A-90.5)\r\n");
+                return;
             }
         }
 
-        // Update delay
-        if(new_period > 0 && new_period <= 10000) {
-            period = new_period;
-            sprintf(reply, "Auto-stop period set to %ldms\r\n", period);
+        float new_angle_setpoint = (int_part + (frac_part / frac_divisor)) * sign;
+
+        // 假设角度限制在 -360 到 360 度之间
+        if (new_angle_setpoint >= -360.0f && new_angle_setpoint <= 360.0f) {
+            // 设置PID角度目标
+            g_pid_angle.setpoint = new_angle_setpoint;
+            // 设置为原地转向
+            base_car_speed = 0.0f;
+
+            sprintf(reply, "Angle setpoint set to %.2f degrees\r\n", g_pid_angle.setpoint);
             transmit(reply);
         } else {
-            transmit("Invalid period value. Use 1-10000\r\n");
+            transmit("Invalid angle value. Use -360.0 to 360.0\r\n");
         }
+    }
+
+    else if(size >= 2 && cmd[0] == 'T') {
+        transmit("Auto-stop 'T' command is disabled.\r\n");
     }
 }
 #define UART_PRINTF_BUFFER_SIZE 256

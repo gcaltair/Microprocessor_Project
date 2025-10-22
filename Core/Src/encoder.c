@@ -6,9 +6,8 @@
 #define PULSE_TO_SPEED_FACTOR (PI * DIAMETER / ENCODER_PULSES_PER_REV / ENCODER_SAMPLING_PERIOD)
 
 // 滤波参数
-#define MAX_REASONABLE_SPEED 12.0f
-#define SPEED_FILTER_ALPHA   0.85f
-
+#define MAX_REASONABLE_SPEED 1.2f
+#define SPEED_FILTER_ALPHA   0.8f
 
 volatile float g_dl_acc = 0.0f;
 volatile float g_dr_acc = 0.0f;

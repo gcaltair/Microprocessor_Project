@@ -38,8 +38,8 @@ void Motor_Init(void)
 void Motor_SetSpeed(uint8_t motor, uint8_t speed)
 {
     // 限制速度范围
-    if (speed > 100)
-        speed = 100;
+    if (speed > 10000)
+        speed = 10000;
     
     if (motor == MOTOR_LEFT)
     {

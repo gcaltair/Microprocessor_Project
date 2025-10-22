@@ -4,7 +4,7 @@
 #include "pid.h"    // 确保包含了pid.h，里面会有新的函数声明
 #define SPEED_ERROR_DEADBAND 0.01f
 #define ANGLE_CONTROL_DEADBAND 2.0f
-#define MOTOR_DEAD_ZONE 1200
+#define MOTOR_DEAD_ZONE 686
 
 /* 定义PID控制器实例 (这些保持不变) */
 volatile PID_Controller g_pid_speed_left;
@@ -55,6 +55,7 @@ float PID_Calculate(PID_Controller *pid, float current_value, float dt)
         return 0;
     }
 
+    if (pid->setpoint==0) pid->integral = 0.0f;
     error = pid->setpoint - current_value;
     p_out = pid->Kp * error;
 

@@ -84,8 +84,13 @@ void PID_system_init()
   PID_Init(&g_pid_angle,0.0575f,0.00f,0.001f,-0.4f,0.4f);
   PID_Init(&g_pid_speed_left,  8000,33705, 33, -10000.0f, 10000.0f);
   PID_Init(&g_pid_speed_right,  8000,33705, 33, -10000.0f, 10000.0f);
-
   //PID_Init(&g_pid_speed_right,  4251, 675.0f, 0.0f,-10000.0f, 10000.0f);
+  //PID_Init(&g_pid_speed_left,  10801, 1895, 0, -10000.0f, 10000.0f);
+  //PID_Init(&g_pid_speed_right,  10801, 1895, 0, -10000.0f, 10000.0f);
+
+  // PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
+  // PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
+  // PID_Init(&g_pid_angle,0.15f,0.00f,0.05f,-3.0f,3.0f);
 }
 /* USER CODE END 0 */
 
@@ -129,13 +134,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   system_init();
   PID_system_init();
-  // 开始工作
-  //PID_Init(&g_pid_speed_left,  10801, 1895, 0, -10000.0f, 10000.0f);
-  //PID_Init(&g_pid_speed_right,  10801, 1895, 0, -10000.0f, 10000.0f);
 
-   // PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-   // PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-   // PID_Init(&g_pid_angle,0.15f,0.00f,0.05f,-3.0f,3.0f);
 
   /* USER CODE END 2 */
 
@@ -152,10 +151,7 @@ int main(void)
         encoder_update_speed();
         if (fabsf(g_gyro_data.gz)>1) angle_z += g_gyro_data.gz * dt;
         Angle_Speed_Cascade_Control(angle_z, base_car_speed, dt);
-        //
-        //g_pid_speed_left.setpoint=base_car_speed;
-        //Speed_Control_Loop(dt);
-        uart_printf("%.4lf,%.2lf,%.4lf,%.2lf,%.2lf,%.2lf,%d,%d\n", g_left_speed, g_pid_speed_left.setpoint,g_right_speed,g_pid_speed_right.setpoint,g_pid_angle.setpoint,angle_z,pwm_output_left,pwm_output_right);
+        //uart_printf("%.4lf,%.2lf,%.4lf,%.2lf,%.2lf,%.2lf,%d,%d\n", g_left_speed, g_pid_speed_left.setpoint,g_right_speed,g_pid_speed_right.setpoint,g_pid_angle.setpoint,angle_z,pwm_output_left,pwm_output_right);
         g_system_update_flag=false;
       }
 

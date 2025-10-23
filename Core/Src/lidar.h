@@ -22,6 +22,18 @@ extern uint8_t rplidar_rx_byte;
 extern volatile uint8_t lidar_raw_stream_active;
 extern volatile uint8_t lidar_raw_overflow;
 
+// 1. 定义一个结构体来存储解析后的单个雷达数据点
+typedef struct {
+    float angle_deg;    // 角度 (单位: 度)
+    float distance_mm;  // 距离 (单位: 毫米)
+    uint8_t quality;      // 信号质量
+} LidarPoint_t;
+
+// 2. 定义解析器状态机
+typedef enum {
+    STATE_WAIT_START,      // 等待数据包的起始字节
+    STATE_RECEIVE_DATA,    // 接收数据包的后续字节
+} ParserState_t;
 // 接口
 void RPLIDAR_Init(void);
 void RPLIDAR_RequestScan(void);
@@ -33,5 +45,8 @@ void RPLIDAR_StopRaw(void);
 
 // 任务：发送环形缓冲内容
 void RPLIDAR_RawTask(void);
+
+void LIDAR_ParseTask(void);
+void send_odom_and_lidar_data(void);
 
 #endif

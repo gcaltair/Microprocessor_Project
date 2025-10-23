@@ -91,6 +91,24 @@ uint32_t encoder_left_get_count(void)  { return __HAL_TIM_GET_COUNTER(&htim1); }
  */
 uint32_t encoder_right_get_count(void) { return __HAL_TIM_GET_COUNTER(&htim2); }
 
+/**
+ * @brief  获取当前的里程计位姿 (线程安全)
+ * @param  pose: 指向 Pose_t 结构体的指针，用于存储结果
+ * @note   在复制全局变量时会短暂关闭中断，以防止数据竞争
+ */
+void Odometry_GetPose(Pose_t* pose)
+{
+    // --- 进入临界区 ---
+    __disable_irq(); // 关闭所有中断 (CMSIS核心函数)
+
+    // 复制全局位姿变量到目标结构体
+    pose->x = g_x;
+    pose->y = g_y;
+    pose->theta = g_th_continuous; // *** 关键：使用连续角度值 ***
+
+    // --- 退出临界区 ---
+    __enable_irq(); // 重新开启中断
+}
 void Odometry_Update(float dt)
 {
     float dl, dr, ds, dth;

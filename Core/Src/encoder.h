@@ -26,6 +26,17 @@ extern volatile float g_y;
 extern float g_left_speed;
 extern float g_right_speed;
 
+// odometry.h 或 encoder.h
+typedef struct {
+    float x;
+    float y;
+    float theta; // 使用连续角度值
+} Pose_t;
+
+// 函数声明
+void Odometry_GetPose(Pose_t* pose);
+
+
 
 // 初始化编码器
 void encoder_init(void);

@@ -54,4 +54,8 @@ typedef enum {
 } RelativeMoveState;
 extern volatile RelativeMoveState g_relative_move_state;
 extern volatile ControlMode g_control_mode;
+
+extern volatile uint8_t scan_data_ready_flag;
+extern LidarPoint_t lidar_points[];
+extern volatile uint16_t point_count;
 #endif //SYSTEM_H

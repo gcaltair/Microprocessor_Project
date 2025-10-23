@@ -164,7 +164,11 @@ int main(void)
         g_system_update_flag=false;
       }
 
-        RPLIDAR_RawTask();
+      LIDAR_ParseTask();
+      if (scan_data_ready_flag) {
+        send_odom_and_lidar_data();
+        scan_data_ready_flag = 0;
+      }
   }
 
 

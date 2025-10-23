@@ -260,6 +260,7 @@ void LIDAR_ParseTask(void)
                 // 1. 如果 point_count > 0，说明我们已经有上一圈的完整数据了
                 if (point_count > 0) {
                     scan_data_ready_flag = 1; // 通知主循环发送
+                    return;
                 }
 
                 // 2. 为新的一圈扫描做准备

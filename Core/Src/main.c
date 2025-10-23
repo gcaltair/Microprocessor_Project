@@ -136,8 +136,6 @@ int main(void)
   system_init();
   PID_system_init();
 
-  g_target_x=0.6;
-  g_target_y=0.0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -164,7 +162,16 @@ int main(void)
         g_system_update_flag=false;
       }
 
-        RPLIDAR_RawTask();
+      LIDAR_ParseTask();
+
+    if (scan_data_ready_flag)
+    {
+      // 调用新的、在蓝牙模块中实现的、非阻塞的DMA发送函数
+      send_packaged_data();
+
+      point_count = 0;
+      scan_data_ready_flag = 0;
+    }
   }
 
 

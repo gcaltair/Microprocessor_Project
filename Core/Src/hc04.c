@@ -76,7 +76,7 @@ void process_command(uint8_t *cmd, uint16_t size)
 
             case 'S': // 【PID 简化】
                 base_car_speed = 0.0f;       // 设置PID速度 (停止)
-                g_pid_angle.setpoint = g_th * 180.0f / PI;
+                g_pid_angle.setpoint = g_th_continuous;
                 transmit("Stopped (PID)\r\n");
                 break;
 

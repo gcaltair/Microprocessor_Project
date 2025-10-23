@@ -36,11 +36,9 @@ extern volatile PID_Controller g_pid_angle;
 extern volatile float base_car_speed;
 extern volatile float g_dl_acc;   // 左轮累计位移增量(m)
 extern volatile float g_dr_acc;   // 右轮累计位移增量(m)
-extern volatile float g_dth_acc;  // 航向角增量(rad)
 
 extern volatile float g_target_x;
 extern volatile float g_target_y;
-extern volatile float g_th;
 extern volatile float g_th_continuous; // 【新增】连续累加的绝对角度，给PID使用
 
 typedef enum {
@@ -54,4 +52,7 @@ typedef enum {
 } RelativeMoveState;
 extern volatile RelativeMoveState g_relative_move_state;
 extern volatile ControlMode g_control_mode;
+
+extern volatile uint8_t scan_data_ready_flag;
+extern volatile uint16_t point_count;
 #endif //SYSTEM_H

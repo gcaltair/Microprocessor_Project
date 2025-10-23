@@ -11,7 +11,6 @@
 
 volatile float g_dl_acc = 0.0f;
 volatile float g_dr_acc = 0.0f;
-volatile float g_dth_acc = 0.0f;
 volatile float g_x = 0.0f;
 volatile float g_y = 0.0f;
 volatile float g_th = 0.0f;
@@ -63,7 +62,6 @@ void encoder_update_speed(void) {
 
     g_dl_acc  += dl;
     g_dr_acc  += dr;
-    g_dth_acc += dth;
 }
 
 /**
@@ -76,7 +74,7 @@ void encoder_Reset(void) {
     last_right_count = 0;
     g_left_speed = 0;
     g_right_speed = 0;
-    g_dl_acc = g_dr_acc = g_dth_acc = 0.0f;
+    g_dl_acc = g_dr_acc = 0.0f;
 }
 
 /**

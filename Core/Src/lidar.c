@@ -6,7 +6,7 @@ uint8_t rplidar_rx_byte;
 /*环形缓冲区相关*/
 volatile uint8_t lidar_raw_stream_active = 0;
 volatile uint8_t lidar_raw_overflow = 0;
-#define LIDAR_RAW_BUF_SIZE 1024
+#define LIDAR_RAW_BUF_SIZE 4096
 static uint8_t raw_buf[LIDAR_RAW_BUF_SIZE];
 static volatile uint16_t raw_head = 0;
 static volatile uint16_t raw_tail = 0;
@@ -100,6 +100,71 @@ void send_packaged_data(void)
   * @param  huart: 触发回调的UART句柄
   * @retval None
   */
+/**
+ * @brief  打包里程计和雷达数据为【二进制格式】，并通过DMA以非阻塞方式发送
+ * @note   此函数性能极高，几乎不占用CPU时间。
+ */
+void send_binary_packaged_data(void)
+{
+    // 1. 如果DMA还在忙，立即返回，避免数据冲突
+    if (is_dma_tx_busy) {
+        return;
+    }
+
+    // 2. 计算负载的总长度
+    uint16_t odom_size = sizeof(OdometryData_t);
+    uint16_t lidar_points_size = point_count * sizeof(LidarPointPacked_t);
+    uint16_t total_payload_len = odom_size + lidar_points_size;
+
+    // 检查总数据包长度是否会超出缓冲区大小
+    if ((sizeof(BinaryPacketHeader_t) + total_payload_len) > TX_BUFFER_SIZE)
+    {
+        // 数据过多，本次不发送或进行错误处理
+        // 为简单起见，我们直接丢弃这次数据
+        point_count = 0;
+        return;
+    }
+
+    // 3. 开始填充发送缓冲区 (current_cpu_buffer)
+    uint16_t buffer_offset = 0;
+
+    // --- A. 填充包头 ---
+    BinaryPacketHeader_t header;
+    header.header1 = PROTOCOL_HEADER_1;
+    header.header2 = PROTOCOL_HEADER_2;
+    header.payload_len = total_payload_len;
+    memcpy(current_cpu_buffer + buffer_offset, &header, sizeof(BinaryPacketHeader_t));
+    buffer_offset += sizeof(BinaryPacketHeader_t);
+
+    // --- B. 填充里程计数据 ---
+    OdometryData_t odom_data;
+    odom_data.x = g_x;
+    odom_data.y = g_y;
+    odom_data.theta_continuous = g_th_continuous;
+    memcpy(current_cpu_buffer + buffer_offset, &odom_data, odom_size);
+    buffer_offset += odom_size;
+
+    // --- C. 填充雷达点云数据 ---
+    for (uint16_t i = 0; i < point_count; i++) {
+        LidarPointPacked_t packed_point;
+        packed_point.angle_x100 = (uint16_t)(lidar_points[i].angle_deg * 100.0f);
+        packed_point.distance_mm = (uint16_t)lidar_points[i].distance_mm;
+        memcpy(current_cpu_buffer + buffer_offset, &packed_point, sizeof(LidarPointPacked_t));
+        buffer_offset += sizeof(LidarPointPacked_t);
+    }
+
+    // 4. 启动DMA传输
+    if (buffer_offset > 0)
+    {
+        is_dma_tx_busy = 1;
+        if (HAL_UART_Transmit_DMA(&huart5, current_cpu_buffer, buffer_offset) != HAL_OK)
+        {
+            is_dma_tx_busy = 0; // 如果启动失败，清除标志
+        }
+        // 切换Ping-Pong缓冲区，为下一次打包做准备
+        current_cpu_buffer = (current_cpu_buffer == tx_buffer_A) ? tx_buffer_B : tx_buffer_A;
+    }
+}
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
     // 检查是否是我们的蓝牙串口(USART5)完成了发送

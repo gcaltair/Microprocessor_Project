@@ -237,7 +237,7 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         if (sscanf((char*)cmd, "P%f,%f", &dx, &dy) == 2) {
             Start_Relative_Move(dx, dy); // 启动相对移动任务
             g_control_mode = CONTROL_MODE_POSITION;
-            transmit("Relative move started.\r\n");
+            uart_printf("Relative move started.to%f,%f\r\n",dx,dy);
         } else {
             transmit("Invalid format. Use M{dx},{dy}\r\n");
         }

@@ -13,8 +13,8 @@ volatile float g_dl_acc = 0.0f;
 volatile float g_dr_acc = 0.0f;
 volatile float g_x = 0.0f;
 volatile float g_y = 0.0f;
-volatile float g_th = 0.0f;
 volatile float g_th_continuous=0.0f;
+volatile float g_th = 0.0f;
 
 float g_left_speed = 0.0f;
 float g_right_speed = 0.0f;

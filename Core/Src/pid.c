@@ -3,7 +3,7 @@
 #include "system.h" // 确保包含了您的全局变量和函数声明
 #include "pid.h"    // 确保包含了pid.h，里面会有新的函数声明
 
-#define ANGLE_TOLERANCE_FOR_MOVING 10.0f // 角度容差(度): 朝向与目标夹角小于10度时，才开始前进
+#define ANGLE_TOLERANCE_FOR_MOVING 3.0f // 角度容差(度): 朝向与目标夹角小于10度时，才开始前进
 /* 定义PID控制器实例 (这些保持不变) */
 volatile PID_Controller g_pid_speed_left;
 volatile PID_Controller g_pid_speed_right;
@@ -58,7 +58,6 @@ float PID_Calculate(PID_Controller *pid, float current_value, float dt)
 {
     float error, p_out, i_out, d_out, output_float, derivative;
 
-    // 安全检查，防止dt为0导致程序崩溃
     if (dt <= 0.00001f) {
         return 0;
     }
@@ -68,8 +67,6 @@ float PID_Calculate(PID_Controller *pid, float current_value, float dt)
     p_out = pid->Kp * error;
 
     pid->integral += error * dt;
-
-    // 积分抗饱和 (限制 integral 累积值本身)
     if (pid->integral > pid->integral_max) {
         pid->integral = pid->integral_max;
     } else if (pid->integral < -pid->integral_max) {
@@ -77,22 +74,14 @@ float PID_Calculate(PID_Controller *pid, float current_value, float dt)
     }
 
     i_out = pid->Ki * pid->integral;
-
-    // 4. 微分项 (【核心修改】: 除以dt，计算真正的变化率)
     derivative = (error - pid->last_error) / dt;
     d_out = pid->Kd * derivative;
-
-    // 5. 计算总输出 (不变)
     output_float = p_out + i_out + d_out;
-
-    // 6. 输出限幅 (不变)
     if (output_float > pid->output_max) {
         output_float = pid->output_max;
     } else if (output_float < pid->output_min) {
         output_float = pid->output_min;
     }
-
-    // 7. 更新 "上一次误差" (不变)
     pid->last_error = error;
 
     return output_float;

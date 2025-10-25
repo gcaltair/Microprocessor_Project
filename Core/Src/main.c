@@ -167,8 +167,8 @@ int main(void)
     if (scan_data_ready_flag)
     {
       // 调用新的、在蓝牙模块中实现的、非阻塞的DMA发送函数
-      send_packaged_data();
-
+      //send_packaged_data();
+      send_binary_packaged_data();
       point_count = 0;
       scan_data_ready_flag = 0;
     }

@@ -40,18 +40,15 @@ void MPU6500_Calibrate(void)
            g_gyro_x_offset, g_gyro_y_offset, g_gyro_z_offset);
 }
 
-// 读取MPU6500寄存器的一个字节数据
+// 读取MPU6500寄存器的一个字节数据 (I2C接口)
 // reg: 要读取的寄存器地址
 // 返回值: 读取到的数据
 uint8_t MPU_Read_Byte(uint8_t reg)
 {
-    uint8_t tx = reg | 0x80; // 读操作时，寄存器地址最高位需为1
     uint8_t rx = 0;
-    MPU6500_CS_LOW(); // 片选拉低，开始SPI通信
-    HAL_SPI_Transmit(&hspi2, &tx, 1, HAL_MAX_DELAY); // 发送寄存器地址
-    HAL_SPI_Receive(&hspi2, &rx, 1, HAL_MAX_DELAY);  // 接收数据
-    MPU6500_CS_HIGH(); // 片选拉高，结束SPI通信
-    return rx; // 返回读取到的数据
+    HAL_I2C_Mem_Read(&hi2c1, MPU6500_I2C_ADDR_READ, reg,
+                     I2C_MEMADD_SIZE_8BIT, &rx, 1, HAL_MAX_DELAY);
+    return rx;
 }
 
 void MPU_update()
@@ -59,14 +56,12 @@ void MPU_update()
     MPU6500_Read_Accel(&g_accel_data);
     MPU6500_Read_Gyro(&g_gyro_data);
 }
+
+// 写入MPU6500寄存器 (I2C接口)
 void MPU_Write_Byte(uint8_t reg, uint8_t data)
 {
-    uint8_t buf[2];
-    buf[0] = reg & 0x7F; // 写操作时，寄存器地址最高位需为0
-    buf[1] = data;       // 要写入的数据
-    MPU6500_CS_LOW(); // 片选拉低，开始SPI通信
-    HAL_SPI_Transmit(&hspi2, buf, 2, HAL_MAX_DELAY); // 发送寄存器地址和数据
-    MPU6500_CS_HIGH(); // 片选拉高，结束SPI通信
+    HAL_I2C_Mem_Write(&hi2c1, MPU6500_I2C_ADDR_WRITE, reg,
+                      I2C_MEMADD_SIZE_8BIT, &data, 1, HAL_MAX_DELAY);
 }
 
 // 初始化MPU6500传感器
@@ -97,23 +92,21 @@ uint8_t MPU6500_Init(void)
     return 0; // 初始化失败
 }
 
-// 读取加速度计数据（单位:g），结果存入accel结构体
+// 读取加速度计数据（单位:g），结果存入accel结构体 (I2C接口)
 // accel: 存放加速度计数据的结构体指针
 void MPU6500_Read_Accel(AccelData *accel)
 {
     uint8_t buf[6]; // 存放读取的6字节原始数据
-    MPU6500_CS_LOW(); // 片选拉低，开始SPI通信
-    uint8_t reg = ACCEL_XOUT_H | 0x80; // 读操作，寄存器地址最高位为1
-    HAL_SPI_Transmit(&hspi2, &reg, 1, HAL_MAX_DELAY); // 发送寄存器地址
-    HAL_SPI_Receive(&hspi2, buf, 6, HAL_MAX_DELAY);   // 连续读取6字节数据
-    MPU6500_CS_HIGH(); // 片选拉高，结束SPI通信
+
+    // 从ACCEL_XOUT_H连续读取6字节
+    HAL_I2C_Mem_Read(&hi2c1, MPU6500_I2C_ADDR_READ, ACCEL_XOUT_H,
+                     I2C_MEMADD_SIZE_8BIT, buf, 6, HAL_MAX_DELAY);
 
     // 合成16位原始加速度数据
     int16_t ax_raw = (int16_t)(buf[0] << 8 | buf[1]); // X轴原始数据
     int16_t ay_raw = (int16_t)(buf[2] << 8 | buf[3]); // Y轴原始数据
     int16_t az_raw = (int16_t)(buf[4] << 8 | buf[5]); // Z轴原始数据
 
-    char str[64];
     // 转换为g单位（±2g时，16384 LSB/g）
     accel->ax = ax_raw / 16384.0f;
     accel->ay = ay_raw / 16384.0f;
@@ -123,14 +116,15 @@ void MPU6500_Read_Accel(AccelData *accel)
 static float filtered_gx = 0.0f;
 static float filtered_gy = 0.0f;
 static float filtered_gz = 0.0f;
+
+// 读取陀螺仪数据（单位:°/s），结果存入gyro结构体 (I2C接口)
 void MPU6500_Read_Gyro(GyroData *gyro)
 {
     uint8_t buf[6]; // 存放读取的6字节原始数据
-    MPU6500_CS_LOW(); // 片选拉低，开始SPI通信
-    uint8_t reg = GYRO_XOUT_H | 0x80; // 读操作，寄存器地址最高位为1
-    HAL_SPI_Transmit(&hspi2, &reg, 1, HAL_MAX_DELAY); // 发送寄存器地址
-    HAL_SPI_Receive(&hspi2, buf, 6, HAL_MAX_DELAY);   // 连续读取6字节数据
-    MPU6500_CS_HIGH(); // 片选拉高，结束SPI通信
+
+    // 从GYRO_XOUT_H连续读取6字节
+    HAL_I2C_Mem_Read(&hi2c1, MPU6500_I2C_ADDR_READ, GYRO_XOUT_H,
+                     I2C_MEMADD_SIZE_8BIT, buf, 6, HAL_MAX_DELAY);
 
     // 合成16位原始陀螺仪数据
     int16_t gx_raw = (int16_t)(buf[0] << 8 | buf[1]); // X轴原始数据

@@ -1,22 +1,13 @@
 #ifndef __MPU6500_H__
 #define __MPU6500_H__
-#include "stm32f4xx_hal.h"          // HAL库主头文件
-#include "stm32f4xx_hal_spi.h"      // SPI HAL库头文件
-
-
 #include "stm32f4xx_hal.h"
-//#include "inv_mpu.h"
-//#include "inv_mpu_dmp_motion_driver.h"
 #include <stdio.h>
-#include "spi.h"
+#include "i2c.h"
 
-// MPU6500片选引脚定义
-#define MPU6500_CS_GPIO_PORT GPIOC
-#define MPU6500_CS_PIN       GPIO_PIN_1
-
-// 片选控制宏
-#define MPU6500_CS_LOW()  HAL_GPIO_WritePin(MPU6500_CS_GPIO_PORT, MPU6500_CS_PIN, GPIO_PIN_RESET) // 片选拉低
-#define MPU6500_CS_HIGH() HAL_GPIO_WritePin(MPU6500_CS_GPIO_PORT, MPU6500_CS_PIN, GPIO_PIN_SET)   // 片选拉高
+// MPU6500 I2C地址 (AD0=GND: 0x68, AD0=VCC: 0x69)
+#define MPU6500_I2C_ADDR        0x68
+#define MPU6500_I2C_ADDR_WRITE  (MPU6500_I2C_ADDR << 1)       // 0xD0
+#define MPU6500_I2C_ADDR_READ   ((MPU6500_I2C_ADDR << 1) | 1)  // 0xD1
 
 // MPU6500寄存器地址定义
 #define PWR_MGMT_1      0x6B    // 电源管理1寄存器

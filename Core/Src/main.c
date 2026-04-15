@@ -28,9 +28,10 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <math.h>
+#include "cmsis_os2.h"
 
 #include "system.h"
-#include "lidar.h"  // 新增
+#include "lidar.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,47 +52,71 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
-uint8_t buffer[100]; // 单字节接收缓冲区
-uint8_t rxData[100]; // 接收数据缓冲
-uint16_t rxIndex = 0; // 接收数据索引
+uint8_t buffer[100];
+uint8_t rxData[100];
+uint16_t rxIndex = 0;
 const float dt = 0.01f;
-float angle_z = 0.0f; // 用于积分存储Z轴角度
+float angle_z = 0.0f;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+static void MainControlTask(void *argument);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void system_init()
+static void MainControlTask(void *argument)
 {
-  Motor_Init();// 初始化电机
-  hc04_init();// 蓝牙初始化
-  encoder_init(); //编码器初始化
+  (void)argument;
+
+  for (;;)
+  {
+    if(g_system_update_flag)
+    {
+      MPU_update();
+      encoder_update_speed();
+      Odometry_Update(dt);
+      if (g_control_mode == CONTROL_MODE_POSITION)
+      {
+        Update_Relative_Move_PID(dt);
+      }
+      else
+      {
+        Angle_Speed_Cascade_Control(g_th_continuous, base_car_speed, dt);
+      }
+      g_system_update_flag = false;
+    }
+
+    if (scan_data_ready_flag)
+    {
+      send_binary_packaged_data();
+      point_count = 0;
+      scan_data_ready_flag = 0;
+    }
+
+    osDelay(1U);
+  }
+}
+
+void system_init(void)
+{
+  Motor_Init();
+  hc04_init();
+  encoder_init();
   MPU6500_Init();
-  SystemClock_Config();
   RPLIDAR_Init();
-  //RPLIDAR_RequestScan();
-  HAL_TIM_Base_Start_IT(&htim4); //同时使能中断
+  HAL_TIM_Base_Start_IT(&htim4);
   HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
 }
-void PID_system_init()
-{
-  PID_Init(&g_pid_angle,0.0575f,0.00f,0.001f,-0.4f,0.4f);
-  PID_Init(&g_pid_speed_left,  8000,33705, 33, -10000.0f, 10000.0f);
-  PID_Init(&g_pid_speed_right,  8000,33705, 33, -10000.0f, 10000.0f);
-  PID_Init(&g_pid_position, 0.8f, 0.00f, 0.0f, 0.0f, MAX_BASE_SPEED);
-  //PID_Init(&g_pid_speed_right,  4251, 675.0f, 0.0f,-10000.0f, 10000.0f);
-  //PID_Init(&g_pid_speed_left,  10801, 1895, 0, -10000.0f, 10000.0f);
-  //PID_Init(&g_pid_speed_right,  10801, 1895, 0, -10000.0f, 10000.0f);
 
-  // PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-  // PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-  // PID_Init(&g_pid_angle,0.15f,0.00f,0.05f,-3.0f,3.0f);
+void PID_system_init(void)
+{
+  PID_Init(&g_pid_angle, 0.0575f, 0.00f, 0.001f, -0.4f, 0.4f);
+  PID_Init(&g_pid_speed_left, 8000, 33705, 33, -10000.0f, 10000.0f);
+  PID_Init(&g_pid_speed_right, 8000, 33705, 33, -10000.0f, 10000.0f);
+  PID_Init(&g_pid_position, 0.8f, 0.00f, 0.0f, 0.0f, MAX_BASE_SPEED);
 }
 /* USER CODE END 0 */
 
@@ -101,7 +126,6 @@ void PID_system_init()
   */
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -136,6 +160,22 @@ int main(void)
   system_init();
   PID_system_init();
 
+  osKernelInitialize();
+  LIDAR_RTOS_Init();
+  {
+    static const osThreadAttr_t control_task_attr = {
+      .name = "MainControl",
+      .priority = osPriorityHigh,
+      .stack_size = 1024U
+    };
+    if (osThreadNew(MainControlTask, NULL, &control_task_attr) == NULL)
+    {
+      Error_Handler();
+    }
+  }
+
+  RPLIDAR_StartRaw();
+  osKernelStart();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -145,38 +185,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-      if(g_system_update_flag)
-      {
-        MPU_update();
-        encoder_update_speed();
-        Odometry_Update(dt);
-        if (g_control_mode == CONTROL_MODE_POSITION)
-        {
-          Update_Relative_Move_PID(dt);
-        }
-        else
-        {
-          Angle_Speed_Cascade_Control(g_th_continuous, base_car_speed, dt);
-        }
-        //uart_printf("%.4lf,%.2lf,%.4lf,%.2lf,%.2lf,%.2lf,%d,%d\n", g_left_speed, g_pid_speed_left.setpoint,g_right_speed,g_pid_speed_right.setpoint,g_pid_angle.setpoint,angle_z,pwm_output_left,pwm_output_right);
-        g_system_update_flag=false;
-      }
-
-      LIDAR_ParseTask();
-
-    if (scan_data_ready_flag)
-    {
-      // 调用新的、在蓝牙模块中实现的、非阻塞的DMA发送函数
-      //send_packaged_data();
-      send_binary_packaged_data();
-      point_count = 0;
-      scan_data_ready_flag = 0;
-    }
+    osDelay(1000U);
   }
-
-
-}
   /* USER CODE END 3 */
+}
 
 /**
   * @brief System Clock Configuration
@@ -187,14 +199,9 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Configure the main internal regulator output voltage
-  */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
 
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -210,8 +217,6 @@ void SystemClock_Config(void)
     Error_Handler();
   }
 
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
@@ -236,7 +241,6 @@ void SystemClock_Config(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)
   {
@@ -255,8 +259,7 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* User can add his own implementation to report the file name and line number */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

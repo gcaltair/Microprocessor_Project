@@ -13,6 +13,9 @@ typedef struct {
     uint32_t last_scan_sequence;
     uint16_t last_usable_points;
     uint16_t last_endpoints_written;
+    uint8_t last_localization_mode;
+    uint16_t last_localization_inliers;
+    float last_localization_fitness_m;
     SlamGridCoord_t last_robot_cell;
     SlamPose2D_t last_pose;
 } MappingTaskStats_t;

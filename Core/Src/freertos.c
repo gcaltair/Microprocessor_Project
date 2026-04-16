@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include "freertos_app.h"
+#include "localization_task.h"
 #include "mapping_task.h"
 #include "scan_preprocess.h"
 #include "system.h"
@@ -54,11 +55,13 @@
 osSemaphoreId_t g_controlTickSem = NULL;
 osMessageQueueId_t g_lidarBlockQueue = NULL;
 osMessageQueueId_t g_lidarResultQueue = NULL;
+osMessageQueueId_t g_localizedScanQueue = NULL;
 osMessageQueueId_t g_lidarTxQueue = NULL;
 osMessageQueueId_t g_lidarFreeQueue = NULL;
 osMessageQueueId_t g_cmdQueue = NULL;
 
 osMutexId_t g_odomMutex = NULL;
+osMutexId_t g_localizationMutex = NULL;
 osMutexId_t g_gridMutex = NULL;
 osMutexId_t g_pidMutex = NULL;
 osMutexId_t g_controlMutex = NULL;
@@ -80,6 +83,7 @@ const osThreadAttr_t defaultTask_attributes = {
 /* USER CODE BEGIN ThreadDefs */
 osThreadId_t controlTaskHandle;
 osThreadId_t lidarParseTaskHandle;
+osThreadId_t localizationTaskHandle;
 osThreadId_t mappingTaskHandle;
 osThreadId_t commTaskHandle;
 osThreadId_t safetyTaskHandle;
@@ -94,6 +98,12 @@ const osThreadAttr_t lidarParseTask_attributes = {
   .name = "lidarParseTask",
   .stack_size = 1536,
   .priority = (osPriority_t) osPriorityBelowNormal,
+};
+
+const osThreadAttr_t localizationTask_attributes = {
+  .name = "localizeTask",
+  .stack_size = 2048,
+  .priority = (osPriority_t) osPriorityLow,
 };
 
 const osThreadAttr_t mappingTask_attributes = {
@@ -116,6 +126,10 @@ const osThreadAttr_t safetyTask_attributes = {
 
 const osMutexAttr_t odomMutex_attributes = {
   .name = "odomMutex",
+};
+
+const osMutexAttr_t localizationMutex_attributes = {
+  .name = "localizationMutex",
 };
 
 const osMutexAttr_t gridMutex_attributes = {
@@ -153,6 +167,7 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_MUTEX */
   g_odomMutex = osMutexNew(&odomMutex_attributes);
+  g_localizationMutex = osMutexNew(&localizationMutex_attributes);
   g_gridMutex = osMutexNew(&gridMutex_attributes);
   g_pidMutex = osMutexNew(&pidMutex_attributes);
   g_controlMutex = osMutexNew(&controlMutex_attributes);
@@ -168,6 +183,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_QUEUES */
   g_lidarBlockQueue = osMessageQueueNew(LIDAR_DMA_BLOCK_QUEUE_LENGTH, sizeof(LidarDmaBlockMsg_t), NULL);
   g_lidarResultQueue = osMessageQueueNew(LIDAR_SCAN_BUFFER_COUNT, sizeof(LidarScanMsg_t), NULL);
+  g_localizedScanQueue = osMessageQueueNew(LIDAR_SCAN_BUFFER_COUNT, sizeof(LidarScanMsg_t), NULL);
   g_lidarTxQueue = osMessageQueueNew(LIDAR_SCAN_BUFFER_COUNT, sizeof(LidarScanMsg_t), NULL);
   g_lidarFreeQueue = osMessageQueueNew(LIDAR_SCAN_BUFFER_COUNT, sizeof(uint8_t), NULL);
   g_cmdQueue = osMessageQueueNew(8U, sizeof(CmdMsg_t), NULL);
@@ -186,6 +202,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_THREADS */
   controlTaskHandle = osThreadNew(StartControlTask, NULL, &controlTask_attributes);
   lidarParseTaskHandle = osThreadNew(StartLiDARParseTask, NULL, &lidarParseTask_attributes);
+  localizationTaskHandle = osThreadNew(StartLocalizationTask, NULL, &localizationTask_attributes);
   mappingTaskHandle = osThreadNew(StartMappingTask, NULL, &mappingTask_attributes);
   commTaskHandle = osThreadNew(StartCommTask, NULL, &commTask_attributes);
   safetyTaskHandle = osThreadNew(StartSafetyTask, NULL, &safetyTask_attributes);
@@ -315,6 +332,10 @@ void Freertos_ResetLidarPipeline(void)
     (void)osMessageQueueReset(g_lidarResultQueue);
   }
 
+  if (g_localizedScanQueue != NULL) {
+    (void)osMessageQueueReset(g_localizedScanQueue);
+  }
+
   if (g_lidarTxQueue != NULL) {
     (void)osMessageQueueReset(g_lidarTxQueue);
   }
@@ -326,6 +347,7 @@ void Freertos_ResetLidarPipeline(void)
     }
   }
 
+  LocalizationTask_Reset();
   MappingTask_ResetGrid();
 }
 
@@ -529,6 +551,8 @@ void StartSafetyTask(void *argument)
         (uint32_t)uxTaskGetStackHighWaterMark(controlTaskHandle) * sizeof(StackType_t);
     g_runtimeStats.lidar_task_stack_free_bytes =
         (uint32_t)uxTaskGetStackHighWaterMark(lidarParseTaskHandle) * sizeof(StackType_t);
+    g_runtimeStats.localization_task_stack_free_bytes =
+        (uint32_t)uxTaskGetStackHighWaterMark(localizationTaskHandle) * sizeof(StackType_t);
     g_runtimeStats.mapping_task_stack_free_bytes =
         (uint32_t)uxTaskGetStackHighWaterMark(mappingTaskHandle) * sizeof(StackType_t);
     g_runtimeStats.comm_task_stack_free_bytes =

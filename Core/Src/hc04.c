@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "freertos_app.h"
+#include "localization_task.h"
 #include "mapping_task.h"
 #include "system.h"
 
@@ -194,10 +195,12 @@ static void transmit_odometry_snapshot(void)
 static void transmit_runtime_snapshot(void)
 {
     FreertosRuntimeStats_t stats;
+    LocalizationTaskStats_t loc_stats;
     uint8_t lidar_binary_tx_enabled;
     uint8_t lidar_active;
 
     Freertos_GetRuntimeStatsSnapshot(&stats);
+    LocalizationTask_GetStatsSnapshot(&loc_stats);
     lidar_binary_tx_enabled = Freertos_GetLidarBinaryTxEnabled();
     lidar_active = lidar_raw_stream_active;
     uart_printf("RTOS ctrl=%lu overrun=%lu cmd=%lu drop=%lu dma=%lu dma_drop=%lu scan=%lu tx=%lu busy=%lu err=%lu wait=%lu\r\n",
@@ -216,10 +219,11 @@ static void transmit_runtime_snapshot(void)
     uart_printf("HEAP free=%lu min=%lu\r\n",
                 (unsigned long)stats.free_heap_bytes,
                 (unsigned long)stats.min_ever_free_heap_bytes);
-    uart_printf("STACK freeB dft=%lu ctrl=%lu lidar=%lu map=%lu comm=%lu safe=%lu\r\n",
+    uart_printf("STACK freeB dft=%lu ctrl=%lu lidar=%lu loc=%lu map=%lu comm=%lu safe=%lu\r\n",
                 (unsigned long)stats.default_task_stack_free_bytes,
                 (unsigned long)stats.control_task_stack_free_bytes,
                 (unsigned long)stats.lidar_task_stack_free_bytes,
+                (unsigned long)stats.localization_task_stack_free_bytes,
                 (unsigned long)stats.mapping_task_stack_free_bytes,
                 (unsigned long)stats.comm_task_stack_free_bytes,
                 (unsigned long)stats.safety_task_stack_free_bytes);
@@ -230,6 +234,17 @@ static void transmit_runtime_snapshot(void)
                 stats.last_scan_rejected_quality_count,
                 stats.last_scan_min_distance_mm,
                 stats.last_scan_max_distance_mm);
+    uart_printf("LOC init=%u updates=%lu accept=%lu reject=%lu odom=%lu mode=%u pts=%u/%u inliers=%u fit_mm=%.1f\r\n",
+                loc_stats.initialized,
+                (unsigned long)loc_stats.update_count,
+                (unsigned long)loc_stats.icp_accept_count,
+                (unsigned long)loc_stats.icp_reject_count,
+                (unsigned long)loc_stats.odom_only_count,
+                (unsigned int)loc_stats.last_mode,
+                (unsigned int)loc_stats.last_reference_points,
+                (unsigned int)loc_stats.last_current_points,
+                (unsigned int)loc_stats.last_inliers,
+                (double)(loc_stats.last_fitness_m * 1000.0f));
 }
 
 static void transmit_mapping_snapshot(void)
@@ -249,6 +264,10 @@ static void transmit_mapping_snapshot(void)
                 stats.last_pose.x_m,
                 stats.last_pose.y_m,
                 stats.last_pose.theta_deg);
+    uart_printf("MAP loc mode=%u inliers=%u fit_mm=%.1f\r\n",
+                (unsigned int)stats.last_localization_mode,
+                (unsigned int)stats.last_localization_inliers,
+                (double)(stats.last_localization_fitness_m * 1000.0f));
 }
 
 static void transmit_mapping_ascii(uint8_t downsample)

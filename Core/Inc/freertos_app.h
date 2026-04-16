@@ -12,6 +12,12 @@
 #define LIDAR_SCAN_BUFFER_COUNT  4U
 #define LIDAR_DMA_BLOCK_QUEUE_LENGTH  16U
 
+typedef enum {
+    LOCALIZATION_MODE_ODOMETRY_ONLY = 0,
+    LOCALIZATION_MODE_ICP_ACCEPTED = 1,
+    LOCALIZATION_MODE_ICP_REJECTED = 2
+} LocalizationMode_t;
+
 typedef struct {
     uint16_t len;
     uint8_t data[CMD_MSG_BUFFER_SIZE];
@@ -28,7 +34,11 @@ typedef struct {
     uint16_t point_count;
     uint32_t scan_sequence;
     SlamPose2D_t pose_snapshot;
+    SlamPose2D_t corrected_pose;
     LidarScanQuality_t quality;
+    float localization_fitness_m;
+    uint16_t localization_inliers;
+    uint8_t localization_mode;
 } LidarScanMsg_t;
 
 typedef struct {
@@ -54,6 +64,7 @@ typedef struct {
     uint32_t default_task_stack_free_bytes;
     uint32_t control_task_stack_free_bytes;
     uint32_t lidar_task_stack_free_bytes;
+    uint32_t localization_task_stack_free_bytes;
     uint32_t mapping_task_stack_free_bytes;
     uint32_t comm_task_stack_free_bytes;
     uint32_t safety_task_stack_free_bytes;
@@ -67,11 +78,13 @@ typedef struct LidarScanBuffer {
 extern osSemaphoreId_t g_controlTickSem;
 extern osMessageQueueId_t g_lidarBlockQueue;
 extern osMessageQueueId_t g_lidarResultQueue;
+extern osMessageQueueId_t g_localizedScanQueue;
 extern osMessageQueueId_t g_lidarTxQueue;
 extern osMessageQueueId_t g_lidarFreeQueue;
 extern osMessageQueueId_t g_cmdQueue;
 
 extern osMutexId_t g_odomMutex;
+extern osMutexId_t g_localizationMutex;
 extern osMutexId_t g_gridMutex;
 extern osMutexId_t g_pidMutex;
 extern osMutexId_t g_controlMutex;
@@ -81,6 +94,7 @@ extern FreertosRuntimeStats_t g_runtimeStats;
 
 void StartControlTask(void *argument);
 void StartLiDARParseTask(void *argument);
+void StartLocalizationTask(void *argument);
 void StartMappingTask(void *argument);
 void StartCommTask(void *argument);
 void StartSafetyTask(void *argument);

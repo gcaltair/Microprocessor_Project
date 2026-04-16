@@ -68,7 +68,10 @@ static void mapping_task_update_stats(const LidarScanMsg_t *scan_msg,
     g_mappingStats.last_scan_sequence = scan_msg->scan_sequence;
     g_mappingStats.last_usable_points = scan_msg->quality.usable_point_count;
     g_mappingStats.last_endpoints_written = endpoints_written;
-    g_mappingStats.last_pose = scan_msg->pose_snapshot;
+    g_mappingStats.last_localization_mode = (LocalizationMode_t)scan_msg->localization_mode;
+    g_mappingStats.last_localization_inliers = scan_msg->localization_inliers;
+    g_mappingStats.last_localization_fitness_m = scan_msg->localization_fitness_m;
+    g_mappingStats.last_pose = scan_msg->corrected_pose;
 
     if (robot_cell != NULL) {
         g_mappingStats.last_robot_cell = *robot_cell;
@@ -94,8 +97,8 @@ static void mapping_task_update_grid_from_scan(const LidarScanMsg_t *scan_msg)
 
     mapping_task_lock_grid();
     robot_inside_grid = OccupancyGrid_WorldToCell(&g_mappingGrid,
-                                                  scan_msg->pose_snapshot.x_m,
-                                                  scan_msg->pose_snapshot.y_m,
+                                                  scan_msg->corrected_pose.x_m,
+                                                  scan_msg->corrected_pose.y_m,
                                                   &robot_cell);
     if (robot_inside_grid == 0U) {
         mapping_task_update_stats(scan_msg, 0U, NULL, 0U);
@@ -117,9 +120,9 @@ static void mapping_task_update_grid_from_scan(const LidarScanMsg_t *scan_msg)
         }
 
         distance_m = scan_buffer->points[idx].distance_mm * 0.001f;
-        beam_angle_rad = (scan_msg->pose_snapshot.theta_deg + scan_buffer->points[idx].angle_deg) * DEG_TO_RAD;
-        world_x_m = scan_msg->pose_snapshot.x_m + distance_m * cosf(beam_angle_rad);
-        world_y_m = scan_msg->pose_snapshot.y_m + distance_m * sinf(beam_angle_rad);
+        beam_angle_rad = (scan_msg->corrected_pose.theta_deg + scan_buffer->points[idx].angle_deg) * DEG_TO_RAD;
+        world_x_m = scan_msg->corrected_pose.x_m + distance_m * cosf(beam_angle_rad);
+        world_y_m = scan_msg->corrected_pose.y_m + distance_m * sinf(beam_angle_rad);
 
         if (OccupancyGrid_WorldToCell(&g_mappingGrid, world_x_m, world_y_m, &endpoint_cell) == 0U) {
             continue;
@@ -142,7 +145,7 @@ void StartMappingTask(void *argument)
     mapping_task_ensure_grid_initialized();
 
     for (;;) {
-        if (osMessageQueueGet(g_lidarResultQueue, &scan_msg, NULL, osWaitForever) != osOK) {
+        if (osMessageQueueGet(g_localizedScanQueue, &scan_msg, NULL, osWaitForever) != osOK) {
             continue;
         }
 

@@ -53,6 +53,8 @@ add_executable(${CMAKE_PROJECT_NAME}
         Core/Src/pid.h
         Core/Src/occupancy_grid.c
         Core/Inc/occupancy_grid.h
+        Core/Src/localization_task.c
+        Core/Inc/localization_task.h
         Core/Src/mapping_task.c
         Core/Inc/mapping_task.h
 )

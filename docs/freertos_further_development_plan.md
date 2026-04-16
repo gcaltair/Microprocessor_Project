@@ -19,6 +19,8 @@
 | LiDAR DMA 双缓冲 | 完成 | 半传输/全传输中断 + 队列 |
 | 命令队列化 | 完成 | UART5 RX → cmdQueue → DefaultTask |
 | 运行时统计 | 完成 | 堆、栈、各类计数器 |
+| LocalizationTask | 完成（地图层） | 轻量 scan matching，输出 `predicted_pose / corrected_pose` |
+| 建图位姿修正 | 完成 | MappingTask 统一使用 `corrected_pose` |
 
 ### 1.2 已知问题
 
@@ -29,6 +31,21 @@
 | ControlTask 无超时保护 | 中 | freertos.c:326 | TIM4 故障时永久阻塞 |
 | CommTask DMA 忙等待无上限 | 低 | freertos.c:430-445 | DMA 故障时死循环 |
 | DefaultTask 职责重叠 | 低 | freertos.c:191-206 | 与 CommTask 分工不明 |
+| LiDAR 修正直接替换控制位姿会破坏 PID 稳定性 | 高 | 控制/定位接口层 | 小车静止时可能被姿态抖动驱动 |
+
+### 1.3 当前工程结论
+
+现阶段已经验证：
+
+- 建图层使用 `corrected_pose` 是合理的
+- 控制层直接使用 `EST` 或 `corrected_pose` 作为 PID 输入是不合理的
+- 下一阶段必须引入“分层融合”而不是“直接替换”
+
+建议明确三类位姿：
+
+- `odom_pose`: 高频、平滑，直接来自编码器/IMU
+- `control_pose`: 用于控制层的融合位姿，只允许慢修正
+- `corrected_pose / nav_est_pose`: 用于建图和导航层的高精位姿
 
 ---
 
@@ -268,42 +285,38 @@ void StartMappingTask(void *argument)
 
 **注意**: MappingTask 需要从 CommTask 中分离 LiDAR 数据消费，或采用多消费者模式。
 
-#### 2.3.2 LocalizationTask - 扩展卡尔曼滤波（EKF）
+#### 2.3.2 LocalizationTask - 分层融合定位
 **优先级**: 高
-**周期**: 10ms (与 ControlTask 同步)
-**优先级**: osPriorityHigh (32)
-**堆栈**: 1536 字节
+**目标**: 先实现“地图可用定位”，再实现“控制可用定位”
+
+本阶段需要拆成两个子阶段，而不是直接把 LiDAR 修正覆盖控制位姿：
+
+- **Phase 3A 已完成**
+  - `LocalizationTask` 输出 `predicted_pose / corrected_pose`
+  - `MappingTask` 使用 `corrected_pose`
+  - 控制层继续使用 `odom_pose`
+
+- **Phase 3B 待完成**
+  - 引入 `control_pose`
+  - LiDAR 修正只以“限幅、低通、慢修正”的方式注入控制层
+  - 导航层继续使用 `corrected_pose / nav_est_pose`
+
+建议目标结构：
 
 ```c
-void StartLocalizationTask(void *argument)
-{
-    (void)argument;
-
-    EKF_Init(&g_ekf);
-
-    for (;;) {
-        // 等待 ControlTask 完成传感器更新后通知
-        osSemaphoreAcquire(g_sensorUpdatedSem, osWaitForever);
-
-        osMutexAcquire(g_odomMutex, osWaitForever);
-
-        // 预测步骤（使用编码器 + IMU）
-        EKF_Predict(&g_ekf, g_left_speed, g_right_speed, g_gyro_data.gz);
-
-        // 修正步骤（如果有 LiDAR 定位结果）
-        if (osMessageQueueGet(g_lidarPoseQueue, &lidar_pose, NULL, 0) == osOK) {
-            EKF_Update(&g_ekf, &lidar_pose);
-        }
-
-        // 更新全局位姿
-        g_x = g_ekf.state.x;
-        g_y = g_ekf.state.y;
-        g_th_continuous = g_ekf.state.theta;
-
-        osMutexRelease(g_odomMutex);
-    }
-}
+typedef struct {
+    SlamPose2D_t odom_pose;         // high-rate
+    SlamPose2D_t control_pose;      // bounded correction
+    SlamPose2D_t corrected_pose;    // mapping/navigation
+} PoseFusionState_t;
 ```
+
+控制融合约束建议：
+
+- 位置修正每周期限幅到毫米级
+- 角度修正每周期限幅到小角度
+- 仅在 ICP `fitness / inliers` 满足条件时允许注入
+- 静止状态下不得因 LiDAR 抖动触发电机输出
 
 #### 2.3.3 PlanningTask - A* 路径规划
 **优先级**: 中
@@ -411,10 +424,22 @@ Priority    Task                    Communication
 
 **交付标准**:
 - [ ] MappingTask 正常更新栅格地图
-- [ ] LocalizationTask EKF 融合 IMU + 编码器
+- [ ] LocalizationTask 稳定输出 `predicted_pose / corrected_pose`
+- [ ] 控制层不直接消费 `corrected_pose`
+- [ ] `control_pose` 融合策略设计完成
 - [ ] PlanningTask A* 规划路径
 - [ ] ExplorationTask 自主探索边界
 - [ ] 各任务间通信无数据丢失
+
+#### 2.3.6 控制侧准入验证
+
+在进入 A*、frontier 或回程之前，必须先通过以下控制侧验证：
+
+1. 静止 30s 不自转、不蠕动
+2. 原地转角误差可重复
+3. 直线前进 1m 的误差稳定
+4. 前进后退回零误差可接受
+5. 开启 LiDAR 建图后，以上控制指标不明显恶化
 
 ---
 

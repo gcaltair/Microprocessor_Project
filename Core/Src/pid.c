@@ -5,6 +5,8 @@
 #include "system.h"
 
 #define ANGLE_TOLERANCE_FOR_MOVING  3.0f
+#define TURN_OUTPUT_LIMIT_MOVING    0.12f
+#define TURN_OUTPUT_LIMIT_INPLACE   0.10f
 
 volatile PID_Controller g_pid_speed_left;
 volatile PID_Controller g_pid_speed_right;
@@ -23,6 +25,85 @@ volatile ControlMode g_control_mode = CONTROL_MODE_MANUAL;
 static float s_target_distance = 0.0f;
 static float s_initial_x = 0.0f;
 static float s_initial_y = 0.0f;
+static float s_drive_direction = 1.0f;
+
+static float pid_normalize_angle_deg(float angle_deg)
+{
+    while (angle_deg > 180.0f) {
+        angle_deg -= 360.0f;
+    }
+
+    while (angle_deg < -180.0f) {
+        angle_deg += 360.0f;
+    }
+
+    return angle_deg;
+}
+
+static float pid_calculate_from_error(PID_Controller *pid, float error, float dt)
+{
+    float p_out;
+    float i_out;
+    float d_out;
+    float output_float;
+    float derivative;
+
+    if (dt <= 0.00001f) {
+        return 0.0f;
+    }
+
+    p_out = pid->Kp * error;
+
+    pid->integral += error * dt;
+    if (pid->integral > pid->integral_max) {
+        pid->integral = pid->integral_max;
+    } else if (pid->integral < -pid->integral_max) {
+        pid->integral = -pid->integral_max;
+    }
+
+    i_out = pid->Ki * pid->integral;
+    derivative = (error - pid->last_error) / dt;
+    d_out = pid->Kd * derivative;
+    output_float = p_out + i_out + d_out;
+
+    if (output_float > pid->output_max) {
+        output_float = pid->output_max;
+    } else if (output_float < pid->output_min) {
+        output_float = pid->output_min;
+    }
+
+    pid->last_error = error;
+
+    return output_float;
+}
+
+static float pid_clamp_float(float value, float min_value, float max_value)
+{
+    if (value < min_value) {
+        return min_value;
+    }
+
+    if (value > max_value) {
+        return max_value;
+    }
+
+    return value;
+}
+
+static void pid_get_odometry_pose_snapshot(SlamPose2D_t *pose)
+{
+    if (pose == NULL) {
+        return;
+    }
+
+    Odometry_GetPoseSnapshot(pose);
+    if (pose->timestamp_ms == 0U) {
+        pose->x_m = g_x;
+        pose->y_m = g_y;
+        pose->theta_deg = g_th_continuous;
+        pose->timestamp_ms = HAL_GetTick();
+    }
+}
 
 static void lock_control_and_pid(void)
 {
@@ -153,10 +234,15 @@ void Speed_Control_Loop(float dt)
 void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt)
 {
     float turn_output = 0.0f;
-    float error = g_pid_angle.setpoint - angle_current;
+    float error = pid_normalize_angle_deg(g_pid_angle.setpoint - angle_current);
+    float turn_limit = (fabsf(base_speed) > 0.001f) ? TURN_OUTPUT_LIMIT_MOVING : TURN_OUTPUT_LIMIT_INPLACE;
 
     if (fabsf(error) > ANGLE_CONTROL_DEADBAND) {
-        turn_output = PID_Calculate((PID_Controller *)&g_pid_angle, angle_current, dt);
+        turn_output = pid_calculate_from_error((PID_Controller *)&g_pid_angle, error, dt);
+        turn_output = pid_clamp_float(turn_output, -turn_limit, turn_limit);
+    } else {
+        g_pid_angle.integral = 0.0f;
+        g_pid_angle.last_error = 0.0f;
     }
 
     g_pid_speed_left.setpoint = base_speed - turn_output;
@@ -209,6 +295,7 @@ void Control_StopCommand(void)
     g_relative_move_state = RELATIVE_MOVE_IDLE;
     g_control_mode = CONTROL_MODE_MANUAL;
     base_car_speed = 0.0f;
+    s_drive_direction = 1.0f;
     g_pid_angle.setpoint = g_th_continuous;
 
     unlock_pid_control_and_odom();
@@ -216,7 +303,11 @@ void Control_StopCommand(void)
 
 void Start_Relative_Move(float dx, float dy)
 {
+    SlamPose2D_t pose;
+    float target_heading_deg;
+
     lock_odom_control_and_pid();
+    pid_get_odometry_pose_snapshot(&pose);
 
     if (g_relative_move_state != RELATIVE_MOVE_IDLE) {
         unlock_pid_control_and_odom();
@@ -229,9 +320,21 @@ void Start_Relative_Move(float dx, float dy)
         return;
     }
 
-    g_pid_angle.setpoint = g_th_continuous + atan2f(dy, dx) * 180.0f / PI;
-    s_initial_x = g_x;
-    s_initial_y = g_y;
+    target_heading_deg = atan2f(dy, dx) * 180.0f / PI;
+    s_drive_direction = 1.0f;
+    if (target_heading_deg > 90.0f) {
+        target_heading_deg -= 180.0f;
+        s_drive_direction = -1.0f;
+    } else if (target_heading_deg < -90.0f) {
+        target_heading_deg += 180.0f;
+        s_drive_direction = -1.0f;
+    }
+
+    g_pid_angle.setpoint = pose.theta_deg + target_heading_deg;
+    s_initial_x = pose.x_m;
+    s_initial_y = pose.y_m;
+    g_pid_position.integral = 0.0f;
+    g_pid_position.last_error = 0.0f;
     base_car_speed = 0.0f;
     g_control_mode = CONTROL_MODE_POSITION;
     g_relative_move_state = RELATIVE_MOVE_TURNING;
@@ -239,9 +342,20 @@ void Start_Relative_Move(float dx, float dy)
     unlock_pid_control_and_odom();
 }
 
-void Update_Relative_Move_PID(float dt)
+void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
 {
-    float current_angle_deg = g_th_continuous;
+    float current_angle_deg;
+    float current_x_m;
+    float current_y_m;
+
+    if (pose != NULL) {
+        current_angle_deg = pose->theta_deg;
+    } else {
+        current_angle_deg = g_th_continuous;
+    }
+
+    current_x_m = g_x;
+    current_y_m = g_y;
 
     switch (g_relative_move_state)
     {
@@ -254,17 +368,13 @@ void Update_Relative_Move_PID(float dt)
             float angle_error;
 
             base_car_speed = 0.0f;
-            angle_error = g_pid_angle.setpoint - current_angle_deg;
-
-            while (angle_error > 180.0f) {
-                angle_error -= 360.0f;
-            }
-
-            while (angle_error < -180.0f) {
-                angle_error += 360.0f;
-            }
+            angle_error = pid_normalize_angle_deg(g_pid_angle.setpoint - current_angle_deg);
 
             if (fabsf(angle_error) < ANGLE_TOLERANCE_FOR_MOVING) {
+                s_initial_x = current_x_m;
+                s_initial_y = current_y_m;
+                g_pid_position.integral = 0.0f;
+                g_pid_position.last_error = 0.0f;
                 g_relative_move_state = RELATIVE_MOVE_DRIVING;
             }
             break;
@@ -272,8 +382,8 @@ void Update_Relative_Move_PID(float dt)
 
         case RELATIVE_MOVE_DRIVING:
         {
-            float dx_traveled = g_x - s_initial_x;
-            float dy_traveled = g_y - s_initial_y;
+            float dx_traveled = current_x_m - s_initial_x;
+            float dy_traveled = current_y_m - s_initial_y;
             float distance_traveled = sqrtf(dx_traveled * dx_traveled + dy_traveled * dy_traveled);
             float distance_error = s_target_distance - distance_traveled;
 
@@ -281,18 +391,24 @@ void Update_Relative_Move_PID(float dt)
                 g_relative_move_state = RELATIVE_MOVE_IDLE;
                 g_control_mode = CONTROL_MODE_MANUAL;
                 base_car_speed = 0.0f;
+                s_drive_direction = 1.0f;
+                g_pid_position.integral = 0.0f;
+                g_pid_position.last_error = 0.0f;
+                g_pid_angle.setpoint = current_angle_deg;
                 break;
             }
 
             g_pid_position.setpoint = 0.0f;
-            base_car_speed = PID_Calculate((PID_Controller *)&g_pid_position, -distance_error, dt);
+            base_car_speed = s_drive_direction * PID_Calculate((PID_Controller *)&g_pid_position, -distance_error, dt);
 
             if (base_car_speed > MAX_BASE_SPEED) {
                 base_car_speed = MAX_BASE_SPEED;
             }
 
-            if (base_car_speed < MIN_BASE_SPEED) {
+            if ((base_car_speed > 0.0f) && (base_car_speed < MIN_BASE_SPEED)) {
                 base_car_speed = MIN_BASE_SPEED;
+            } else if ((base_car_speed < 0.0f) && (base_car_speed > -MIN_BASE_SPEED)) {
+                base_car_speed = -MIN_BASE_SPEED;
             }
             break;
         }

@@ -57,6 +57,13 @@
 - 等 RTOS 版本稳定后，再评估是否可以改成纯 `osDelayUntil()` 周期任务
 **推荐**: 保留 TIM4。这样能最大程度保持现有 PID、里程计和控制时序不变，降低迁移风险。
 
+**补充说明（2026-04 实测后更新）**:
+- 当前控制闭环已经验证：直接将 LiDAR 修正位姿替换为 PID 输入会破坏稳定性
+- 因此现阶段策略调整为：
+  - 控制层继续使用平滑的 `odometry / IMU` 状态
+  - 建图层使用 `corrected_pose`
+  - 后续再引入“限幅、低通后的慢修正”作为控制融合层
+
 ---
 
 ### 阶段二: 设计任务架构 (优先级: 高)
@@ -145,6 +152,15 @@ void StartControlTask(void *argument)
     }
 }
 ```
+
+**补充说明（当前实际策略）**:
+- `ControlTask` 仍是系统中最高实时性的闭环
+- 在 `Phase 3B` 完成前，不应直接把 `corrected_pose / EST` 硬接入该任务的 PID 输入
+- 更合理的后续做法是新增：
+  - `odom_pose`
+  - `control_pose`
+  - `corrected_pose`
+  三层状态，并只允许 LiDAR 修正以慢速、限幅方式影响 `control_pose`
 
 #### 3.3 LiDARParseTask - LiDAR 双缓冲解析
 **文件**: `Core/Src/freertos.c`

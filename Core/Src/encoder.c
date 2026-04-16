@@ -16,10 +16,23 @@ volatile float g_th = 0.0f;
 
 volatile float g_left_speed = 0.0f;
 volatile float g_right_speed = 0.0f;
+volatile float g_encoder_left_forward_scale = 1.2f;
+volatile float g_encoder_left_reverse_scale = 0.78f;
+volatile float g_encoder_right_forward_scale = 1.2f;
+volatile float g_encoder_right_reverse_scale = 0.78f;
 
 static const float delta_t = 0.01f;
 static int16_t last_left_count = 0;
 static int16_t last_right_count = 0;
+
+static float encoder_apply_odometry_scale(float wheel_speed, float forward_scale, float reverse_scale)
+{
+    if (wheel_speed >= 0.0f) {
+        return wheel_speed * forward_scale;
+    }
+
+    return wheel_speed * reverse_scale;
+}
 
 void encoder_init(void)
 {
@@ -37,6 +50,8 @@ void encoder_update_speed(void)
     int16_t right_pulse_delta = current_right_count - last_right_count;
     float raw_left_speed;
     float raw_right_speed;
+    float odom_left_speed;
+    float odom_right_speed;
 
     last_left_count = current_left_count;
     last_right_count = current_right_count;
@@ -55,8 +70,15 @@ void encoder_update_speed(void)
     g_left_speed = (1.0f - SPEED_FILTER_ALPHA) * g_left_speed + SPEED_FILTER_ALPHA * raw_left_speed;
     g_right_speed = (1.0f - SPEED_FILTER_ALPHA) * g_right_speed + SPEED_FILTER_ALPHA * raw_right_speed;
 
-    g_dl_acc += g_left_speed * delta_t;
-    g_dr_acc += g_right_speed * delta_t;
+    odom_left_speed = encoder_apply_odometry_scale(g_left_speed,
+                                                   g_encoder_left_forward_scale,
+                                                   g_encoder_left_reverse_scale);
+    odom_right_speed = encoder_apply_odometry_scale(g_right_speed,
+                                                    g_encoder_right_forward_scale,
+                                                    g_encoder_right_reverse_scale);
+
+    g_dl_acc += odom_left_speed * delta_t;
+    g_dr_acc += odom_right_speed * delta_t;
 }
 
 void encoder_Reset(void)
@@ -120,4 +142,39 @@ void Odometry_GetPoseSnapshot(SlamPose2D_t *pose)
     pose->y_m = g_y;
     pose->theta_deg = g_th_continuous;
     pose->timestamp_ms = HAL_GetTick();
+}
+
+void Encoder_GetCalibration(float *left_forward, float *left_reverse, float *right_forward, float *right_reverse)
+{
+    if (left_forward != NULL) {
+        *left_forward = g_encoder_left_forward_scale;
+    }
+
+    if (left_reverse != NULL) {
+        *left_reverse = g_encoder_left_reverse_scale;
+    }
+
+    if (right_forward != NULL) {
+        *right_forward = g_encoder_right_forward_scale;
+    }
+
+    if (right_reverse != NULL) {
+        *right_reverse = g_encoder_right_reverse_scale;
+    }
+}
+
+uint8_t Encoder_SetCalibration(float left_forward, float left_reverse, float right_forward, float right_reverse)
+{
+    if ((left_forward <= 0.0f) ||
+        (left_reverse <= 0.0f) ||
+        (right_forward <= 0.0f) ||
+        (right_reverse <= 0.0f)) {
+        return 0U;
+    }
+
+    g_encoder_left_forward_scale = left_forward;
+    g_encoder_left_reverse_scale = left_reverse;
+    g_encoder_right_forward_scale = right_forward;
+    g_encoder_right_reverse_scale = right_reverse;
+    return 1U;
 }

@@ -15,11 +15,13 @@
 #define PID_DEFAULT_TURN_SETPOINT   10.0f
 #define UART_PRINTF_BUFFER_SIZE     256
 #define UART5_TX_TIMEOUT_MS         1000U
+#define STATUS_STREAM_PERIOD_MS     1000U
+#define STATUS_STREAM_MAP_DOWNSAMPLE 4U
 
 uint8_t buffer[100];
 uint8_t status_enable = 0U;
 
-volatile float speed_magnitude = 1.0f;
+volatile float speed_magnitude = 0.25f;
 static volatile uint8_t g_bt_rx_rearm_pending = 0U;
 static char g_uart_printf_buffer[UART_PRINTF_BUFFER_SIZE];
 static char g_map_ascii_line_buffer[OGM_MAX_WIDTH_CELLS + 1U];
@@ -143,6 +145,7 @@ static void transmit_odometry_snapshot(void)
     float x;
     float y;
     float th;
+    LocalizationTaskStats_t loc_stats;
     float left_speed;
     float right_speed;
     float current_base_speed;
@@ -180,6 +183,7 @@ static void transmit_odometry_snapshot(void)
         (void)osMutexRelease(g_odomMutex);
     }
 
+    LocalizationTask_GetStatsSnapshot(&loc_stats);
     uart_printf("ODOM x=%.3f y=%.3f th=%.2f ls=%.3f rs=%.3f base=%.3f ang_sp=%.2f mode=%s move=%s\r\n",
                 x,
                 y,
@@ -190,6 +194,23 @@ static void transmit_odometry_snapshot(void)
                 angle_setpoint,
                 control_mode_to_string(mode),
                 move_state_to_string(move_state));
+    uart_printf("EST  x=%.3f y=%.3f th=%.2f CTRL=(%.3f,%.3f,%.2f)\r\n",
+                loc_stats.current_estimated_pose.x_m,
+                loc_stats.current_estimated_pose.y_m,
+                loc_stats.current_estimated_pose.theta_deg,
+                loc_stats.current_control_pose.x_m,
+                loc_stats.current_control_pose.y_m,
+                loc_stats.current_control_pose.theta_deg);
+    uart_printf("POSE pred=(%.3f,%.3f,%.2f) corr=(%.3f,%.3f,%.2f) slow=(%.3f,%.3f,%.2f)\r\n",
+                loc_stats.last_predicted_pose.x_m,
+                loc_stats.last_predicted_pose.y_m,
+                loc_stats.last_predicted_pose.theta_deg,
+                loc_stats.last_corrected_pose.x_m,
+                loc_stats.last_corrected_pose.y_m,
+                loc_stats.last_corrected_pose.theta_deg,
+                loc_stats.last_control_correction_delta.x_m,
+                loc_stats.last_control_correction_delta.y_m,
+                loc_stats.last_control_correction_delta.theta_deg);
 }
 
 static void transmit_runtime_snapshot(void)
@@ -234,7 +255,7 @@ static void transmit_runtime_snapshot(void)
                 stats.last_scan_rejected_quality_count,
                 stats.last_scan_min_distance_mm,
                 stats.last_scan_max_distance_mm);
-    uart_printf("LOC init=%u updates=%lu accept=%lu reject=%lu odom=%lu mode=%u pts=%u/%u inliers=%u fit_mm=%.1f\r\n",
+    uart_printf("LOC init=%u updates=%lu accept=%lu reject=%lu odom=%lu mode=%u pts=%u/%u inliers=%u fit_mm=%.1f slow_mm=(%.1f,%.1f) slow_deg=%.2f\r\n",
                 loc_stats.initialized,
                 (unsigned long)loc_stats.update_count,
                 (unsigned long)loc_stats.icp_accept_count,
@@ -244,7 +265,10 @@ static void transmit_runtime_snapshot(void)
                 (unsigned int)loc_stats.last_reference_points,
                 (unsigned int)loc_stats.last_current_points,
                 (unsigned int)loc_stats.last_inliers,
-                (double)(loc_stats.last_fitness_m * 1000.0f));
+                (double)(loc_stats.last_fitness_m * 1000.0f),
+                (double)(loc_stats.last_control_correction_delta.x_m * 1000.0f),
+                (double)(loc_stats.last_control_correction_delta.y_m * 1000.0f),
+                (double)loc_stats.last_control_correction_delta.theta_deg);
 }
 
 static void transmit_mapping_snapshot(void)
@@ -268,6 +292,80 @@ static void transmit_mapping_snapshot(void)
                 (unsigned int)stats.last_localization_mode,
                 (unsigned int)stats.last_localization_inliers,
                 (double)(stats.last_localization_fitness_m * 1000.0f));
+}
+
+static void transmit_live_map_snapshot(void)
+{
+    float x;
+    float y;
+    float th;
+    ControlMode mode;
+    RelativeMoveState move_state;
+    LocalizationTaskStats_t loc_stats;
+    MappingTaskStats_t map_stats;
+    uint16_t width = 0U;
+    uint16_t height = 0U;
+    uint16_t row;
+
+    if (g_odomMutex != NULL) {
+        (void)osMutexAcquire(g_odomMutex, osWaitForever);
+    }
+    if (g_controlMutex != NULL) {
+        (void)osMutexAcquire(g_controlMutex, osWaitForever);
+    }
+    if (g_pidMutex != NULL) {
+        (void)osMutexAcquire(g_pidMutex, osWaitForever);
+    }
+
+    x = g_x;
+    y = g_y;
+    th = g_th_continuous;
+    mode = g_control_mode;
+    move_state = g_relative_move_state;
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexRelease(g_pidMutex);
+    }
+    if (g_controlMutex != NULL) {
+        (void)osMutexRelease(g_controlMutex);
+    }
+    if (g_odomMutex != NULL) {
+        (void)osMutexRelease(g_odomMutex);
+    }
+
+    LocalizationTask_GetStatsSnapshot(&loc_stats);
+    MappingTask_GetStatsSnapshot(&map_stats);
+    MappingTask_GetRenderDimensions(STATUS_STREAM_MAP_DOWNSAMPLE, &width, &height);
+
+    uart_printf("MAP LIVE ds=%u size=%ux%u cell=(%d,%d) odom=(%.3f,%.3f,%.2f) ctrl=(%.3f,%.3f,%.2f) mode=%s/%s loc=%u inliers=%u fit=%.1f\r\n",
+                STATUS_STREAM_MAP_DOWNSAMPLE,
+                width,
+                height,
+                map_stats.last_robot_cell.x,
+                map_stats.last_robot_cell.y,
+                x,
+                y,
+                th,
+                loc_stats.current_control_pose.x_m,
+                loc_stats.current_control_pose.y_m,
+                loc_stats.current_control_pose.theta_deg,
+                control_mode_to_string(mode),
+                move_state_to_string(move_state),
+                (unsigned int)loc_stats.last_mode,
+                (unsigned int)loc_stats.last_inliers,
+                (double)(loc_stats.last_fitness_m * 1000.0f));
+
+    for (row = 0U; row < height; ++row) {
+        if (MappingTask_RenderAsciiRow(row,
+                                       STATUS_STREAM_MAP_DOWNSAMPLE,
+                                       g_map_ascii_line_buffer,
+                                       sizeof(g_map_ascii_line_buffer)) == 0U) {
+            transmit("MAP LIVE render failed\r\n");
+            return;
+        }
+
+        uart_printf("|%s|\r\n", g_map_ascii_line_buffer);
+    }
 }
 
 static void transmit_mapping_ascii(uint8_t downsample)
@@ -377,9 +475,12 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("P{x},{y}: Set relative target point (e.g., P0.5,1.2)\r\n");
             transmit("O: Show odometry snapshot\r\n");
             transmit("P: Show RTOS/runtime stats and scan quality\r\n");
+            transmit("K: Show encoder calibration\r\n");
+            transmit("Klf,lr,rf,rr: Set encoder calibration\r\n");
             transmit("M: Start LIDAR (mapping mode, no binary stream)\r\n");
             transmit("N: Stop LIDAR\r\n");
             transmit("T0/T1: Disable/enable binary LiDAR telemetry on Bluetooth\r\n");
+            transmit("U0/U1: Disable/enable 0.5 s live thumbnail map stream\r\n");
             transmit("H: Show This Help\r\n");
             break;
 
@@ -394,6 +495,22 @@ void process_command(uint8_t *cmd, uint16_t size)
         case 'G':
             transmit_mapping_snapshot();
             break;
+
+        case 'K':
+        {
+            float left_forward;
+            float left_reverse;
+            float right_forward;
+            float right_reverse;
+
+            Encoder_GetCalibration(&left_forward, &left_reverse, &right_forward, &right_reverse);
+            uart_printf("ENC cal lf=%.3f lr=%.3f rf=%.3f rr=%.3f\r\n",
+                        left_forward,
+                        left_reverse,
+                        right_forward,
+                        right_reverse);
+            break;
+        }
 
         case 'X':
             transmit_mapping_ascii(4U);
@@ -521,6 +638,29 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         } else {
             transmit("Invalid angle value. Use -360.0 to 360.0\r\n");
         }
+    } else if ((size > 2U) && (cmd[0] == 'K')) {
+        float left_forward = 0.0f;
+        float left_reverse = 0.0f;
+        float right_forward = 0.0f;
+        float right_reverse = 0.0f;
+
+        if (sscanf((char *)cmd, "K%f,%f,%f,%f",
+                   &left_forward,
+                   &left_reverse,
+                   &right_forward,
+                   &right_reverse) == 4) {
+            if (Encoder_SetCalibration(left_forward, left_reverse, right_forward, right_reverse) != 0U) {
+                uart_printf("ENC cal set lf=%.3f lr=%.3f rf=%.3f rr=%.3f\r\n",
+                            left_forward,
+                            left_reverse,
+                            right_forward,
+                            right_reverse);
+            } else {
+                transmit("Invalid calibration values. Use positive numbers\r\n");
+            }
+        } else {
+            transmit("Invalid K format. Use Klf,lr,rf,rr\r\n");
+        }
     } else if ((size > 2U) && (cmd[0] == 'P')) {
         float dx = 0.0f;
         float dy = 0.0f;
@@ -553,6 +693,16 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         } else {
             transmit("Invalid T format. Use T0 or T1\r\n");
         }
+    } else if ((size >= 2U) && (cmd[0] == 'U')) {
+        if ((cmd[1] == '0') && (size == 2U)) {
+            status_enable = 0U;
+            transmit("Live map stream disabled\r\n");
+        } else if ((cmd[1] == '1') && (size == 2U)) {
+            status_enable = 1U;
+            transmit("Live thumbnail map stream enabled (500 ms)\r\n");
+        } else {
+            transmit("Invalid U format. Use U0 or U1\r\n");
+        }
     }
 }
 
@@ -574,4 +724,23 @@ void uart_printf(const char *format, ...)
     }
 
     transmit_buffer((const uint8_t *)g_uart_printf_buffer, (uint16_t)len);
+}
+
+void HC04_ServiceStatusStream(void)
+{
+    static uint32_t s_last_status_tick = 0U;
+    uint32_t now_tick;
+
+    if (status_enable == 0U) {
+        s_last_status_tick = HAL_GetTick();
+        return;
+    }
+
+    now_tick = HAL_GetTick();
+    if ((now_tick - s_last_status_tick) < STATUS_STREAM_PERIOD_MS) {
+        return;
+    }
+
+    s_last_status_tick = now_tick;
+    transmit_live_map_snapshot();
 }

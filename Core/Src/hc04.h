@@ -28,4 +28,5 @@ void check_auto_stop(void);
 void process_complex_command(uint8_t *cmd, uint16_t size);
 
 void uart_printf(const char *format, ...);
+void HC04_ServiceStatusStream(void);
 #endif // HC04_H

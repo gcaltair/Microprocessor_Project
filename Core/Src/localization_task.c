@@ -3,6 +3,7 @@
 
 #include "../Inc/localization_task.h"
 #include "../Inc/scan_preprocess.h"
+#include "system.h"
 
 #define LOCALIZATION_MAX_SAMPLE_POINTS          64U
 #define LOCALIZATION_MIN_REFERENCE_POINTS       12U
@@ -14,6 +15,10 @@
 #define LOCALIZATION_MAX_CORRECTION_THETA_DEG   12.0f
 #define LOCALIZATION_CONVERGENCE_XY_M           0.002f
 #define LOCALIZATION_CONVERGENCE_THETA_DEG      0.2f
+#define LOCALIZATION_CONTROL_CORRECTION_ALPHA   0.15f
+#define LOCALIZATION_CONTROL_MAX_STEP_XY_M      0.004f
+#define LOCALIZATION_CONTROL_MAX_STEP_THETA_DEG 0.35f
+#define LOCALIZATION_CONTROL_MIN_WHEEL_SPEED_MPS 0.02f
 #define LOCALIZATION_DEG_TO_RAD                 0.01745329251994329577f
 #define LOCALIZATION_RAD_TO_DEG                 57.2957795130823208768f
 
@@ -39,6 +44,10 @@ typedef struct {
 
 static LocalizationReferenceScan_t g_referenceScan;
 static LocalizationTaskStats_t g_localizationStats;
+static SlamPose2D_t g_estimatedPose;
+static SlamPose2D_t g_controlPose;
+static SlamPose2D_t g_lastOdomPose;
+static uint8_t g_estimatedPoseInitialized = 0U;
 static LocalizationPoint_t g_sourcePoints[LOCALIZATION_MAX_SAMPLE_POINTS];
 static LocalizationPoint_t g_workingPoints[LOCALIZATION_MAX_SAMPLE_POINTS];
 static LocalizationPoint_t g_corrSource[LOCALIZATION_MAX_SAMPLE_POINTS];
@@ -55,6 +64,19 @@ static float localization_wrap_angle_deg(float angle_deg)
     }
 
     return angle_deg;
+}
+
+static float localization_clamp_float(float value, float min_value, float max_value)
+{
+    if (value < min_value) {
+        return min_value;
+    }
+
+    if (value > max_value) {
+        return max_value;
+    }
+
+    return value;
 }
 
 static void localization_lock(void)
@@ -114,6 +136,88 @@ static void localization_apply_pose_delta(const SlamPose2D_t *input_pose,
     output_pose->x_m = cos_theta * input_pose->x_m - sin_theta * input_pose->y_m + delta_x_m;
     output_pose->y_m = sin_theta * input_pose->x_m + cos_theta * input_pose->y_m + delta_y_m;
     output_pose->theta_deg = localization_wrap_angle_deg(input_pose->theta_deg + delta_theta_deg);
+}
+
+static void localization_rotate_vector(float x_m,
+                                       float y_m,
+                                       float theta_deg,
+                                       float *out_x_m,
+                                       float *out_y_m)
+{
+    float theta_rad = theta_deg * LOCALIZATION_DEG_TO_RAD;
+    float cos_theta = cosf(theta_rad);
+    float sin_theta = sinf(theta_rad);
+
+    if (out_x_m != NULL) {
+        *out_x_m = cos_theta * x_m - sin_theta * y_m;
+    }
+
+    if (out_y_m != NULL) {
+        *out_y_m = sin_theta * x_m + cos_theta * y_m;
+    }
+}
+
+static void localization_apply_control_correction(const SlamPose2D_t *target_pose,
+                                                  SlamPose2D_t *applied_delta)
+{
+    float error_x_m;
+    float error_y_m;
+    float error_theta_deg;
+    float step_x_m;
+    float step_y_m;
+    float step_theta_deg;
+
+    if (target_pose == NULL) {
+        return;
+    }
+
+    error_x_m = target_pose->x_m - g_controlPose.x_m;
+    error_y_m = target_pose->y_m - g_controlPose.y_m;
+    error_theta_deg = localization_wrap_angle_deg(target_pose->theta_deg - g_controlPose.theta_deg);
+
+    step_x_m = localization_clamp_float(error_x_m * LOCALIZATION_CONTROL_CORRECTION_ALPHA,
+                                        -LOCALIZATION_CONTROL_MAX_STEP_XY_M,
+                                        LOCALIZATION_CONTROL_MAX_STEP_XY_M);
+    step_y_m = localization_clamp_float(error_y_m * LOCALIZATION_CONTROL_CORRECTION_ALPHA,
+                                        -LOCALIZATION_CONTROL_MAX_STEP_XY_M,
+                                        LOCALIZATION_CONTROL_MAX_STEP_XY_M);
+    step_theta_deg = localization_clamp_float(error_theta_deg * LOCALIZATION_CONTROL_CORRECTION_ALPHA,
+                                              -LOCALIZATION_CONTROL_MAX_STEP_THETA_DEG,
+                                              LOCALIZATION_CONTROL_MAX_STEP_THETA_DEG);
+
+    g_controlPose.x_m += step_x_m;
+    g_controlPose.y_m += step_y_m;
+    g_controlPose.theta_deg = localization_wrap_angle_deg(g_controlPose.theta_deg + step_theta_deg);
+    g_controlPose.timestamp_ms = target_pose->timestamp_ms;
+
+    if (applied_delta != NULL) {
+        applied_delta->x_m = step_x_m;
+        applied_delta->y_m = step_y_m;
+        applied_delta->theta_deg = step_theta_deg;
+        applied_delta->timestamp_ms = target_pose->timestamp_ms;
+    }
+}
+
+static uint8_t localization_control_fusion_enabled(void)
+{
+    if (g_control_mode != CONTROL_MODE_POSITION) {
+        return 0U;
+    }
+
+    if (g_relative_move_state == RELATIVE_MOVE_IDLE) {
+        return 0U;
+    }
+
+    if (fabsf(base_car_speed) > 0.001f) {
+        return 1U;
+    }
+
+    if ((fabsf(g_left_speed) > LOCALIZATION_CONTROL_MIN_WHEEL_SPEED_MPS) ||
+        (fabsf(g_right_speed) > LOCALIZATION_CONTROL_MIN_WHEEL_SPEED_MPS)) {
+        return 1U;
+    }
+
+    return (g_relative_move_state == RELATIVE_MOVE_TURNING) ? 1U : 0U;
 }
 
 static uint16_t localization_build_world_points(const LidarScanMsg_t *scan_msg,
@@ -380,6 +484,94 @@ static void localization_store_reference(const LidarScanMsg_t *scan_msg, const S
     localization_unlock();
 }
 
+void LocalizationTask_UpdatePredictedPose(const SlamPose2D_t *odom_pose)
+{
+    float odom_delta_x_m;
+    float odom_delta_y_m;
+    float odom_delta_theta_deg;
+    float predicted_delta_x_m;
+    float predicted_delta_y_m;
+    uint8_t control_fusion_enabled;
+
+    if (odom_pose == NULL) {
+        return;
+    }
+
+    control_fusion_enabled = localization_control_fusion_enabled();
+    localization_lock();
+
+    if (g_estimatedPoseInitialized == 0U) {
+        g_estimatedPose = *odom_pose;
+        g_controlPose = *odom_pose;
+        g_lastOdomPose = *odom_pose;
+        g_estimatedPoseInitialized = 1U;
+        g_localizationStats.current_estimated_pose = g_estimatedPose;
+        g_localizationStats.current_control_pose = g_controlPose;
+        localization_unlock();
+        return;
+    }
+
+    odom_delta_x_m = odom_pose->x_m - g_lastOdomPose.x_m;
+    odom_delta_y_m = odom_pose->y_m - g_lastOdomPose.y_m;
+    odom_delta_theta_deg = localization_wrap_angle_deg(odom_pose->theta_deg - g_lastOdomPose.theta_deg);
+
+    localization_rotate_vector(odom_delta_x_m,
+                               odom_delta_y_m,
+                               g_estimatedPose.theta_deg - g_lastOdomPose.theta_deg,
+                               &predicted_delta_x_m,
+                               &predicted_delta_y_m);
+
+    g_estimatedPose.x_m += predicted_delta_x_m;
+    g_estimatedPose.y_m += predicted_delta_y_m;
+    g_estimatedPose.theta_deg = localization_wrap_angle_deg(g_estimatedPose.theta_deg + odom_delta_theta_deg);
+    g_estimatedPose.timestamp_ms = odom_pose->timestamp_ms;
+
+    if (control_fusion_enabled != 0U) {
+        g_controlPose.x_m += predicted_delta_x_m;
+        g_controlPose.y_m += predicted_delta_y_m;
+        g_controlPose.theta_deg = localization_wrap_angle_deg(g_controlPose.theta_deg + odom_delta_theta_deg);
+        g_controlPose.timestamp_ms = odom_pose->timestamp_ms;
+    } else {
+        g_controlPose = *odom_pose;
+    }
+
+    g_lastOdomPose = *odom_pose;
+    g_localizationStats.current_estimated_pose = g_estimatedPose;
+    g_localizationStats.current_control_pose = g_controlPose;
+
+    localization_unlock();
+}
+
+void LocalizationTask_GetEstimatedPoseSnapshot(SlamPose2D_t *pose)
+{
+    if (pose == NULL) {
+        return;
+    }
+
+    localization_lock();
+    if (g_estimatedPoseInitialized != 0U) {
+        *pose = g_estimatedPose;
+    } else {
+        (void)memset(pose, 0, sizeof(*pose));
+    }
+    localization_unlock();
+}
+
+void LocalizationTask_GetControlPoseSnapshot(SlamPose2D_t *pose)
+{
+    if (pose == NULL) {
+        return;
+    }
+
+    localization_lock();
+    if (g_estimatedPoseInitialized != 0U) {
+        *pose = g_controlPose;
+    } else {
+        (void)memset(pose, 0, sizeof(*pose));
+    }
+    localization_unlock();
+}
+
 static void localization_update_stats(const LidarScanMsg_t *scan_msg,
                                       const LocalizationIcpResult_t *result)
 {
@@ -387,6 +579,8 @@ static void localization_update_stats(const LidarScanMsg_t *scan_msg,
     g_localizationStats.update_count++;
     g_localizationStats.last_predicted_pose = scan_msg->pose_snapshot;
     g_localizationStats.last_corrected_pose = scan_msg->corrected_pose;
+    g_localizationStats.current_estimated_pose = g_estimatedPose;
+    g_localizationStats.current_control_pose = g_controlPose;
     g_localizationStats.last_inliers = scan_msg->localization_inliers;
     g_localizationStats.last_fitness_m = scan_msg->localization_fitness_m;
     g_localizationStats.last_mode = (LocalizationMode_t)scan_msg->localization_mode;
@@ -443,6 +637,23 @@ void StartLocalizationTask(void *argument)
             }
         }
 
+        localization_lock();
+        g_estimatedPose = scan_msg.corrected_pose;
+        g_estimatedPoseInitialized = 1U;
+        g_localizationStats.current_estimated_pose = g_estimatedPose;
+        if ((scan_msg.localization_mode == LOCALIZATION_MODE_ICP_ACCEPTED) &&
+            (localization_control_fusion_enabled() != 0U)) {
+            localization_apply_control_correction(&scan_msg.corrected_pose,
+                                                  &g_localizationStats.last_control_correction_delta);
+        } else {
+            (void)memset(&g_localizationStats.last_control_correction_delta,
+                         0,
+                         sizeof(g_localizationStats.last_control_correction_delta));
+        }
+        g_localizationStats.current_control_pose = g_controlPose;
+        g_lastOdomPose = scan_msg.pose_snapshot;
+        localization_unlock();
+
         localization_store_reference(&scan_msg, &scan_msg.corrected_pose);
         localization_update_stats(&scan_msg, &icp_result);
 
@@ -461,6 +672,10 @@ void LocalizationTask_Reset(void)
     localization_lock();
     (void)memset(&g_referenceScan, 0, sizeof(g_referenceScan));
     (void)memset(&g_localizationStats, 0, sizeof(g_localizationStats));
+    (void)memset(&g_estimatedPose, 0, sizeof(g_estimatedPose));
+    (void)memset(&g_controlPose, 0, sizeof(g_controlPose));
+    (void)memset(&g_lastOdomPose, 0, sizeof(g_lastOdomPose));
+    g_estimatedPoseInitialized = 0U;
     localization_unlock();
 }
 

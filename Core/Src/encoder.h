@@ -26,6 +26,10 @@ extern volatile float g_y;
 // 过滤后当前轮速(米/秒)
 extern volatile float g_left_speed;
 extern volatile float g_right_speed;
+extern volatile float g_encoder_left_forward_scale;
+extern volatile float g_encoder_left_reverse_scale;
+extern volatile float g_encoder_right_forward_scale;
+extern volatile float g_encoder_right_reverse_scale;
 
 
 // 初始化编码器
@@ -43,5 +47,7 @@ void encoder_Reset(void);
 
 void Odometry_Update(float dt);
 void Odometry_GetPoseSnapshot(SlamPose2D_t *pose);
+void Encoder_GetCalibration(float *left_forward, float *left_reverse, float *right_forward, float *right_reverse);
+uint8_t Encoder_SetCalibration(float left_forward, float left_reverse, float right_forward, float right_reverse);
 
 #endif /* ENCODER_H */

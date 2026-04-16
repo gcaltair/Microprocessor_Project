@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include "freertos_app.h"
+#include "hc04.h"
 #include "localization_task.h"
 #include "mapping_task.h"
 #include "scan_preprocess.h"
@@ -376,8 +377,12 @@ uint8_t Freertos_GetLidarBinaryTxEnabled(void)
 void StartControlTask(void *argument)
 {
   const float dt = 0.01f;
+  SlamPose2D_t control_pose;
+  SlamPose2D_t odom_pose;
 
   (void)argument;
+  (void)memset(&control_pose, 0, sizeof(control_pose));
+  (void)memset(&odom_pose, 0, sizeof(odom_pose));
 
   for (;;) {
     (void)osSemaphoreAcquire(g_controlTickSem, osWaitForever);
@@ -390,6 +395,9 @@ void StartControlTask(void *argument)
     }
 
     Odometry_Update(dt);
+    Odometry_GetPoseSnapshot(&odom_pose);
+    LocalizationTask_UpdatePredictedPose(&odom_pose);
+    LocalizationTask_GetControlPoseSnapshot(&control_pose);
 
     if (g_controlMutex != NULL) {
       (void)osMutexAcquire(g_controlMutex, osWaitForever);
@@ -400,7 +408,7 @@ void StartControlTask(void *argument)
     }
 
     if (g_control_mode == CONTROL_MODE_POSITION) {
-      Update_Relative_Move_PID(dt);
+      Update_Relative_Move_PID(dt, &control_pose);
     } else {
       Angle_Speed_Cascade_Control(g_th_continuous, base_car_speed, dt);
     }
@@ -561,6 +569,7 @@ void StartSafetyTask(void *argument)
         (uint32_t)uxTaskGetStackHighWaterMark(safetyTaskHandle) * sizeof(StackType_t);
 
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    HC04_ServiceStatusStream();
     osDelay(100U);
   }
 }

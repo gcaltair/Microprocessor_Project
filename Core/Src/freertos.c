@@ -177,6 +177,28 @@ void MX_FREERTOS_Init(void) {
 
 }
 
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* USER CODE BEGIN StartDefaultTask */
+  (void)argument;
+
+  for(;;)
+  {
+    osDelay(1000U);
+  }
+  /* USER CODE END StartDefaultTask */
+}
+
+/* Private application code --------------------------------------------------*/
+/* USER CODE BEGIN Application */
+
 osStatus_t Freertos_NotifyControlTickFromISR(void)
 {
   osStatus_t status;
@@ -230,25 +252,6 @@ void Freertos_GetRuntimeStatsSnapshot(FreertosRuntimeStats_t *stats)
 void Freertos_RecordBluetoothTxWait(void)
 {
   g_runtimeStats.bt_tx_wait_count++;
-}
-
-/* USER CODE BEGIN Header_StartDefaultTask */
-/**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
-{
-  /* USER CODE BEGIN StartDefaultTask */
-  (void)argument;
-
-  for(;;)
-  {
-    osDelay(1000U);
-  }
-  /* USER CODE END StartDefaultTask */
 }
 
 void StartControlTask(void *argument)
@@ -395,18 +398,5 @@ void StartSafetyTask(void *argument)
   }
 }
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-  if (htim->Instance == TIM5) {
-    HAL_IncTick();
-  }
-
-  if (htim->Instance == TIM4) {
-    (void)Freertos_NotifyControlTickFromISR();
-  }
-}
-
-/* Private application code --------------------------------------------------*/
-/* USER CODE BEGIN Application */
-
 /* USER CODE END Application */
+

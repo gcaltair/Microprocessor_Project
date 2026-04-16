@@ -20,14 +20,15 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "dma.h"
-#include "gpio.h"
 #include "i2c.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
+#include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "freertos_app.h"
 #include "system.h"
 /* USER CODE END Includes */
 
@@ -130,7 +131,17 @@ int main(void)
   /* Start scheduler */
   osKernelStart();
 
-  Error_Handler();
+  /* We should never get here as control is now taken by the scheduler */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+  }
+  /* USER CODE END 3 */
 }
 
 /**
@@ -183,6 +194,32 @@ void SystemClock_Config(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM5 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM5)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+  if (htim->Instance == TIM4)
+  {
+    (void)Freertos_NotifyControlTickFromISR();
+  }
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.

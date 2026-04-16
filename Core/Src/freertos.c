@@ -399,6 +399,13 @@ void StartLiDARParseTask(void *argument)
         scan_msg.scan_index = write_idx;
         scan_msg.point_count = g_lidarScanBuf[write_idx].point_count;
         scan_msg.scan_sequence = ++g_lidarScanSequence;
+        if (g_odomMutex != NULL) {
+          (void)osMutexAcquire(g_odomMutex, osWaitForever);
+        }
+        Odometry_GetPoseSnapshot(&scan_msg.pose_snapshot);
+        if (g_odomMutex != NULL) {
+          (void)osMutexRelease(g_odomMutex);
+        }
 
         (void)osMessageQueuePut(g_lidarResultQueue, &scan_msg, 0U, osWaitForever);
         (void)osMessageQueueGet(g_lidarFreeQueue, &write_idx, NULL, osWaitForever);

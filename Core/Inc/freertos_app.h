@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "cmsis_os.h"
+#include "slam_types.h"
 #include "../Src/lidar.h"
 
 #define CMD_MSG_BUFFER_SIZE      100U
@@ -25,6 +26,7 @@ typedef struct {
     uint8_t scan_index;
     uint16_t point_count;
     uint32_t scan_sequence;
+    SlamPose2D_t pose_snapshot;
 } LidarScanMsg_t;
 
 typedef struct {

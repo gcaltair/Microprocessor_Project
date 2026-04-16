@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../Inc/slam_types.h"
 #include "../Inc/tim.h"
 #include "../Inc/usart.h"
 #include "MPU6500.h"
@@ -14,8 +15,8 @@
 #include "motor.h"
 #include "pid.h"
 
-extern float g_left_speed;
-extern float g_right_speed;
+extern volatile float g_left_speed;
+extern volatile float g_right_speed;
 extern AccelData g_accel_data;
 extern GyroData g_gyro_data;
 

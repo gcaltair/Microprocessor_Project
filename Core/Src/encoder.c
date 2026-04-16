@@ -14,8 +14,8 @@ volatile float g_y = 0.0f;
 volatile float g_th_continuous = 0.0f;
 volatile float g_th = 0.0f;
 
-float g_left_speed = 0.0f;
-float g_right_speed = 0.0f;
+volatile float g_left_speed = 0.0f;
+volatile float g_right_speed = 0.0f;
 
 static const float delta_t = 0.01f;
 static int16_t last_left_count = 0;
@@ -108,4 +108,16 @@ void Odometry_Update(float dt)
 
     g_x += ds * cosf((g_th + dth / 2.0f) * PI / 180.0f);
     g_y += ds * sinf((g_th + dth / 2.0f) * PI / 180.0f);
+}
+
+void Odometry_GetPoseSnapshot(SlamPose2D_t *pose)
+{
+    if (pose == NULL) {
+        return;
+    }
+
+    pose->x_m = g_x;
+    pose->y_m = g_y;
+    pose->theta_deg = g_th_continuous;
+    pose->timestamp_ms = HAL_GetTick();
 }

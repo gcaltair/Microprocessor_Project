@@ -6,6 +6,7 @@
 #define ENCODER_H
 
 #include <stdint.h>
+#include "../Inc/slam_types.h"
 
 // 编码器/机械参数
 #define ENCODER_PULSES_PER_REV  380
@@ -23,8 +24,8 @@ extern volatile float g_x;
 extern volatile float g_y;
 
 // 过滤后当前轮速(米/秒)
-extern float g_left_speed;
-extern float g_right_speed;
+extern volatile float g_left_speed;
+extern volatile float g_right_speed;
 
 
 // 初始化编码器
@@ -41,5 +42,6 @@ void encoder_update_speed(void);
 void encoder_Reset(void);
 
 void Odometry_Update(float dt);
+void Odometry_GetPoseSnapshot(SlamPose2D_t *pose);
 
 #endif /* ENCODER_H */

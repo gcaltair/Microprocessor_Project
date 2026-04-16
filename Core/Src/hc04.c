@@ -18,6 +18,41 @@ uint8_t status_enable = 0U;
 
 volatile float speed_magnitude = 1.0f;
 
+static uint16_t normalize_command(uint8_t *cmd, uint16_t size)
+{
+    uint16_t start = 0U;
+
+    if (cmd == NULL) {
+        return 0U;
+    }
+
+    while ((start < size) &&
+           ((cmd[start] == '\r') || (cmd[start] == '\n') || (cmd[start] == ' ') || (cmd[start] == '\t'))) {
+        start++;
+    }
+
+    while (size > start) {
+        uint8_t tail = cmd[size - 1U];
+        if ((tail != '\r') && (tail != '\n') && (tail != ' ') && (tail != '\t') && (tail != '\0')) {
+            break;
+        }
+        size--;
+    }
+
+    if (start > 0U) {
+        uint16_t dst = 0U;
+        while ((start + dst) < size) {
+            cmd[dst] = cmd[start + dst];
+            dst++;
+        }
+        size = dst;
+    } else {
+        size = (uint16_t)(size - start);
+    }
+
+    return size;
+}
+
 static HAL_StatusTypeDef wait_for_uart5_tx_ready(uint32_t timeout_ms)
 {
     uint32_t start_tick = HAL_GetTick();
@@ -120,20 +155,21 @@ static void transmit_runtime_snapshot(void)
     FreertosRuntimeStats_t stats;
 
     Freertos_GetRuntimeStatsSnapshot(&stats);
-    uart_printf("RTOS ctrl=%lu overrun=%lu cmd=%lu drop=%lu scan=%lu tx=%lu busy=%lu err=%lu wait=%lu\r\n",
+    uart_printf("RTOS ctrl=%lu overrun=%lu cmd=%lu drop=%lu dma=%lu dma_drop=%lu scan=%lu tx=%lu busy=%lu err=%lu wait=%lu\r\n",
                 (unsigned long)stats.control_cycles,
                 (unsigned long)stats.control_tick_overruns,
                 (unsigned long)stats.cmd_rx_count,
                 (unsigned long)stats.cmd_drop_count,
+                (unsigned long)stats.lidar_dma_block_count,
+                (unsigned long)stats.lidar_dma_drop_count,
                 (unsigned long)stats.lidar_scan_complete_count,
                 (unsigned long)stats.lidar_tx_count,
                 (unsigned long)stats.lidar_tx_busy_count,
                 (unsigned long)stats.lidar_tx_error_count,
                 (unsigned long)stats.bt_tx_wait_count);
-    uart_printf("HEAP free=%lu min=%lu lidar_overflow=%lu\r\n",
+    uart_printf("HEAP free=%lu min=%lu\r\n",
                 (unsigned long)stats.free_heap_bytes,
-                (unsigned long)stats.min_ever_free_heap_bytes,
-                (unsigned long)stats.lidar_raw_overflow_count);
+                (unsigned long)stats.min_ever_free_heap_bytes);
     uart_printf("STACK freeB dft=%lu ctrl=%lu lidar=%lu comm=%lu safe=%lu\r\n",
                 (unsigned long)stats.default_task_stack_free_bytes,
                 (unsigned long)stats.control_task_stack_free_bytes,
@@ -144,7 +180,12 @@ static void transmit_runtime_snapshot(void)
 
 void process_command(uint8_t *cmd, uint16_t size)
 {
-    if ((cmd == NULL) || (size == 0U)) {
+    if (cmd == NULL) {
+        return;
+    }
+
+    size = normalize_command(cmd, size);
+    if (size == 0U) {
         return;
     }
 

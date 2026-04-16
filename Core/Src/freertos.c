@@ -50,7 +50,8 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 osSemaphoreId_t g_controlTickSem = NULL;
-osMessageQueueId_t g_lidarReadyQueue = NULL;
+osMessageQueueId_t g_lidarBlockQueue = NULL;
+osMessageQueueId_t g_lidarResultQueue = NULL;
 osMessageQueueId_t g_lidarFreeQueue = NULL;
 osMessageQueueId_t g_cmdQueue = NULL;
 
@@ -60,12 +61,14 @@ osMutexId_t g_controlMutex = NULL;
 
 LidarScanBuffer_t g_lidarScanBuf[LIDAR_SCAN_BUFFER_COUNT];
 FreertosRuntimeStats_t g_runtimeStats;
+static uint32_t g_lidarBlockSequence = 0U;
+static uint32_t g_lidarScanSequence = 0U;
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 512,
+  .stack_size = 1024,
   .priority = (osPriority_t) osPriorityLow,
 };
 
@@ -146,7 +149,8 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
-  g_lidarReadyQueue = osMessageQueueNew(LIDAR_SCAN_BUFFER_COUNT, sizeof(uint8_t), NULL);
+  g_lidarBlockQueue = osMessageQueueNew(LIDAR_DMA_BLOCK_QUEUE_LENGTH, sizeof(LidarDmaBlockMsg_t), NULL);
+  g_lidarResultQueue = osMessageQueueNew(LIDAR_SCAN_BUFFER_COUNT, sizeof(LidarScanMsg_t), NULL);
   g_lidarFreeQueue = osMessageQueueNew(LIDAR_SCAN_BUFFER_COUNT, sizeof(uint8_t), NULL);
   g_cmdQueue = osMessageQueueNew(8U, sizeof(CmdMsg_t), NULL);
 
@@ -187,11 +191,16 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
+  CmdMsg_t cmd_msg;
+
   (void)argument;
+  memset(&cmd_msg, 0, sizeof(cmd_msg));
 
   for(;;)
   {
-    osDelay(1000U);
+    if (osMessageQueueGet(g_cmdQueue, &cmd_msg, NULL, osWaitForever) == osOK) {
+      process_command(cmd_msg.data, cmd_msg.len);
+    }
   }
   /* USER CODE END StartDefaultTask */
 }
@@ -240,6 +249,59 @@ osStatus_t Freertos_SubmitCommandFromISR(const uint8_t *data, uint16_t len)
   }
 
   return status;
+}
+
+osStatus_t Freertos_SubmitLidarBlockFromISR(uint16_t offset, uint16_t length)
+{
+  LidarDmaBlockMsg_t msg;
+  osStatus_t status;
+
+  if ((g_lidarBlockQueue == NULL) || (length == 0U)) {
+    return osErrorResource;
+  }
+
+  msg.offset = offset;
+  msg.length = length;
+  msg.sequence = ++g_lidarBlockSequence;
+
+  status = osMessageQueuePut(g_lidarBlockQueue, &msg, 0U, 0U);
+  if (status == osOK) {
+    g_runtimeStats.lidar_dma_block_count++;
+  } else {
+    lidar_raw_overflow = 1U;
+    overflow_count++;
+    g_runtimeStats.lidar_dma_drop_count++;
+  }
+
+  return status;
+}
+
+void Freertos_ResetLidarPipeline(void)
+{
+  uint8_t idx;
+
+  memset(g_lidarScanBuf, 0, sizeof(g_lidarScanBuf));
+  g_lidarBlockSequence = 0U;
+  g_lidarScanSequence = 0U;
+
+  if (osKernelGetState() != osKernelRunning) {
+    return;
+  }
+
+  if (g_lidarBlockQueue != NULL) {
+    (void)osMessageQueueReset(g_lidarBlockQueue);
+  }
+
+  if (g_lidarResultQueue != NULL) {
+    (void)osMessageQueueReset(g_lidarResultQueue);
+  }
+
+  if (g_lidarFreeQueue != NULL) {
+    (void)osMessageQueueReset(g_lidarFreeQueue);
+    for (idx = 0U; idx < LIDAR_SCAN_BUFFER_COUNT; ++idx) {
+      (void)osMessageQueuePut(g_lidarFreeQueue, &idx, 0U, 0U);
+    }
+  }
 }
 
 void Freertos_GetRuntimeStatsSnapshot(FreertosRuntimeStats_t *stats)
@@ -304,73 +366,92 @@ void StartControlTask(void *argument)
 
 void StartLiDARParseTask(void *argument)
 {
+  const uint8_t *dma_rx_buffer = LIDAR_GetDmaRxBuffer();
+  LidarDmaBlockMsg_t block_msg;
   uint8_t write_idx = 0U;
+  uint16_t byte_idx;
 
   (void)argument;
+  memset(&block_msg, 0, sizeof(block_msg));
 
   (void)osMessageQueueGet(g_lidarFreeQueue, &write_idx, NULL, osWaitForever);
   g_lidarScanBuf[write_idx].point_count = 0U;
 
   for (;;) {
-    if (LIDAR_ParseStep(&g_lidarScanBuf[write_idx]) == LIDAR_SCAN_COMPLETE) {
-      g_runtimeStats.lidar_scan_complete_count++;
-      (void)osMessageQueuePut(g_lidarReadyQueue, &write_idx, 0U, osWaitForever);
-      (void)osMessageQueueGet(g_lidarFreeQueue, &write_idx, NULL, osWaitForever);
-      g_lidarScanBuf[write_idx].point_count = 0U;
+    if (osMessageQueueGet(g_lidarBlockQueue, &block_msg, NULL, osWaitForever) != osOK) {
+      continue;
     }
 
-    osDelay(1U);
+    if ((lidar_raw_stream_active == 0U) ||
+        (block_msg.length == 0U) ||
+        ((uint32_t)block_msg.offset + block_msg.length > LIDAR_DMA_RX_BUFFER_SIZE)) {
+      continue;
+    }
+
+    LIDAR_ConsumePendingPacket(&g_lidarScanBuf[write_idx]);
+
+    for (byte_idx = 0U; byte_idx < block_msg.length; ++byte_idx) {
+      if (LIDAR_ConsumeByte(dma_rx_buffer[block_msg.offset + byte_idx],
+                            &g_lidarScanBuf[write_idx]) == LIDAR_SCAN_COMPLETE) {
+        LidarScanMsg_t scan_msg;
+
+        g_runtimeStats.lidar_scan_complete_count++;
+        scan_msg.scan_index = write_idx;
+        scan_msg.point_count = g_lidarScanBuf[write_idx].point_count;
+        scan_msg.scan_sequence = ++g_lidarScanSequence;
+
+        (void)osMessageQueuePut(g_lidarResultQueue, &scan_msg, 0U, osWaitForever);
+        (void)osMessageQueueGet(g_lidarFreeQueue, &write_idx, NULL, osWaitForever);
+        g_lidarScanBuf[write_idx].point_count = 0U;
+        LIDAR_ConsumePendingPacket(&g_lidarScanBuf[write_idx]);
+      }
+    }
   }
 }
 
 void StartCommTask(void *argument)
 {
-  uint8_t ready_idx = 0U;
-  uint8_t ready_scan_owned = 0U;
-  CmdMsg_t cmd_msg;
+  LidarScanMsg_t scan_msg;
 
   (void)argument;
-  memset(&cmd_msg, 0, sizeof(cmd_msg));
+  memset(&scan_msg, 0, sizeof(scan_msg));
 
   for (;;) {
-    if ((ready_scan_owned == 0U) &&
-        (osMessageQueueGet(g_lidarReadyQueue, &ready_idx, NULL, 0U) == osOK)) {
-      ready_scan_owned = 1U;
+    HAL_StatusTypeDef tx_status;
+    uint8_t free_idx;
+
+    if (osMessageQueueGet(g_lidarResultQueue, &scan_msg, NULL, osWaitForever) != osOK) {
+      continue;
     }
 
-    if (ready_scan_owned != 0U) {
-      HAL_StatusTypeDef tx_status;
+    free_idx = scan_msg.scan_index;
+    tx_status = HAL_BUSY;
 
+    while (tx_status == HAL_BUSY) {
       if (g_odomMutex != NULL) {
         (void)osMutexAcquire(g_odomMutex, osWaitForever);
       }
 
-      tx_status = send_binary_packaged_data_from_buffer(&g_lidarScanBuf[ready_idx]);
+      tx_status = send_binary_packaged_data_from_buffer(&g_lidarScanBuf[free_idx]);
 
       if (g_odomMutex != NULL) {
         (void)osMutexRelease(g_odomMutex);
       }
 
-      if (tx_status == HAL_OK) {
-        g_runtimeStats.lidar_tx_count++;
-      } else if (tx_status == HAL_BUSY) {
+      if (tx_status == HAL_BUSY) {
         g_runtimeStats.lidar_tx_busy_count++;
-      } else {
-        g_runtimeStats.lidar_tx_error_count++;
-      }
-
-      if (tx_status != HAL_BUSY) {
-        g_lidarScanBuf[ready_idx].point_count = 0U;
-        (void)osMessageQueuePut(g_lidarFreeQueue, &ready_idx, 0U, osWaitForever);
-        ready_scan_owned = 0U;
+        osDelay(1U);
       }
     }
 
-    if (osMessageQueueGet(g_cmdQueue, &cmd_msg, NULL, 0U) == osOK) {
-      process_command(cmd_msg.data, cmd_msg.len);
+    if (tx_status == HAL_OK) {
+      g_runtimeStats.lidar_tx_count++;
+    } else {
+      g_runtimeStats.lidar_tx_error_count++;
     }
 
-    osDelay(1U);
+    g_lidarScanBuf[free_idx].point_count = 0U;
+    (void)osMessageQueuePut(g_lidarFreeQueue, &free_idx, 0U, osWaitForever);
   }
 }
 
@@ -381,7 +462,7 @@ void StartSafetyTask(void *argument)
   for (;;) {
     g_runtimeStats.free_heap_bytes = (uint32_t)xPortGetFreeHeapSize();
     g_runtimeStats.min_ever_free_heap_bytes = (uint32_t)xPortGetMinimumEverFreeHeapSize();
-    g_runtimeStats.lidar_raw_overflow_count = overflow_count;
+    g_runtimeStats.lidar_dma_drop_count = overflow_count;
     g_runtimeStats.default_task_stack_free_bytes =
         (uint32_t)uxTaskGetStackHighWaterMark(defaultTaskHandle) * sizeof(StackType_t);
     g_runtimeStats.control_task_stack_free_bytes =

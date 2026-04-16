@@ -14,11 +14,11 @@
 #define RPLIDAR_STANDARD_FRAME_SIZE      5
 #define RPLIDAR_EXPRESS_FRAME_SIZE       84
 #define MAX_LIDAR_POINTS_PER_SCAN        1000U
+#define LIDAR_DMA_RX_BUFFER_SIZE         4096U
+#define LIDAR_DMA_HALF_BUFFER_SIZE       (LIDAR_DMA_RX_BUFFER_SIZE / 2U)
 
 #define PROTOCOL_HEADER_1                0xA5
 #define PROTOCOL_HEADER_2                0x5A
-
-extern uint8_t rplidar_rx_byte;
 
 extern volatile uint8_t lidar_raw_stream_active;
 extern volatile uint8_t lidar_raw_overflow;
@@ -63,10 +63,11 @@ void Lidar_StopScan(void);
 
 void RPLIDAR_StartRaw(void);
 void RPLIDAR_StopRaw(void);
-void RPLIDAR_RawTask(void);
 
 void LIDAR_ResetScanState(void);
-LidarParseResult_t LIDAR_ParseStep(LidarScanBuffer_t *scan_buffer);
+LidarParseResult_t LIDAR_ConsumeByte(uint8_t byte, LidarScanBuffer_t *scan_buffer);
+void LIDAR_ConsumePendingPacket(LidarScanBuffer_t *scan_buffer);
+const uint8_t *LIDAR_GetDmaRxBuffer(void);
 HAL_StatusTypeDef send_binary_packaged_data_from_buffer(const LidarScanBuffer_t *scan_buffer);
 
 #endif

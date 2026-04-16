@@ -35,11 +35,11 @@ void Motor_Init(void)
  * @param  speed: 速度值 (0-100)
  * @retval None
  */
-void Motor_SetSpeed(uint8_t motor, uint8_t speed)
+void Motor_SetSpeed(uint8_t motor, uint16_t speed)
 {
     // 限制速度范围
-    if (speed > 10000)
-        speed = 10000;
+    if (speed > 10000U)
+        speed = 10000U;
     
     if (motor == MOTOR_LEFT)
     {
@@ -187,7 +187,7 @@ void Car_Forward(uint16_t speed)
  * @param  speed: 速度值 (0-100)
  * @retval None
  */
-void Car_Backward(uint8_t speed)
+void Car_Backward(uint16_t speed)
 {
 
 
@@ -200,7 +200,7 @@ void Car_Backward(uint8_t speed)
  * @param  speed: 速度值 (0-100)
  * @retval None
  */
-void Car_TurnLeft(uint8_t speed)
+void Car_TurnLeft(uint16_t speed)
 {
     Motor_Control(MOTOR_LEFT, MOTOR_STOP, 0); // 左电机前进
     Motor_Control(MOTOR_RIGHT, MOTOR_FORWARD, speed);  // 右电机停止
@@ -211,7 +211,7 @@ void Car_TurnLeft(uint8_t speed)
  * @param  speed: 速度值 (0-100)
  * @retval None
  */
-void Car_TurnRight(uint8_t speed)
+void Car_TurnRight(uint16_t speed)
 {
 
     // 修改为实际左转对应的电机控制

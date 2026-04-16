@@ -59,6 +59,7 @@ osMutexId_t g_pidMutex = NULL;
 osMutexId_t g_controlMutex = NULL;
 
 LidarScanBuffer_t g_lidarScanBuf[LIDAR_SCAN_BUFFER_COUNT];
+FreertosRuntimeStats_t g_runtimeStats;
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -128,6 +129,7 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
   memset(g_lidarScanBuf, 0, sizeof(g_lidarScanBuf));
+  memset(&g_runtimeStats, 0, sizeof(g_runtimeStats));
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -177,16 +179,24 @@ void MX_FREERTOS_Init(void) {
 
 osStatus_t Freertos_NotifyControlTickFromISR(void)
 {
+  osStatus_t status;
+
   if (g_controlTickSem == NULL) {
     return osErrorResource;
   }
 
-  return osSemaphoreRelease(g_controlTickSem);
+  status = osSemaphoreRelease(g_controlTickSem);
+  if (status == osErrorResource) {
+    g_runtimeStats.control_tick_overruns++;
+  }
+
+  return status;
 }
 
 osStatus_t Freertos_SubmitCommandFromISR(const uint8_t *data, uint16_t len)
 {
   CmdMsg_t msg;
+  osStatus_t status;
 
   if ((data == NULL) || (g_cmdQueue == NULL)) {
     return osErrorParameter;
@@ -200,7 +210,26 @@ osStatus_t Freertos_SubmitCommandFromISR(const uint8_t *data, uint16_t len)
   memcpy(msg.data, data, len);
   msg.len = len;
 
-  return osMessageQueuePut(g_cmdQueue, &msg, 0U, 0U);
+  status = osMessageQueuePut(g_cmdQueue, &msg, 0U, 0U);
+  if (status == osOK) {
+    g_runtimeStats.cmd_rx_count++;
+  } else {
+    g_runtimeStats.cmd_drop_count++;
+  }
+
+  return status;
+}
+
+void Freertos_GetRuntimeStatsSnapshot(FreertosRuntimeStats_t *stats)
+{
+  if (stats != NULL) {
+    *stats = g_runtimeStats;
+  }
+}
+
+void Freertos_RecordBluetoothTxWait(void)
+{
+  g_runtimeStats.bt_tx_wait_count++;
 }
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -265,6 +294,8 @@ void StartControlTask(void *argument)
     if (g_odomMutex != NULL) {
       (void)osMutexRelease(g_odomMutex);
     }
+
+    g_runtimeStats.control_cycles++;
   }
 }
 
@@ -279,6 +310,7 @@ void StartLiDARParseTask(void *argument)
 
   for (;;) {
     if (LIDAR_ParseStep(&g_lidarScanBuf[write_idx]) == LIDAR_SCAN_COMPLETE) {
+      g_runtimeStats.lidar_scan_complete_count++;
       (void)osMessageQueuePut(g_lidarReadyQueue, &write_idx, 0U, osWaitForever);
       (void)osMessageQueueGet(g_lidarFreeQueue, &write_idx, NULL, osWaitForever);
       g_lidarScanBuf[write_idx].point_count = 0U;
@@ -316,6 +348,14 @@ void StartCommTask(void *argument)
         (void)osMutexRelease(g_odomMutex);
       }
 
+      if (tx_status == HAL_OK) {
+        g_runtimeStats.lidar_tx_count++;
+      } else if (tx_status == HAL_BUSY) {
+        g_runtimeStats.lidar_tx_busy_count++;
+      } else {
+        g_runtimeStats.lidar_tx_error_count++;
+      }
+
       if (tx_status != HAL_BUSY) {
         g_lidarScanBuf[ready_idx].point_count = 0U;
         (void)osMessageQueuePut(g_lidarFreeQueue, &ready_idx, 0U, osWaitForever);
@@ -336,8 +376,19 @@ void StartSafetyTask(void *argument)
   (void)argument;
 
   for (;;) {
-    (void)uxTaskGetStackHighWaterMark(NULL);
-    (void)xPortGetFreeHeapSize();
+    g_runtimeStats.free_heap_bytes = (uint32_t)xPortGetFreeHeapSize();
+    g_runtimeStats.min_ever_free_heap_bytes = (uint32_t)xPortGetMinimumEverFreeHeapSize();
+    g_runtimeStats.lidar_raw_overflow_count = overflow_count;
+    g_runtimeStats.default_task_stack_free_bytes =
+        (uint32_t)uxTaskGetStackHighWaterMark(defaultTaskHandle) * sizeof(StackType_t);
+    g_runtimeStats.control_task_stack_free_bytes =
+        (uint32_t)uxTaskGetStackHighWaterMark(controlTaskHandle) * sizeof(StackType_t);
+    g_runtimeStats.lidar_task_stack_free_bytes =
+        (uint32_t)uxTaskGetStackHighWaterMark(lidarParseTaskHandle) * sizeof(StackType_t);
+    g_runtimeStats.comm_task_stack_free_bytes =
+        (uint32_t)uxTaskGetStackHighWaterMark(commTaskHandle) * sizeof(StackType_t);
+    g_runtimeStats.safety_task_stack_free_bytes =
+        (uint32_t)uxTaskGetStackHighWaterMark(safetyTaskHandle) * sizeof(StackType_t);
 
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
     osDelay(100U);

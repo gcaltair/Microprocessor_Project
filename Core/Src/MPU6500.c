@@ -112,8 +112,6 @@ void MPU6500_Read_Accel(AccelData *accel)
     int16_t ax_raw = (int16_t)(buf[0] << 8 | buf[1]); // X轴原始数据
     int16_t ay_raw = (int16_t)(buf[2] << 8 | buf[3]); // Y轴原始数据
     int16_t az_raw = (int16_t)(buf[4] << 8 | buf[5]); // Z轴原始数据
-
-    char str[64];
     // 转换为g单位（±2g时，16384 LSB/g）
     accel->ax = ax_raw / 16384.0f;
     accel->ay = ay_raw / 16384.0f;

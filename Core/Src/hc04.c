@@ -4,6 +4,7 @@
 #include "freertos_app.h"
 #include "localization_task.h"
 #include "mapping_task.h"
+#include "navigation_task.h"
 #include "system.h"
 
 #define CMD_FORWARD                 'F'
@@ -15,8 +16,13 @@
 #define PID_DEFAULT_TURN_SETPOINT   10.0f
 #define UART_PRINTF_BUFFER_SIZE     256
 #define UART5_TX_TIMEOUT_MS         1000U
-#define STATUS_STREAM_PERIOD_MS     1000U
+#define STATUS_STREAM_PERIOD_MS     500U
 #define STATUS_STREAM_MAP_DOWNSAMPLE 4U
+#define TELEMETRY_MAGIC_1           0xC3U
+#define TELEMETRY_MAGIC_2           0x3CU
+#define TELEMETRY_PROTOCOL_VERSION  1U
+#define TELEMETRY_MAX_PAYLOAD_SIZE  2102U
+#define TELEMETRY_MAX_FRAME_SIZE    2112U
 
 uint8_t buffer[100];
 uint8_t status_enable = 0U;
@@ -25,6 +31,30 @@ volatile float speed_magnitude = 0.25f;
 static volatile uint8_t g_bt_rx_rearm_pending = 0U;
 static char g_uart_printf_buffer[UART_PRINTF_BUFFER_SIZE];
 static char g_map_ascii_line_buffer[OGM_MAX_WIDTH_CELLS + 1U];
+static uint8_t g_telemetry_frame_buffer[TELEMETRY_MAX_FRAME_SIZE];
+static uint16_t g_telemetry_frame_sequence = 0U;
+
+static uint16_t telemetry_crc16_ccitt(const uint8_t *data, uint16_t length)
+{
+    uint16_t crc = 0xFFFFU;
+
+    if (data == NULL) {
+        return crc;
+    }
+
+    for (uint16_t idx = 0U; idx < length; ++idx) {
+        crc ^= (uint16_t)((uint16_t)data[idx] << 8);
+        for (uint8_t bit = 0U; bit < 8U; ++bit) {
+            if ((crc & 0x8000U) != 0U) {
+                crc = (uint16_t)((crc << 1) ^ 0x1021U);
+            } else {
+                crc <<= 1;
+            }
+        }
+    }
+
+    return crc;
+}
 
 static uint16_t normalize_command(uint8_t *cmd, uint16_t size)
 {
@@ -122,6 +152,77 @@ static void transmit_buffer(const uint8_t *message, uint16_t size)
     }
 }
 
+void HC04_SendTelemetryFrame(uint8_t frame_type, const uint8_t *payload, uint16_t payload_len)
+{
+    uint16_t crc;
+    uint16_t offset = 0U;
+
+    if (payload_len > TELEMETRY_MAX_PAYLOAD_SIZE) {
+        return;
+    }
+
+    if ((uint16_t)(payload_len + 10U) > TELEMETRY_MAX_FRAME_SIZE) {
+        return;
+    }
+
+    g_telemetry_frame_buffer[offset++] = TELEMETRY_MAGIC_1;
+    g_telemetry_frame_buffer[offset++] = TELEMETRY_MAGIC_2;
+    g_telemetry_frame_buffer[offset++] = TELEMETRY_PROTOCOL_VERSION;
+    g_telemetry_frame_buffer[offset++] = (uint8_t)frame_type;
+    g_telemetry_frame_buffer[offset++] = (uint8_t)(g_telemetry_frame_sequence & 0xFFU);
+    g_telemetry_frame_buffer[offset++] = (uint8_t)((g_telemetry_frame_sequence >> 8) & 0xFFU);
+    g_telemetry_frame_buffer[offset++] = (uint8_t)(payload_len & 0xFFU);
+    g_telemetry_frame_buffer[offset++] = (uint8_t)((payload_len >> 8) & 0xFFU);
+
+    if ((payload != NULL) && (payload_len > 0U)) {
+        (void)memcpy(&g_telemetry_frame_buffer[offset], payload, payload_len);
+        offset = (uint16_t)(offset + payload_len);
+    }
+
+    crc = telemetry_crc16_ccitt(g_telemetry_frame_buffer, offset);
+    g_telemetry_frame_buffer[offset++] = (uint8_t)(crc & 0xFFU);
+    g_telemetry_frame_buffer[offset++] = (uint8_t)((crc >> 8) & 0xFFU);
+    g_telemetry_frame_sequence++;
+
+    transmit_buffer(g_telemetry_frame_buffer, offset);
+}
+
+void HC04_RecordCommandAck(const uint8_t *cmd, uint16_t size, uint8_t ok, const char *detail)
+{
+    uint8_t payload[192];
+    uint16_t cmd_len = 0U;
+    uint16_t detail_len = 0U;
+    TelemetryFrameType_t frame_type = (ok != 0U) ? TELEMETRY_FRAME_ACK_V2 : TELEMETRY_FRAME_ERR_V2;
+
+    if (Freertos_GetTelemetryStreamingEnabled() == 0U) {
+        return;
+    }
+
+    if ((cmd != NULL) && (size > 0U)) {
+        cmd_len = (size > 48U) ? 48U : size;
+    }
+
+    if (detail != NULL) {
+        detail_len = (uint16_t)strlen(detail);
+        if (detail_len > 120U) {
+            detail_len = 120U;
+        }
+    }
+
+    payload[0] = ok;
+    payload[1] = (uint8_t)cmd_len;
+    payload[2] = (uint8_t)(detail_len & 0xFFU);
+    payload[3] = (uint8_t)((detail_len >> 8) & 0xFFU);
+    if (cmd_len > 0U) {
+        (void)memcpy(&payload[4], cmd, cmd_len);
+    }
+    if (detail_len > 0U) {
+        (void)memcpy(&payload[4 + cmd_len], detail, detail_len);
+    }
+
+    HC04_SendTelemetryFrame(frame_type, payload, (uint16_t)(4U + cmd_len + detail_len));
+}
+
 static const char *control_mode_to_string(ControlMode mode)
 {
     return (mode == CONTROL_MODE_POSITION) ? "POSITION" : "MANUAL";
@@ -135,6 +236,23 @@ static const char *move_state_to_string(RelativeMoveState state)
         case RELATIVE_MOVE_DRIVING:
             return "DRIVING";
         case RELATIVE_MOVE_IDLE:
+        default:
+            return "IDLE";
+    }
+}
+
+static const char *navigation_state_to_string(NavigationState_t state)
+{
+    switch (state) {
+        case NAVIGATION_STATE_ACTIVE:
+            return "ACTIVE";
+        case NAVIGATION_STATE_GOAL_REACHED:
+            return "REACHED";
+        case NAVIGATION_STATE_FAILED:
+            return "FAILED";
+        case NAVIGATION_STATE_CANCELLED:
+            return "CANCELLED";
+        case NAVIGATION_STATE_IDLE:
         default:
             return "IDLE";
     }
@@ -217,11 +335,13 @@ static void transmit_runtime_snapshot(void)
 {
     FreertosRuntimeStats_t stats;
     LocalizationTaskStats_t loc_stats;
+    NavigationTaskStats_t nav_stats;
     uint8_t lidar_binary_tx_enabled;
     uint8_t lidar_active;
 
     Freertos_GetRuntimeStatsSnapshot(&stats);
     LocalizationTask_GetStatsSnapshot(&loc_stats);
+    NavigationTask_GetStatsSnapshot(&nav_stats);
     lidar_binary_tx_enabled = Freertos_GetLidarBinaryTxEnabled();
     lidar_active = lidar_raw_stream_active;
     uart_printf("RTOS ctrl=%lu overrun=%lu cmd=%lu drop=%lu dma=%lu dma_drop=%lu scan=%lu tx=%lu busy=%lu err=%lu wait=%lu\r\n",
@@ -269,13 +389,25 @@ static void transmit_runtime_snapshot(void)
                 (double)(loc_stats.last_control_correction_delta.x_m * 1000.0f),
                 (double)(loc_stats.last_control_correction_delta.y_m * 1000.0f),
                 (double)loc_stats.last_control_correction_delta.theta_deg);
+    uart_printf("NAV state=%s goal=(%d,%d) step=%u/%u dist=%.2f plans=%lu done=%lu fail=%lu\r\n",
+                navigation_state_to_string(nav_stats.state),
+                nav_stats.goal_cell.x,
+                nav_stats.goal_cell.y,
+                (unsigned int)nav_stats.current_waypoint_index,
+                (unsigned int)nav_stats.path_length,
+                nav_stats.last_waypoint_distance_m,
+                (unsigned long)nav_stats.plan_count,
+                (unsigned long)nav_stats.completion_count,
+                (unsigned long)nav_stats.failure_count);
 }
 
 static void transmit_mapping_snapshot(void)
 {
     MappingTaskStats_t stats;
+    NavigationTaskStats_t nav_stats;
 
     MappingTask_GetStatsSnapshot(&stats);
+    NavigationTask_GetStatsSnapshot(&nav_stats);
     uart_printf("MAP init=%u inside=%u updates=%lu seq=%lu usable=%u written=%u cell=%d,%d pose=(%.3f,%.3f,%.2f)\r\n",
                 stats.grid_initialized,
                 stats.robot_inside_grid,
@@ -292,6 +424,12 @@ static void transmit_mapping_snapshot(void)
                 (unsigned int)stats.last_localization_mode,
                 (unsigned int)stats.last_localization_inliers,
                 (double)(stats.last_localization_fitness_m * 1000.0f));
+    uart_printf("MAP nav state=%s goal=(%d,%d) step=%u/%u\r\n",
+                navigation_state_to_string(nav_stats.state),
+                nav_stats.goal_cell.x,
+                nav_stats.goal_cell.y,
+                (unsigned int)nav_stats.current_waypoint_index,
+                (unsigned int)nav_stats.path_length);
 }
 
 static void transmit_live_map_snapshot(void)
@@ -374,11 +512,6 @@ static void transmit_mapping_ascii(uint8_t downsample)
     uint16_t height = 0U;
     uint16_t row;
 
-    if (lidar_raw_stream_active != 0U) {
-        transmit("Map dump unavailable while LIDAR is active. Send N first, then X.\r\n");
-        return;
-    }
-
     if (downsample == 0U) {
         downsample = 2U;
     }
@@ -429,39 +562,47 @@ void process_command(uint8_t *cmd, uint16_t size)
         case CMD_FORWARD:
             Control_SetManualCommand(speed_magnitude, 0.0f);
             transmit("Moving forward (PID)\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "manual-forward");
             break;
 
         case CMD_BACKWARD:
             Control_SetManualCommand(-speed_magnitude, 0.0f);
             transmit("Moving backward (PID)\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "manual-backward");
             break;
 
         case CMD_LEFT:
             Control_SetManualCommand(0.0f, -PID_DEFAULT_TURN_SETPOINT);
             transmit("Turning left (PID)\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "manual-left");
             break;
 
         case CMD_RIGHT:
             Control_SetManualCommand(0.0f, PID_DEFAULT_TURN_SETPOINT);
             transmit("Turning right (PID)\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "manual-right");
             break;
 
         case CMD_STOP:
             Control_StopCommand();
             transmit("Stopped (PID)\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "manual-stop");
             break;
 
         case 'N':
             transmit("Stopping lidar...\r\n");
             Freertos_SetLidarBinaryTxEnabled(0U);
+            Freertos_SetTelemetryScanStreamingEnabled(0U);
             RPLIDAR_StopRaw();
             transmit("Lidar Stopped\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "lidar-stop");
             break;
 
         case 'M':
             Freertos_SetLidarBinaryTxEnabled(0U);
             RPLIDAR_StartRaw();
             transmit("Lidar Started (mapping mode)\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "lidar-start");
             break;
 
         case 'H':
@@ -473,6 +614,9 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("A+angle: Set relative angle turn\r\n");
             transmit("V+speed: Set speed for manual mode\r\n");
             transmit("P{x},{y}: Set relative target point (e.g., P0.5,1.2)\r\n");
+            transmit("J: Show navigation status\r\n");
+            transmit("Jx,y: Navigate to map cell x,y\r\n");
+            transmit("C: Cancel active navigation\r\n");
             transmit("O: Show odometry snapshot\r\n");
             transmit("P: Show RTOS/runtime stats and scan quality\r\n");
             transmit("K: Show encoder calibration\r\n");
@@ -480,20 +624,27 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("M: Start LIDAR (mapping mode, no binary stream)\r\n");
             transmit("N: Stop LIDAR\r\n");
             transmit("T0/T1: Disable/enable binary LiDAR telemetry on Bluetooth\r\n");
+            transmit("Y0/Y1: Disable/enable structured telemetry frames\r\n");
+            transmit("Q0/Q1: Disable/enable structured scan telemetry frames\r\n");
+            transmit("B9600/B115200/B921600: Switch UART5 baud rate\r\n");
             transmit("U0/U1: Disable/enable 0.5 s live thumbnail map stream\r\n");
             transmit("H: Show This Help\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "help");
             break;
 
         case 'O':
             transmit_odometry_snapshot();
+            HC04_RecordCommandAck(cmd, size, 1U, "odometry");
             break;
 
         case 'P':
             transmit_runtime_snapshot();
+            HC04_RecordCommandAck(cmd, size, 1U, "runtime");
             break;
 
         case 'G':
             transmit_mapping_snapshot();
+            HC04_RecordCommandAck(cmd, size, 1U, "mapping");
             break;
 
         case 'K':
@@ -509,20 +660,50 @@ void process_command(uint8_t *cmd, uint16_t size)
                         left_reverse,
                         right_forward,
                         right_reverse);
+            HC04_RecordCommandAck(cmd, size, 1U, "encoder-calibration");
+            break;
+        }
+
+        case 'J':
+        {
+            NavigationTaskStats_t nav_stats;
+
+            NavigationTask_GetStatsSnapshot(&nav_stats);
+            uart_printf("NAV state=%s goal=(%d,%d) step=%u/%u dist=%.2f plans=%lu done=%lu fail=%lu\r\n",
+                        navigation_state_to_string(nav_stats.state),
+                        nav_stats.goal_cell.x,
+                        nav_stats.goal_cell.y,
+                        (unsigned int)nav_stats.current_waypoint_index,
+                        (unsigned int)nav_stats.path_length,
+                        nav_stats.last_waypoint_distance_m,
+                        (unsigned long)nav_stats.plan_count,
+                        (unsigned long)nav_stats.completion_count,
+                        (unsigned long)nav_stats.failure_count);
+            HC04_RecordCommandAck(cmd, size, 1U, "navigation-status");
             break;
         }
 
         case 'X':
             transmit_mapping_ascii(4U);
+            HC04_RecordCommandAck(cmd, size, 1U, "map-ascii");
             break;
 
         case 'Z':
             MappingTask_ResetGrid();
+            NavigationTask_Reset();
             transmit("Occupancy grid reset\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "grid-reset");
+            break;
+
+        case 'C':
+            NavigationTask_Cancel();
+            transmit("Navigation cancelled\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "navigation-cancel");
             break;
 
         default:
             transmit("Unknown command. Send 'H' for help\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "unknown-command");
             break;
     }
 }
@@ -588,6 +769,7 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
                 parsing_frac = 1;
             } else {
                 transmit("Invalid speed format. Use V+number (e.g., V5.25)\r\n");
+                HC04_RecordCommandAck(cmd, size, 0U, "invalid-speed-format");
                 return;
             }
         }
@@ -598,8 +780,10 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
             Control_SetBaseSpeed(speed_magnitude);
             (void)snprintf(reply, sizeof(reply), "base_car_speed is %.2f\r\n", speed_magnitude);
             transmit(reply);
+            HC04_RecordCommandAck(cmd, size, 1U, "speed-updated");
         } else {
             transmit("Invalid speed value. Use 0.00-10.00\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-speed-value");
         }
     } else if ((size >= 2U) && (cmd[0] == 'A')) {
         float sign = 1.0f;
@@ -626,6 +810,7 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
                 parsing_frac = 1;
             } else {
                 transmit("Invalid angle format. Use A+number (e.g., A-90.5)\r\n");
+                HC04_RecordCommandAck(cmd, size, 0U, "invalid-angle-format");
                 return;
             }
         }
@@ -635,8 +820,10 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
             Control_SetRelativeTurn(delta_angle);
             (void)snprintf(reply, sizeof(reply), "Relative turn %.2f degrees\r\n", delta_angle);
             transmit(reply);
+            HC04_RecordCommandAck(cmd, size, 1U, "relative-turn");
         } else {
             transmit("Invalid angle value. Use -360.0 to 360.0\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-angle-value");
         }
     } else if ((size > 2U) && (cmd[0] == 'K')) {
         float left_forward = 0.0f;
@@ -655,11 +842,14 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
                             left_reverse,
                             right_forward,
                             right_reverse);
+                HC04_RecordCommandAck(cmd, size, 1U, "encoder-calibration-updated");
             } else {
                 transmit("Invalid calibration values. Use positive numbers\r\n");
+                HC04_RecordCommandAck(cmd, size, 0U, "invalid-calibration-values");
             }
         } else {
             transmit("Invalid K format. Use Klf,lr,rf,rr\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-k-format");
         }
     } else if ((size > 2U) && (cmd[0] == 'P')) {
         float dx = 0.0f;
@@ -668,8 +858,26 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         if (sscanf((char *)cmd, "P%f,%f", &dx, &dy) == 2) {
             Start_Relative_Move(dx, dy);
             uart_printf("Relative move started to %f,%f\r\n", dx, dy);
+            HC04_RecordCommandAck(cmd, size, 1U, "relative-move");
         } else {
             transmit("Invalid format. Use P{dx},{dy}\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-p-format");
+        }
+    } else if ((size > 2U) && (cmd[0] == 'J')) {
+        int goal_x = 0;
+        int goal_y = 0;
+
+        if (sscanf((char *)cmd, "J%d,%d", &goal_x, &goal_y) == 2) {
+            if (NavigationTask_StartGoalCell((int16_t)goal_x, (int16_t)goal_y) != 0U) {
+                uart_printf("Navigation started to cell %d,%d\r\n", goal_x, goal_y);
+                HC04_RecordCommandAck(cmd, size, 1U, "navigation-started");
+            } else {
+                transmit("Navigation planning failed\r\n");
+                HC04_RecordCommandAck(cmd, size, 0U, "navigation-planning-failed");
+            }
+        } else {
+            transmit("Invalid J format. Use Jx,y\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-j-format");
         }
     } else if ((size >= 2U) && (cmd[0] == 'X')) {
         int downsample = 0;
@@ -677,32 +885,89 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         if (sscanf((char *)cmd, "X%d", &downsample) == 1) {
             if ((downsample >= 1) && (downsample <= 8)) {
                 transmit_mapping_ascii((uint8_t)downsample);
+                HC04_RecordCommandAck(cmd, size, 1U, "map-ascii");
             } else {
                 transmit("Invalid X value. Use X1..X8\r\n");
+                HC04_RecordCommandAck(cmd, size, 0U, "invalid-x-value");
             }
         } else {
             transmit("Invalid map format. Use X or X2\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-x-format");
         }
     } else if ((size >= 2U) && (cmd[0] == 'T')) {
         if ((cmd[1] == '0') && (size == 2U)) {
             Freertos_SetLidarBinaryTxEnabled(0U);
             transmit("Lidar binary telemetry disabled\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "lidar-binary-off");
         } else if ((cmd[1] == '1') && (size == 2U)) {
             Freertos_SetLidarBinaryTxEnabled(1U);
             transmit("Lidar binary telemetry enabled\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "lidar-binary-on");
         } else {
             transmit("Invalid T format. Use T0 or T1\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-t-format");
+        }
+    } else if ((size >= 2U) && (cmd[0] == 'Y')) {
+        if ((cmd[1] == '0') && (size == 2U)) {
+            HC04_RecordCommandAck(cmd, size, 1U, "telemetry-off");
+            Freertos_SetTelemetryStreamingEnabled(0U);
+            Freertos_SetTelemetryScanStreamingEnabled(0U);
+            transmit("Structured telemetry disabled\r\n");
+        } else if ((cmd[1] == '1') && (size == 2U)) {
+            Freertos_SetTelemetryStreamingEnabled(1U);
+            transmit("Structured telemetry enabled\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "telemetry-on");
+        } else {
+            transmit("Invalid Y format. Use Y0 or Y1\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-y-format");
+        }
+    } else if ((size >= 2U) && (cmd[0] == 'Q')) {
+        if ((cmd[1] == '0') && (size == 2U)) {
+            HC04_RecordCommandAck(cmd, size, 1U, "scan-telemetry-off");
+            Freertos_SetTelemetryScanStreamingEnabled(0U);
+            transmit("Structured scan telemetry disabled\r\n");
+        } else if ((cmd[1] == '1') && (size == 2U)) {
+            Freertos_SetTelemetryStreamingEnabled(1U);
+            Freertos_SetTelemetryScanStreamingEnabled(1U);
+            transmit("Structured scan telemetry enabled\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "scan-telemetry-on");
+        } else {
+            transmit("Invalid Q format. Use Q0 or Q1\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-q-format");
+        }
+    } else if ((size >= 2U) && (cmd[0] == 'B')) {
+        unsigned long baud_rate = 0UL;
+
+        if (sscanf((char *)cmd, "B%lu", &baud_rate) == 1) {
+            if ((baud_rate == 9600UL) || (baud_rate == 115200UL) || (baud_rate == 921600UL)) {
+                uart_printf("Switching UART5 baud to %lu\r\n", baud_rate);
+                HC04_RecordCommandAck(cmd, size, 1U, "baud-switch");
+                (void)UART5_ReconfigureBaudRate((uint32_t)baud_rate);
+                g_bt_rx_rearm_pending = 1U;
+            } else {
+                transmit("Invalid baud. Use B9600, B115200 or B921600\r\n");
+                HC04_RecordCommandAck(cmd, size, 0U, "invalid-baud-value");
+            }
+        } else {
+            transmit("Invalid baud format. Use B9600, B115200 or B921600\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-baud-format");
         }
     } else if ((size >= 2U) && (cmd[0] == 'U')) {
         if ((cmd[1] == '0') && (size == 2U)) {
             status_enable = 0U;
             transmit("Live map stream disabled\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "live-map-off");
         } else if ((cmd[1] == '1') && (size == 2U)) {
             status_enable = 1U;
             transmit("Live thumbnail map stream enabled (500 ms)\r\n");
+            HC04_RecordCommandAck(cmd, size, 1U, "live-map-on");
         } else {
             transmit("Invalid U format. Use U0 or U1\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-u-format");
         }
+    } else {
+        transmit("Unknown complex command. Send 'H' for help\r\n");
+        HC04_RecordCommandAck(cmd, size, 0U, "unknown-complex-command");
     }
 }
 

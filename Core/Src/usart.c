@@ -42,7 +42,7 @@ void MX_UART5_Init(void)
 
   /* USER CODE END UART5_Init 1 */
   huart5.Instance = UART5;
-  huart5.Init.BaudRate = 9600;
+  huart5.Init.BaudRate = 921600;
   huart5.Init.WordLength = UART_WORDLENGTH_8B;
   huart5.Init.StopBits = UART_STOPBITS_1;
   huart5.Init.Parity = UART_PARITY_NONE;
@@ -267,5 +267,25 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 }
 
 /* USER CODE BEGIN 1 */
+
+HAL_StatusTypeDef UART5_ReconfigureBaudRate(uint32_t baud_rate)
+{
+  HAL_StatusTypeDef status;
+
+  if (baud_rate == 0U)
+  {
+    return HAL_ERROR;
+  }
+
+  status = HAL_UART_DeInit(&huart5);
+  if (status != HAL_OK)
+  {
+    return status;
+  }
+
+  huart5.Init.BaudRate = baud_rate;
+  status = HAL_UART_Init(&huart5);
+  return status;
+}
 
 /* USER CODE END 1 */

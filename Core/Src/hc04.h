@@ -29,4 +29,6 @@ void process_complex_command(uint8_t *cmd, uint16_t size);
 
 void uart_printf(const char *format, ...);
 void HC04_ServiceStatusStream(void);
+void HC04_SendTelemetryFrame(uint8_t frame_type, const uint8_t *payload, uint16_t payload_len);
+void HC04_RecordCommandAck(const uint8_t *cmd, uint16_t size, uint8_t ok, const char *detail);
 #endif // HC04_H

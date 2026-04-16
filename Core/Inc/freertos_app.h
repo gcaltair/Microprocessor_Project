@@ -18,6 +18,16 @@ typedef enum {
     LOCALIZATION_MODE_ICP_REJECTED = 2
 } LocalizationMode_t;
 
+typedef enum {
+    TELEMETRY_FRAME_ACK_V2 = 1,
+    TELEMETRY_FRAME_ERR_V2 = 2,
+    TELEMETRY_FRAME_STATUS_V2 = 16,
+    TELEMETRY_FRAME_MAP_META_V2 = 17,
+    TELEMETRY_FRAME_MAP_DATA_V2 = 18,
+    TELEMETRY_FRAME_PATH_V2 = 19,
+    TELEMETRY_FRAME_SCAN_V2 = 20
+} TelemetryFrameType_t;
+
 typedef struct {
     uint16_t len;
     uint8_t data[CMD_MSG_BUFFER_SIZE];
@@ -107,5 +117,9 @@ void Freertos_GetRuntimeStatsSnapshot(FreertosRuntimeStats_t *stats);
 void Freertos_RecordBluetoothTxWait(void);
 void Freertos_SetLidarBinaryTxEnabled(uint8_t enabled);
 uint8_t Freertos_GetLidarBinaryTxEnabled(void);
+void Freertos_SetTelemetryStreamingEnabled(uint8_t enabled);
+uint8_t Freertos_GetTelemetryStreamingEnabled(void);
+void Freertos_SetTelemetryScanStreamingEnabled(uint8_t enabled);
+uint8_t Freertos_GetTelemetryScanStreamingEnabled(void);
 
 #endif /* FREERTOS_APP_H */

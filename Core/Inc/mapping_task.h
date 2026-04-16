@@ -20,10 +20,31 @@ typedef struct {
     SlamPose2D_t last_pose;
 } MappingTaskStats_t;
 
+typedef struct {
+    uint16_t width_cells;
+    uint16_t height_cells;
+    float resolution_m_per_cell;
+    float origin_x_m;
+    float origin_y_m;
+} MappingGridMeta_t;
+
 void StartMappingTask(void *argument);
 void MappingTask_ResetGrid(void);
 void MappingTask_GetStatsSnapshot(MappingTaskStats_t *stats);
 void MappingTask_GetRenderDimensions(uint8_t downsample, uint16_t *width, uint16_t *height);
 uint8_t MappingTask_RenderAsciiRow(uint16_t render_row, uint8_t downsample, char *buffer, uint16_t buffer_size);
+uint8_t MappingTask_GetGridMeta(MappingGridMeta_t *meta);
+uint8_t MappingTask_CopyGridCells(int8_t *cells_buffer, uint16_t buffer_len);
+uint8_t MappingTask_CopyGridRows(uint16_t row_offset,
+                                 uint16_t row_count,
+                                 int8_t *cells_buffer,
+                                 uint16_t buffer_len);
+uint8_t MappingTask_WorldToCell(float x_m, float y_m, SlamGridCoord_t *cell);
+uint8_t MappingTask_CellToWorld(const SlamGridCoord_t *cell, SlamWaypoint2D_t *waypoint);
+uint8_t MappingTask_PlanPath(const SlamGridCoord_t *start,
+                             const SlamGridCoord_t *goal,
+                             SlamGridCoord_t *path,
+                             uint16_t max_path_length,
+                             uint16_t *path_length);
 
 #endif /* MAPPING_TASK_H */

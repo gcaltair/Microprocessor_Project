@@ -31,6 +31,7 @@
 #include "hc04.h"
 #include "localization_task.h"
 #include "mapping_task.h"
+#include "navigation_task.h"
 #include "scan_preprocess.h"
 #include "system.h"
 #include "tim.h"
@@ -72,6 +73,8 @@ FreertosRuntimeStats_t g_runtimeStats;
 static uint32_t g_lidarBlockSequence = 0U;
 static uint32_t g_lidarScanSequence = 0U;
 static volatile uint8_t g_lidarBinaryTxEnabled = 0U;
+static volatile uint8_t g_telemetryStreamingEnabled = 0U;
+static volatile uint8_t g_telemetryScanStreamingEnabled = 0U;
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -148,6 +151,92 @@ const osMutexAttr_t controlMutex_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+
+#pragma pack(push, 1)
+typedef struct {
+  float x_m;
+  float y_m;
+  float theta_deg;
+} TelemetryPosePayload_t;
+
+typedef struct {
+  uint32_t timestamp_ms;
+  TelemetryPosePayload_t odom_pose;
+  TelemetryPosePayload_t estimated_pose;
+  TelemetryPosePayload_t control_pose;
+  uint8_t control_mode;
+  uint8_t move_state;
+  uint8_t localization_mode;
+  uint8_t navigation_state;
+  float base_speed_mps;
+  uint16_t nav_path_length;
+  uint16_t nav_current_waypoint_index;
+  int16_t nav_goal_x;
+  int16_t nav_goal_y;
+  float nav_last_waypoint_distance_m;
+  uint32_t control_cycles;
+  uint32_t cmd_rx_count;
+  uint32_t cmd_drop_count;
+  uint32_t lidar_scan_complete_count;
+  uint32_t lidar_dma_drop_count;
+  uint32_t free_heap_bytes;
+  uint32_t min_ever_free_heap_bytes;
+  uint16_t localization_inliers;
+  float localization_fitness_m;
+  uint8_t lidar_active;
+  uint8_t lidar_binary_enabled;
+  uint8_t telemetry_enabled;
+  uint8_t scan_stream_enabled;
+} TelemetryStatusPayload_t;
+
+typedef struct {
+  uint16_t width_cells;
+  uint16_t height_cells;
+  float resolution_m_per_cell;
+  float origin_x_m;
+  float origin_y_m;
+} TelemetryMapMetaPayload_t;
+
+typedef struct {
+  uint16_t width_cells;
+  uint16_t height_cells;
+  uint16_t row_offset;
+  uint16_t row_count;
+} TelemetryMapDataHeader_t;
+
+typedef struct {
+  uint8_t navigation_state;
+  uint8_t reserved;
+  uint16_t current_waypoint_index;
+  uint16_t path_length;
+  int16_t goal_x;
+  int16_t goal_y;
+  int16_t current_waypoint_x;
+  int16_t current_waypoint_y;
+  float last_waypoint_distance_m;
+} TelemetryPathHeader_t;
+
+typedef struct {
+  uint16_t angle_x100;
+  uint16_t distance_mm;
+} TelemetryScanPointPayload_t;
+
+typedef struct {
+  uint32_t scan_sequence;
+  TelemetryPosePayload_t pose_snapshot;
+  TelemetryPosePayload_t corrected_pose;
+  uint16_t point_count;
+} TelemetryScanHeader_t;
+#pragma pack(pop)
+
+#define TELEMETRY_SCAN_MAX_POINTS         128U
+
+static void telemetry_fill_pose(TelemetryPosePayload_t *payload, const SlamPose2D_t *pose);
+static void telemetry_send_status_frame(void);
+static void telemetry_send_map_frames(void);
+static void telemetry_send_path_frame(void);
+static void telemetry_send_scan_frame(const LidarScanMsg_t *scan_msg);
+static uint32_t telemetry_compose_nav_signature(const NavigationTaskStats_t *stats);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -350,6 +439,7 @@ void Freertos_ResetLidarPipeline(void)
 
   LocalizationTask_Reset();
   MappingTask_ResetGrid();
+  NavigationTask_Reset();
 }
 
 void Freertos_GetRuntimeStatsSnapshot(FreertosRuntimeStats_t *stats)
@@ -372,6 +462,256 @@ void Freertos_SetLidarBinaryTxEnabled(uint8_t enabled)
 uint8_t Freertos_GetLidarBinaryTxEnabled(void)
 {
   return g_lidarBinaryTxEnabled;
+}
+
+void Freertos_SetTelemetryStreamingEnabled(uint8_t enabled)
+{
+  g_telemetryStreamingEnabled = (enabled != 0U) ? 1U : 0U;
+  if (g_telemetryStreamingEnabled == 0U) {
+    g_telemetryScanStreamingEnabled = 0U;
+  }
+}
+
+uint8_t Freertos_GetTelemetryStreamingEnabled(void)
+{
+  return g_telemetryStreamingEnabled;
+}
+
+void Freertos_SetTelemetryScanStreamingEnabled(uint8_t enabled)
+{
+  g_telemetryScanStreamingEnabled = (enabled != 0U) ? 1U : 0U;
+  if (g_telemetryScanStreamingEnabled != 0U) {
+    g_telemetryStreamingEnabled = 1U;
+  }
+}
+
+uint8_t Freertos_GetTelemetryScanStreamingEnabled(void)
+{
+  return g_telemetryScanStreamingEnabled;
+}
+
+static void telemetry_fill_pose(TelemetryPosePayload_t *payload, const SlamPose2D_t *pose)
+{
+  if ((payload == NULL) || (pose == NULL)) {
+    return;
+  }
+
+  payload->x_m = pose->x_m;
+  payload->y_m = pose->y_m;
+  payload->theta_deg = pose->theta_deg;
+}
+
+static void telemetry_send_status_frame(void)
+{
+  TelemetryStatusPayload_t payload;
+  SlamPose2D_t odom_pose;
+  SlamPose2D_t estimated_pose;
+  SlamPose2D_t control_pose;
+  FreertosRuntimeStats_t runtime_stats;
+  LocalizationTaskStats_t localization_stats;
+  NavigationTaskStats_t navigation_stats;
+
+  (void)memset(&payload, 0, sizeof(payload));
+  (void)memset(&odom_pose, 0, sizeof(odom_pose));
+  (void)memset(&estimated_pose, 0, sizeof(estimated_pose));
+  (void)memset(&control_pose, 0, sizeof(control_pose));
+
+  if (g_odomMutex != NULL) {
+    (void)osMutexAcquire(g_odomMutex, osWaitForever);
+  }
+  Odometry_GetPoseSnapshot(&odom_pose);
+  if (g_odomMutex != NULL) {
+    (void)osMutexRelease(g_odomMutex);
+  }
+
+  LocalizationTask_GetEstimatedPoseSnapshot(&estimated_pose);
+  LocalizationTask_GetControlPoseSnapshot(&control_pose);
+  Freertos_GetRuntimeStatsSnapshot(&runtime_stats);
+  LocalizationTask_GetStatsSnapshot(&localization_stats);
+  NavigationTask_GetStatsSnapshot(&navigation_stats);
+
+  payload.timestamp_ms = HAL_GetTick();
+  telemetry_fill_pose(&payload.odom_pose, &odom_pose);
+  telemetry_fill_pose(&payload.estimated_pose, &estimated_pose);
+  telemetry_fill_pose(&payload.control_pose, &control_pose);
+  payload.control_mode = (uint8_t)g_control_mode;
+  payload.move_state = (uint8_t)g_relative_move_state;
+  payload.localization_mode = (uint8_t)localization_stats.last_mode;
+  payload.navigation_state = (uint8_t)navigation_stats.state;
+  payload.base_speed_mps = base_car_speed;
+  payload.nav_path_length = navigation_stats.path_length;
+  payload.nav_current_waypoint_index = navigation_stats.current_waypoint_index;
+  payload.nav_goal_x = navigation_stats.goal_cell.x;
+  payload.nav_goal_y = navigation_stats.goal_cell.y;
+  payload.nav_last_waypoint_distance_m = navigation_stats.last_waypoint_distance_m;
+  payload.control_cycles = runtime_stats.control_cycles;
+  payload.cmd_rx_count = runtime_stats.cmd_rx_count;
+  payload.cmd_drop_count = runtime_stats.cmd_drop_count;
+  payload.lidar_scan_complete_count = runtime_stats.lidar_scan_complete_count;
+  payload.lidar_dma_drop_count = runtime_stats.lidar_dma_drop_count;
+  payload.free_heap_bytes = runtime_stats.free_heap_bytes;
+  payload.min_ever_free_heap_bytes = runtime_stats.min_ever_free_heap_bytes;
+  payload.localization_inliers = localization_stats.last_inliers;
+  payload.localization_fitness_m = localization_stats.last_fitness_m;
+  payload.lidar_active = lidar_raw_stream_active;
+  payload.lidar_binary_enabled = g_lidarBinaryTxEnabled;
+  payload.telemetry_enabled = g_telemetryStreamingEnabled;
+  payload.scan_stream_enabled = g_telemetryScanStreamingEnabled;
+
+  HC04_SendTelemetryFrame(TELEMETRY_FRAME_STATUS_V2, (const uint8_t *)&payload, sizeof(payload));
+}
+
+static void telemetry_send_map_frames(void)
+{
+  MappingGridMeta_t meta;
+  uint16_t row_offset;
+
+  if (MappingTask_GetGridMeta(&meta) == 0U) {
+    return;
+  }
+
+  {
+    TelemetryMapMetaPayload_t meta_payload;
+
+    meta_payload.width_cells = meta.width_cells;
+    meta_payload.height_cells = meta.height_cells;
+    meta_payload.resolution_m_per_cell = meta.resolution_m_per_cell;
+    meta_payload.origin_x_m = meta.origin_x_m;
+    meta_payload.origin_y_m = meta.origin_y_m;
+    HC04_SendTelemetryFrame(TELEMETRY_FRAME_MAP_META_V2,
+                            (const uint8_t *)&meta_payload,
+                            sizeof(meta_payload));
+  }
+
+  for (row_offset = 0U; row_offset < meta.height_cells; row_offset = (uint16_t)(row_offset + 8U)) {
+    static uint8_t payload[sizeof(TelemetryMapDataHeader_t) + (8U * OGM_MAX_WIDTH_CELLS)];
+    TelemetryMapDataHeader_t header;
+    uint16_t row_count = 8U;
+    uint16_t cell_count;
+
+    if ((uint16_t)(row_offset + row_count) > meta.height_cells) {
+      row_count = (uint16_t)(meta.height_cells - row_offset);
+    }
+
+    header.width_cells = meta.width_cells;
+    header.height_cells = meta.height_cells;
+    header.row_offset = row_offset;
+    header.row_count = row_count;
+    cell_count = (uint16_t)(row_count * meta.width_cells);
+
+    if (MappingTask_CopyGridRows(row_offset,
+                                 row_count,
+                                 (int8_t *)&payload[sizeof(header)],
+                                 cell_count) == 0U) {
+      continue;
+    }
+
+    (void)memcpy(payload, &header, sizeof(header));
+    HC04_SendTelemetryFrame(TELEMETRY_FRAME_MAP_DATA_V2,
+                            payload,
+                            (uint16_t)(sizeof(header) + cell_count));
+  }
+}
+
+static void telemetry_send_path_frame(void)
+{
+  NavigationTaskStats_t navigation_stats;
+  static SlamGridCoord_t path_copy[64];
+  TelemetryPathHeader_t header;
+  uint16_t path_length = 0U;
+  static uint8_t payload[sizeof(TelemetryPathHeader_t) + sizeof(path_copy)];
+
+  NavigationTask_GetStatsSnapshot(&navigation_stats);
+  if (NavigationTask_CopyPath(path_copy, 64U, &path_length) == 0U) {
+    return;
+  }
+
+  header.navigation_state = (uint8_t)navigation_stats.state;
+  header.reserved = 0U;
+  header.current_waypoint_index = navigation_stats.current_waypoint_index;
+  header.path_length = path_length;
+  header.goal_x = navigation_stats.goal_cell.x;
+  header.goal_y = navigation_stats.goal_cell.y;
+  header.current_waypoint_x = navigation_stats.current_waypoint_cell.x;
+  header.current_waypoint_y = navigation_stats.current_waypoint_cell.y;
+  header.last_waypoint_distance_m = navigation_stats.last_waypoint_distance_m;
+
+  (void)memcpy(payload, &header, sizeof(header));
+  if (path_length > 0U) {
+    (void)memcpy(&payload[sizeof(header)],
+                 path_copy,
+                 path_length * sizeof(path_copy[0]));
+  }
+
+  HC04_SendTelemetryFrame(TELEMETRY_FRAME_PATH_V2,
+                          payload,
+                          (uint16_t)(sizeof(header) + path_length * sizeof(path_copy[0])));
+}
+
+static void telemetry_send_scan_frame(const LidarScanMsg_t *scan_msg)
+{
+  const LidarScanBuffer_t *scan_buffer;
+  TelemetryScanHeader_t header;
+  static uint8_t payload[sizeof(TelemetryScanHeader_t) +
+                         (TELEMETRY_SCAN_MAX_POINTS * sizeof(TelemetryScanPointPayload_t))];
+  uint16_t idx;
+  uint16_t step;
+  uint16_t out_count = 0U;
+
+  if ((scan_msg == NULL) || (scan_msg->scan_index >= LIDAR_SCAN_BUFFER_COUNT)) {
+    return;
+  }
+
+  scan_buffer = &g_lidarScanBuf[scan_msg->scan_index];
+  if (scan_buffer->point_count == 0U) {
+    return;
+  }
+
+  header.scan_sequence = scan_msg->scan_sequence;
+  telemetry_fill_pose(&header.pose_snapshot, &scan_msg->pose_snapshot);
+  telemetry_fill_pose(&header.corrected_pose, &scan_msg->corrected_pose);
+  step = (scan_buffer->point_count > TELEMETRY_SCAN_MAX_POINTS)
+         ? (uint16_t)((scan_buffer->point_count + TELEMETRY_SCAN_MAX_POINTS - 1U) / TELEMETRY_SCAN_MAX_POINTS)
+         : 1U;
+
+  (void)memcpy(payload, &header, sizeof(header));
+  for (idx = 0U; idx < scan_buffer->point_count; idx = (uint16_t)(idx + step)) {
+    TelemetryScanPointPayload_t point_payload;
+
+    point_payload.angle_x100 = (uint16_t)(scan_buffer->points[idx].angle_deg * 100.0f);
+    point_payload.distance_mm = (uint16_t)scan_buffer->points[idx].distance_mm;
+    (void)memcpy(&payload[sizeof(header) + out_count * sizeof(point_payload)],
+                 &point_payload,
+                 sizeof(point_payload));
+    out_count++;
+  }
+
+  header.point_count = out_count;
+  (void)memcpy(payload, &header, sizeof(header));
+
+  HC04_SendTelemetryFrame(TELEMETRY_FRAME_SCAN_V2,
+                          payload,
+                          (uint16_t)(sizeof(header) +
+                                     out_count * sizeof(TelemetryScanPointPayload_t)));
+}
+
+static uint32_t telemetry_compose_nav_signature(const NavigationTaskStats_t *stats)
+{
+  uint32_t signature;
+
+  if (stats == NULL) {
+    return 0U;
+  }
+
+  signature = ((uint32_t)stats->state & 0xFFU);
+  signature ^= ((uint32_t)stats->plan_count << 8);
+  signature ^= ((uint32_t)stats->completion_count << 12);
+  signature ^= ((uint32_t)stats->failure_count << 16);
+  signature ^= ((uint32_t)stats->path_length << 20);
+  signature ^= ((uint32_t)stats->current_waypoint_index << 24);
+  signature ^= (((uint32_t)(uint16_t)stats->goal_cell.x) << 3);
+  signature ^= (((uint32_t)(uint16_t)stats->goal_cell.y) << 11);
+  return signature;
 }
 
 void StartControlTask(void *argument)
@@ -495,53 +835,87 @@ void StartLiDARParseTask(void *argument)
 void StartCommTask(void *argument)
 {
   LidarScanMsg_t scan_msg;
+  uint32_t last_status_tick = 0U;
+  uint32_t last_map_tick = 0U;
+  uint32_t last_path_tick = 0U;
+  uint32_t last_nav_signature = 0U;
 
   (void)argument;
   memset(&scan_msg, 0, sizeof(scan_msg));
 
   for (;;) {
-    HAL_StatusTypeDef tx_status;
-    uint8_t free_idx;
+    HAL_StatusTypeDef tx_status = HAL_OK;
+    uint8_t have_scan_msg = 0U;
+    uint32_t now_tick;
+    NavigationTaskStats_t navigation_stats;
+    uint32_t nav_signature;
 
-    if (osMessageQueueGet(g_lidarTxQueue, &scan_msg, NULL, osWaitForever) != osOK) {
-      continue;
+    if (osMessageQueueGet(g_lidarTxQueue, &scan_msg, NULL, 20U) == osOK) {
+      have_scan_msg = 1U;
     }
 
-    free_idx = scan_msg.scan_index;
+    if (have_scan_msg != 0U) {
+      uint8_t free_idx = scan_msg.scan_index;
 
-    if (Freertos_GetLidarBinaryTxEnabled() == 0U) {
+      if (Freertos_GetLidarBinaryTxEnabled() != 0U) {
+        tx_status = HAL_BUSY;
+
+        while (tx_status == HAL_BUSY) {
+          if (g_odomMutex != NULL) {
+            (void)osMutexAcquire(g_odomMutex, osWaitForever);
+          }
+
+          tx_status = send_binary_packaged_data_from_buffer(&g_lidarScanBuf[free_idx]);
+
+          if (g_odomMutex != NULL) {
+            (void)osMutexRelease(g_odomMutex);
+          }
+
+          if (tx_status == HAL_BUSY) {
+            g_runtimeStats.lidar_tx_busy_count++;
+            osDelay(1U);
+          }
+        }
+
+        if (tx_status == HAL_OK) {
+          g_runtimeStats.lidar_tx_count++;
+        } else {
+          g_runtimeStats.lidar_tx_error_count++;
+        }
+      }
+
+      if (Freertos_GetTelemetryStreamingEnabled() != 0U &&
+          Freertos_GetTelemetryScanStreamingEnabled() != 0U) {
+        telemetry_send_scan_frame(&scan_msg);
+      }
+
       g_lidarScanBuf[free_idx].point_count = 0U;
       (void)osMessageQueuePut(g_lidarFreeQueue, &free_idx, 0U, osWaitForever);
+    }
+
+    if (Freertos_GetTelemetryStreamingEnabled() == 0U) {
       continue;
     }
 
-    tx_status = HAL_BUSY;
-
-    while (tx_status == HAL_BUSY) {
-      if (g_odomMutex != NULL) {
-        (void)osMutexAcquire(g_odomMutex, osWaitForever);
-      }
-
-      tx_status = send_binary_packaged_data_from_buffer(&g_lidarScanBuf[free_idx]);
-
-      if (g_odomMutex != NULL) {
-        (void)osMutexRelease(g_odomMutex);
-      }
-
-      if (tx_status == HAL_BUSY) {
-        g_runtimeStats.lidar_tx_busy_count++;
-        osDelay(1U);
-      }
+    now_tick = HAL_GetTick();
+    if ((now_tick - last_status_tick) >= 200U) {
+      telemetry_send_status_frame();
+      last_status_tick = now_tick;
     }
 
-    if (tx_status == HAL_OK) {
-      g_runtimeStats.lidar_tx_count++;
-    } else {
-      g_runtimeStats.lidar_tx_error_count++;
+    if ((now_tick - last_map_tick) >= 1000U) {
+      telemetry_send_map_frames();
+      last_map_tick = now_tick;
     }
 
-    g_lidarScanBuf[free_idx].point_count = 0U;
-    (void)osMessageQueuePut(g_lidarFreeQueue, &free_idx, 0U, osWaitForever);
+    NavigationTask_GetStatsSnapshot(&navigation_stats);
+    nav_signature = telemetry_compose_nav_signature(&navigation_stats);
+    if ((nav_signature != last_nav_signature) ||
+        ((now_tick - last_path_tick) >= 1000U)) {
+      telemetry_send_path_frame();
+      last_nav_signature = nav_signature;
+      last_path_tick = now_tick;
+    }
   }
 }
 
@@ -569,6 +943,7 @@ void StartSafetyTask(void *argument)
         (uint32_t)uxTaskGetStackHighWaterMark(safetyTaskHandle) * sizeof(StackType_t);
 
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    NavigationTask_Service();
     HC04_ServiceStatusStream();
     osDelay(100U);
   }

@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "freertos_app.h"
+#include "mapping_task.h"
 #include "system.h"
 
 #define CMD_FORWARD                 'F'
@@ -12,11 +13,15 @@
 #define CMD_SPEED                   'V'
 #define PID_DEFAULT_TURN_SETPOINT   10.0f
 #define UART_PRINTF_BUFFER_SIZE     256
+#define UART5_TX_TIMEOUT_MS         1000U
 
 uint8_t buffer[100];
 uint8_t status_enable = 0U;
 
 volatile float speed_magnitude = 1.0f;
+static volatile uint8_t g_bt_rx_rearm_pending = 0U;
+static char g_uart_printf_buffer[UART_PRINTF_BUFFER_SIZE];
+static char g_map_ascii_line_buffer[OGM_MAX_WIDTH_CELLS + 1U];
 
 static uint16_t normalize_command(uint8_t *cmd, uint16_t size)
 {
@@ -76,6 +81,42 @@ static HAL_StatusTypeDef wait_for_uart5_tx_ready(uint32_t timeout_ms)
     }
 
     return HAL_OK;
+}
+
+static HAL_StatusTypeDef start_uart5_rx_to_idle_dma(void)
+{
+    HAL_StatusTypeDef status;
+
+    status = HAL_UARTEx_ReceiveToIdle_DMA(&huart5, buffer, sizeof(buffer));
+    if (status == HAL_OK) {
+        __HAL_DMA_DISABLE_IT(huart5.hdmarx, DMA_IT_HT);
+        g_bt_rx_rearm_pending = 0U;
+    }
+
+    return status;
+}
+
+static void try_rearm_uart5_rx_dma(void)
+{
+    if (g_bt_rx_rearm_pending == 0U) {
+        return;
+    }
+
+    if (start_uart5_rx_to_idle_dma() != HAL_OK) {
+        g_bt_rx_rearm_pending = 1U;
+    }
+}
+
+static void transmit_buffer(const uint8_t *message, uint16_t size)
+{
+    if ((message == NULL) || (size == 0U)) {
+        return;
+    }
+
+    if (wait_for_uart5_tx_ready(200U) == HAL_OK) {
+        (void)HAL_UART_Transmit(&huart5, (uint8_t *)message, size, UART5_TX_TIMEOUT_MS);
+        try_rearm_uart5_rx_dma();
+    }
 }
 
 static const char *control_mode_to_string(ControlMode mode)
@@ -153,8 +194,12 @@ static void transmit_odometry_snapshot(void)
 static void transmit_runtime_snapshot(void)
 {
     FreertosRuntimeStats_t stats;
+    uint8_t lidar_binary_tx_enabled;
+    uint8_t lidar_active;
 
     Freertos_GetRuntimeStatsSnapshot(&stats);
+    lidar_binary_tx_enabled = Freertos_GetLidarBinaryTxEnabled();
+    lidar_active = lidar_raw_stream_active;
     uart_printf("RTOS ctrl=%lu overrun=%lu cmd=%lu drop=%lu dma=%lu dma_drop=%lu scan=%lu tx=%lu busy=%lu err=%lu wait=%lu\r\n",
                 (unsigned long)stats.control_cycles,
                 (unsigned long)stats.control_tick_overruns,
@@ -167,15 +212,82 @@ static void transmit_runtime_snapshot(void)
                 (unsigned long)stats.lidar_tx_busy_count,
                 (unsigned long)stats.lidar_tx_error_count,
                 (unsigned long)stats.bt_tx_wait_count);
+    uart_printf("LIDAR active=%u binary_tx=%u\r\n", lidar_active, lidar_binary_tx_enabled);
     uart_printf("HEAP free=%lu min=%lu\r\n",
                 (unsigned long)stats.free_heap_bytes,
                 (unsigned long)stats.min_ever_free_heap_bytes);
-    uart_printf("STACK freeB dft=%lu ctrl=%lu lidar=%lu comm=%lu safe=%lu\r\n",
+    uart_printf("STACK freeB dft=%lu ctrl=%lu lidar=%lu map=%lu comm=%lu safe=%lu\r\n",
                 (unsigned long)stats.default_task_stack_free_bytes,
                 (unsigned long)stats.control_task_stack_free_bytes,
                 (unsigned long)stats.lidar_task_stack_free_bytes,
+                (unsigned long)stats.mapping_task_stack_free_bytes,
                 (unsigned long)stats.comm_task_stack_free_bytes,
                 (unsigned long)stats.safety_task_stack_free_bytes);
+    uart_printf("SCAN raw=%u usable=%u rej_range=%u rej_quality=%u min_mm=%u max_mm=%u\r\n",
+                stats.last_scan_raw_point_count,
+                stats.last_scan_usable_point_count,
+                stats.last_scan_rejected_range_count,
+                stats.last_scan_rejected_quality_count,
+                stats.last_scan_min_distance_mm,
+                stats.last_scan_max_distance_mm);
+}
+
+static void transmit_mapping_snapshot(void)
+{
+    MappingTaskStats_t stats;
+
+    MappingTask_GetStatsSnapshot(&stats);
+    uart_printf("MAP init=%u inside=%u updates=%lu seq=%lu usable=%u written=%u cell=%d,%d pose=(%.3f,%.3f,%.2f)\r\n",
+                stats.grid_initialized,
+                stats.robot_inside_grid,
+                (unsigned long)stats.update_count,
+                (unsigned long)stats.last_scan_sequence,
+                stats.last_usable_points,
+                stats.last_endpoints_written,
+                stats.last_robot_cell.x,
+                stats.last_robot_cell.y,
+                stats.last_pose.x_m,
+                stats.last_pose.y_m,
+                stats.last_pose.theta_deg);
+}
+
+static void transmit_mapping_ascii(uint8_t downsample)
+{
+    uint16_t width = 0U;
+    uint16_t height = 0U;
+    uint16_t row;
+
+    if (lidar_raw_stream_active != 0U) {
+        transmit("Map dump unavailable while LIDAR is active. Send N first, then X.\r\n");
+        return;
+    }
+
+    if (downsample == 0U) {
+        downsample = 2U;
+    }
+
+    MappingTask_GetRenderDimensions(downsample, &width, &height);
+    uart_printf("MAP ASCII ds=%u size=%ux%u legend: # occupied, . free, space unknown, R robot\r\n",
+                downsample,
+                width,
+                height);
+
+    for (row = 0U; row < height; ++row) {
+        if (MappingTask_RenderAsciiRow(row,
+                                       downsample,
+                                       g_map_ascii_line_buffer,
+                                       sizeof(g_map_ascii_line_buffer)) == 0U) {
+            transmit("MAP render failed\r\n");
+            return;
+        }
+
+        uart_printf("|%s|\r\n", g_map_ascii_line_buffer);
+        if (osKernelGetState() == osKernelRunning) {
+            osDelay(1U);
+        }
+    }
+
+    transmit("MAP dump done\r\n");
 }
 
 void process_command(uint8_t *cmd, uint16_t size)
@@ -223,24 +335,32 @@ void process_command(uint8_t *cmd, uint16_t size)
             break;
 
         case 'N':
+            transmit("Stopping lidar...\r\n");
+            Freertos_SetLidarBinaryTxEnabled(0U);
             RPLIDAR_StopRaw();
             transmit("Lidar Stopped\r\n");
             break;
 
         case 'M':
+            Freertos_SetLidarBinaryTxEnabled(0U);
             RPLIDAR_StartRaw();
+            transmit("Lidar Started (mapping mode)\r\n");
             break;
 
         case 'H':
             transmit("\r\n--- Bluetooth PID Control ---\r\n");
             transmit("F/B/L/R/S: Manual Control\r\n");
+            transmit("G: Show mapping/grid snapshot\r\n");
+            transmit("X: Dump ASCII map (downsample 4)\r\n");
+            transmit("Z: Clear occupancy grid\r\n");
             transmit("A+angle: Set relative angle turn\r\n");
             transmit("V+speed: Set speed for manual mode\r\n");
             transmit("P{x},{y}: Set relative target point (e.g., P0.5,1.2)\r\n");
             transmit("O: Show odometry snapshot\r\n");
-            transmit("P: Show RTOS/runtime stats\r\n");
-            transmit("M: Start LIDAR\r\n");
+            transmit("P: Show RTOS/runtime stats and scan quality\r\n");
+            transmit("M: Start LIDAR (mapping mode, no binary stream)\r\n");
             transmit("N: Stop LIDAR\r\n");
+            transmit("T0/T1: Disable/enable binary LiDAR telemetry on Bluetooth\r\n");
             transmit("H: Show This Help\r\n");
             break;
 
@@ -250,6 +370,19 @@ void process_command(uint8_t *cmd, uint16_t size)
 
         case 'P':
             transmit_runtime_snapshot();
+            break;
+
+        case 'G':
+            transmit_mapping_snapshot();
+            break;
+
+        case 'X':
+            transmit_mapping_ascii(4U);
+            break;
+
+        case 'Z':
+            MappingTask_ResetGrid();
+            transmit("Occupancy grid reset\r\n");
             break;
 
         default:
@@ -265,14 +398,20 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
             (void)Freertos_SubmitCommandFromISR(buffer, size);
         }
 
-        (void)HAL_UARTEx_ReceiveToIdle_DMA(&huart5, buffer, sizeof(buffer));
-        __HAL_DMA_DISABLE_IT(huart->hdmarx, DMA_IT_HT);
+        if (HAL_UARTEx_ReceiveToIdle_DMA(&huart5, buffer, sizeof(buffer)) == HAL_OK) {
+            __HAL_DMA_DISABLE_IT(huart->hdmarx, DMA_IT_HT);
+            g_bt_rx_rearm_pending = 0U;
+        } else {
+            g_bt_rx_rearm_pending = 1U;
+        }
     }
 }
 
 void hc04_init(void)
 {
-    (void)HAL_UARTEx_ReceiveToIdle_DMA(&huart5, buffer, sizeof(buffer));
+    if (start_uart5_rx_to_idle_dma() != HAL_OK) {
+        g_bt_rx_rearm_pending = 1U;
+    }
     HAL_Delay(1000);
     transmit("Bluetooth Car Control Ready\r\n");
 }
@@ -280,18 +419,14 @@ void hc04_init(void)
 void transmit(char *message)
 {
     if (message != NULL) {
-        if (wait_for_uart5_tx_ready(100U) == HAL_OK) {
-            (void)HAL_UART_Transmit(&huart5, (uint8_t *)message, (uint16_t)strlen(message), 1000);
-        }
+        transmit_buffer((const uint8_t *)message, (uint16_t)strlen(message));
     }
 }
 
 void transmit_uint8(uint8_t *message, uint8_t size)
 {
     if ((message != NULL) && (size > 0U)) {
-        if (wait_for_uart5_tx_ready(100U) == HAL_OK) {
-            (void)HAL_UART_Transmit(&huart5, message, size, 1000);
-        }
+        transmit_buffer(message, size);
     }
 }
 
@@ -377,24 +512,47 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         } else {
             transmit("Invalid format. Use P{dx},{dy}\r\n");
         }
+    } else if ((size >= 2U) && (cmd[0] == 'X')) {
+        int downsample = 0;
+
+        if (sscanf((char *)cmd, "X%d", &downsample) == 1) {
+            if ((downsample >= 1) && (downsample <= 8)) {
+                transmit_mapping_ascii((uint8_t)downsample);
+            } else {
+                transmit("Invalid X value. Use X1..X8\r\n");
+            }
+        } else {
+            transmit("Invalid map format. Use X or X2\r\n");
+        }
     } else if ((size >= 2U) && (cmd[0] == 'T')) {
-        transmit("Auto-stop 'T' command is disabled.\r\n");
+        if ((cmd[1] == '0') && (size == 2U)) {
+            Freertos_SetLidarBinaryTxEnabled(0U);
+            transmit("Lidar binary telemetry disabled\r\n");
+        } else if ((cmd[1] == '1') && (size == 2U)) {
+            Freertos_SetLidarBinaryTxEnabled(1U);
+            transmit("Lidar binary telemetry enabled\r\n");
+        } else {
+            transmit("Invalid T format. Use T0 or T1\r\n");
+        }
     }
 }
 
 void uart_printf(const char *format, ...)
 {
-    char local_buffer[UART_PRINTF_BUFFER_SIZE];
     va_list args;
     int len;
 
     va_start(args, format);
-    len = vsnprintf(local_buffer, sizeof(local_buffer), format, args);
+    len = vsnprintf(g_uart_printf_buffer, sizeof(g_uart_printf_buffer), format, args);
     va_end(args);
 
-    if (len > 0) {
-        if (wait_for_uart5_tx_ready(100U) == HAL_OK) {
-            (void)HAL_UART_Transmit(&huart5, (uint8_t *)local_buffer, (uint16_t)len, HAL_MAX_DELAY);
-        }
+    if (len <= 0) {
+        return;
     }
+
+    if ((size_t)len >= sizeof(g_uart_printf_buffer)) {
+        len = (int)(sizeof(g_uart_printf_buffer) - 1U);
+    }
+
+    transmit_buffer((const uint8_t *)g_uart_printf_buffer, (uint16_t)len);
 }

@@ -28,6 +28,8 @@
 #include <string.h>
 
 #include "freertos_app.h"
+#include "mapping_task.h"
+#include "scan_preprocess.h"
 #include "system.h"
 #include "tim.h"
 /* USER CODE END Includes */
@@ -52,10 +54,12 @@
 osSemaphoreId_t g_controlTickSem = NULL;
 osMessageQueueId_t g_lidarBlockQueue = NULL;
 osMessageQueueId_t g_lidarResultQueue = NULL;
+osMessageQueueId_t g_lidarTxQueue = NULL;
 osMessageQueueId_t g_lidarFreeQueue = NULL;
 osMessageQueueId_t g_cmdQueue = NULL;
 
 osMutexId_t g_odomMutex = NULL;
+osMutexId_t g_gridMutex = NULL;
 osMutexId_t g_pidMutex = NULL;
 osMutexId_t g_controlMutex = NULL;
 
@@ -63,18 +67,20 @@ LidarScanBuffer_t g_lidarScanBuf[LIDAR_SCAN_BUFFER_COUNT];
 FreertosRuntimeStats_t g_runtimeStats;
 static uint32_t g_lidarBlockSequence = 0U;
 static uint32_t g_lidarScanSequence = 0U;
+static volatile uint8_t g_lidarBinaryTxEnabled = 0U;
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 1024,
-  .priority = (osPriority_t) osPriorityLow,
+  .stack_size = 4096,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 
 /* USER CODE BEGIN ThreadDefs */
 osThreadId_t controlTaskHandle;
 osThreadId_t lidarParseTaskHandle;
+osThreadId_t mappingTaskHandle;
 osThreadId_t commTaskHandle;
 osThreadId_t safetyTaskHandle;
 
@@ -87,7 +93,13 @@ const osThreadAttr_t controlTask_attributes = {
 const osThreadAttr_t lidarParseTask_attributes = {
   .name = "lidarParseTask",
   .stack_size = 1536,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityBelowNormal,
+};
+
+const osThreadAttr_t mappingTask_attributes = {
+  .name = "mappingTask",
+  .stack_size = 2048,
+  .priority = (osPriority_t) osPriorityLow,
 };
 
 const osThreadAttr_t commTask_attributes = {
@@ -104,6 +116,10 @@ const osThreadAttr_t safetyTask_attributes = {
 
 const osMutexAttr_t odomMutex_attributes = {
   .name = "odomMutex",
+};
+
+const osMutexAttr_t gridMutex_attributes = {
+  .name = "gridMutex",
 };
 
 const osMutexAttr_t pidMutex_attributes = {
@@ -137,6 +153,7 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_MUTEX */
   g_odomMutex = osMutexNew(&odomMutex_attributes);
+  g_gridMutex = osMutexNew(&gridMutex_attributes);
   g_pidMutex = osMutexNew(&pidMutex_attributes);
   g_controlMutex = osMutexNew(&controlMutex_attributes);
   /* USER CODE END RTOS_MUTEX */
@@ -151,6 +168,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_QUEUES */
   g_lidarBlockQueue = osMessageQueueNew(LIDAR_DMA_BLOCK_QUEUE_LENGTH, sizeof(LidarDmaBlockMsg_t), NULL);
   g_lidarResultQueue = osMessageQueueNew(LIDAR_SCAN_BUFFER_COUNT, sizeof(LidarScanMsg_t), NULL);
+  g_lidarTxQueue = osMessageQueueNew(LIDAR_SCAN_BUFFER_COUNT, sizeof(LidarScanMsg_t), NULL);
   g_lidarFreeQueue = osMessageQueueNew(LIDAR_SCAN_BUFFER_COUNT, sizeof(uint8_t), NULL);
   g_cmdQueue = osMessageQueueNew(8U, sizeof(CmdMsg_t), NULL);
 
@@ -168,6 +186,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_THREADS */
   controlTaskHandle = osThreadNew(StartControlTask, NULL, &controlTask_attributes);
   lidarParseTaskHandle = osThreadNew(StartLiDARParseTask, NULL, &lidarParseTask_attributes);
+  mappingTaskHandle = osThreadNew(StartMappingTask, NULL, &mappingTask_attributes);
   commTaskHandle = osThreadNew(StartCommTask, NULL, &commTask_attributes);
   safetyTaskHandle = osThreadNew(StartSafetyTask, NULL, &safetyTask_attributes);
 
@@ -296,12 +315,18 @@ void Freertos_ResetLidarPipeline(void)
     (void)osMessageQueueReset(g_lidarResultQueue);
   }
 
+  if (g_lidarTxQueue != NULL) {
+    (void)osMessageQueueReset(g_lidarTxQueue);
+  }
+
   if (g_lidarFreeQueue != NULL) {
     (void)osMessageQueueReset(g_lidarFreeQueue);
     for (idx = 0U; idx < LIDAR_SCAN_BUFFER_COUNT; ++idx) {
       (void)osMessageQueuePut(g_lidarFreeQueue, &idx, 0U, 0U);
     }
   }
+
+  MappingTask_ResetGrid();
 }
 
 void Freertos_GetRuntimeStatsSnapshot(FreertosRuntimeStats_t *stats)
@@ -314,6 +339,16 @@ void Freertos_GetRuntimeStatsSnapshot(FreertosRuntimeStats_t *stats)
 void Freertos_RecordBluetoothTxWait(void)
 {
   g_runtimeStats.bt_tx_wait_count++;
+}
+
+void Freertos_SetLidarBinaryTxEnabled(uint8_t enabled)
+{
+  g_lidarBinaryTxEnabled = (enabled != 0U) ? 1U : 0U;
+}
+
+uint8_t Freertos_GetLidarBinaryTxEnabled(void)
+{
+  return g_lidarBinaryTxEnabled;
 }
 
 void StartControlTask(void *argument)
@@ -399,6 +434,9 @@ void StartLiDARParseTask(void *argument)
         scan_msg.scan_index = write_idx;
         scan_msg.point_count = g_lidarScanBuf[write_idx].point_count;
         scan_msg.scan_sequence = ++g_lidarScanSequence;
+        ScanPreprocess_Analyze(g_lidarScanBuf[write_idx].points,
+                               g_lidarScanBuf[write_idx].point_count,
+                               &scan_msg.quality);
         if (g_odomMutex != NULL) {
           (void)osMutexAcquire(g_odomMutex, osWaitForever);
         }
@@ -406,6 +444,12 @@ void StartLiDARParseTask(void *argument)
         if (g_odomMutex != NULL) {
           (void)osMutexRelease(g_odomMutex);
         }
+        g_runtimeStats.last_scan_raw_point_count = scan_msg.quality.raw_point_count;
+        g_runtimeStats.last_scan_usable_point_count = scan_msg.quality.usable_point_count;
+        g_runtimeStats.last_scan_rejected_range_count = scan_msg.quality.rejected_range_count;
+        g_runtimeStats.last_scan_rejected_quality_count = scan_msg.quality.rejected_quality_count;
+        g_runtimeStats.last_scan_min_distance_mm = scan_msg.quality.min_distance_mm;
+        g_runtimeStats.last_scan_max_distance_mm = scan_msg.quality.max_distance_mm;
 
         (void)osMessageQueuePut(g_lidarResultQueue, &scan_msg, 0U, osWaitForever);
         (void)osMessageQueueGet(g_lidarFreeQueue, &write_idx, NULL, osWaitForever);
@@ -413,6 +457,8 @@ void StartLiDARParseTask(void *argument)
         LIDAR_ConsumePendingPacket(&g_lidarScanBuf[write_idx]);
       }
     }
+
+    osThreadYield();
   }
 }
 
@@ -427,11 +473,18 @@ void StartCommTask(void *argument)
     HAL_StatusTypeDef tx_status;
     uint8_t free_idx;
 
-    if (osMessageQueueGet(g_lidarResultQueue, &scan_msg, NULL, osWaitForever) != osOK) {
+    if (osMessageQueueGet(g_lidarTxQueue, &scan_msg, NULL, osWaitForever) != osOK) {
       continue;
     }
 
     free_idx = scan_msg.scan_index;
+
+    if (Freertos_GetLidarBinaryTxEnabled() == 0U) {
+      g_lidarScanBuf[free_idx].point_count = 0U;
+      (void)osMessageQueuePut(g_lidarFreeQueue, &free_idx, 0U, osWaitForever);
+      continue;
+    }
+
     tx_status = HAL_BUSY;
 
     while (tx_status == HAL_BUSY) {
@@ -476,6 +529,8 @@ void StartSafetyTask(void *argument)
         (uint32_t)uxTaskGetStackHighWaterMark(controlTaskHandle) * sizeof(StackType_t);
     g_runtimeStats.lidar_task_stack_free_bytes =
         (uint32_t)uxTaskGetStackHighWaterMark(lidarParseTaskHandle) * sizeof(StackType_t);
+    g_runtimeStats.mapping_task_stack_free_bytes =
+        (uint32_t)uxTaskGetStackHighWaterMark(mappingTaskHandle) * sizeof(StackType_t);
     g_runtimeStats.comm_task_stack_free_bytes =
         (uint32_t)uxTaskGetStackHighWaterMark(commTaskHandle) * sizeof(StackType_t);
     g_runtimeStats.safety_task_stack_free_bytes =

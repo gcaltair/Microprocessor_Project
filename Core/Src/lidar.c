@@ -22,6 +22,26 @@ static uint8_t packet_idx = 0U;
 static uint8_t pending_packet[RPLIDAR_STANDARD_FRAME_SIZE];
 static uint8_t pending_packet_valid = 0U;
 
+static void set_lidar_rx_irq_state(uint8_t enabled)
+{
+    if (enabled != 0U) {
+        HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
+    } else {
+        HAL_NVIC_DisableIRQ(DMA2_Stream1_IRQn);
+    }
+
+    HAL_NVIC_DisableIRQ(USART6_IRQn);
+}
+
+static void clear_lidar_uart_flags(void)
+{
+    __HAL_UART_CLEAR_PEFLAG(&huart6);
+    __HAL_UART_CLEAR_FEFLAG(&huart6);
+    __HAL_UART_CLEAR_NEFLAG(&huart6);
+    __HAL_UART_CLEAR_OREFLAG(&huart6);
+    __HAL_UART_CLEAR_IDLEFLAG(&huart6);
+}
+
 static uint8_t parse_packet_into_scan(const uint8_t *packet, LidarScanBuffer_t *scan_buffer)
 {
     uint16_t angle_q6;
@@ -81,8 +101,18 @@ static void queue_dma_half_from_isr(uint16_t offset)
 
 static HAL_StatusTypeDef start_lidar_dma_rx(void)
 {
+    set_lidar_rx_irq_state(0U);
     (void)HAL_UART_DMAStop(&huart6);
-    return HAL_UART_Receive_DMA(&huart6, lidar_dma_rx_buffer, LIDAR_DMA_RX_BUFFER_SIZE);
+    clear_lidar_uart_flags();
+    set_lidar_rx_irq_state(1U);
+    if (HAL_UART_Receive_DMA(&huart6, lidar_dma_rx_buffer, LIDAR_DMA_RX_BUFFER_SIZE) != HAL_OK) {
+        return HAL_ERROR;
+    }
+
+    __HAL_UART_DISABLE_IT(&huart6, UART_IT_PE);
+    __HAL_UART_DISABLE_IT(&huart6, UART_IT_ERR);
+    __HAL_UART_DISABLE_IT(&huart6, UART_IT_IDLE);
+    return HAL_OK;
 }
 
 void LIDAR_ResetScanState(void)
@@ -132,10 +162,11 @@ void RPLIDAR_StartRaw(void)
 void RPLIDAR_StopRaw(void)
 {
     lidar_raw_stream_active = 0U;
-    Lidar_StopScan();
+    set_lidar_rx_irq_state(0U);
     (void)HAL_UART_DMAStop(&huart6);
+    Lidar_StopScan();
+    clear_lidar_uart_flags();
     LIDAR_ResetScanState();
-    Freertos_ResetLidarPipeline();
 }
 
 void Lidar_StopScan(void)
@@ -266,4 +297,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     if (huart->Instance == USART6) {
         queue_dma_half_from_isr(LIDAR_DMA_HALF_BUFFER_SIZE);
     }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance != USART6) {
+        return;
+    }
+
+    clear_lidar_uart_flags();
 }

@@ -32,6 +32,7 @@ void Speed_Control_Loop(float dt);
 void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt);
 void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose);
 void Start_Relative_Move(float dx, float dy);
+void Control_SetManualDrive(float base_speed);
 
 void Control_SetManualCommand(float base_speed, float angle_setpoint);
 void Control_SetRelativeTurn(float delta_angle);

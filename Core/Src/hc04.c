@@ -582,13 +582,13 @@ void process_command(uint8_t *cmd, uint16_t size)
 
     switch (cmd[0]) {
         case CMD_FORWARD:
-            Control_SetManualCommand(speed_magnitude, 0.0f);
+            Control_SetManualDrive(speed_magnitude);
             transmit("Moving forward (PID)\r\n");
             HC04_RecordCommandAck(cmd, size, 1U, "manual-forward");
             break;
 
         case CMD_BACKWARD:
-            Control_SetManualCommand(-speed_magnitude, 0.0f);
+            Control_SetManualDrive(-speed_magnitude);
             transmit("Moving backward (PID)\r\n");
             HC04_RecordCommandAck(cmd, size, 1U, "manual-backward");
             break;

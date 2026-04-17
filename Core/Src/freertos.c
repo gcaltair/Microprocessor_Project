@@ -766,7 +766,7 @@ void StartControlTask(void *argument)
     if (g_control_mode == CONTROL_MODE_POSITION) {
       Update_Relative_Move_PID(dt, &control_pose);
     } else {
-      Angle_Speed_Cascade_Control(g_th_continuous, base_car_speed, dt);
+      Angle_Speed_Cascade_Control(control_pose.theta_deg, base_car_speed, dt);
     }
 
     if (g_pidMutex != NULL) {

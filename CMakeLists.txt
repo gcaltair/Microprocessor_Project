@@ -59,6 +59,8 @@ add_executable(${CMAKE_PROJECT_NAME}
         Core/Inc/mapping_task.h
         Core/Src/navigation_task.c
         Core/Inc/navigation_task.h
+        Core/Src/control_logic.c
+        Core/Inc/control_logic.h
 )
 
 # Add STM32CubeMX generated sources

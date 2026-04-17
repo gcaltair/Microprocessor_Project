@@ -65,6 +65,9 @@ void RPLIDAR_StartRaw(void);
 void RPLIDAR_StopRaw(void);
 
 void LIDAR_ResetScanState(void);
+void LIDAR_ResetParserState(void);
+uint32_t LIDAR_GetDmaBlockLag(uint32_t latest_sequence, uint32_t block_sequence);
+uint8_t LIDAR_IsDmaBlockStale(uint32_t latest_sequence, uint32_t block_sequence);
 LidarParseResult_t LIDAR_ConsumeByte(uint8_t byte, LidarScanBuffer_t *scan_buffer);
 void LIDAR_ConsumePendingPacket(LidarScanBuffer_t *scan_buffer);
 const uint8_t *LIDAR_GetDmaRxBuffer(void);

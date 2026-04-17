@@ -63,7 +63,10 @@ typedef struct {
     uint32_t cmd_drop_count;
     uint32_t lidar_dma_block_count;
     uint32_t lidar_dma_drop_count;
+    uint32_t lidar_dma_stale_block_count;
+    uint32_t lidar_dma_max_block_lag;
     uint32_t lidar_scan_complete_count;
+    uint32_t lidar_parser_resync_count;
     uint32_t lidar_tx_count;
     uint32_t lidar_tx_busy_count;
     uint32_t lidar_tx_error_count;

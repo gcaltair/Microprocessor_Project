@@ -42,6 +42,20 @@ static void clear_lidar_uart_flags(void)
     __HAL_UART_CLEAR_IDLEFLAG(&huart6);
 }
 
+uint32_t LIDAR_GetDmaBlockLag(uint32_t latest_sequence, uint32_t block_sequence)
+{
+    if ((latest_sequence == 0U) || (block_sequence == 0U) || (latest_sequence < block_sequence)) {
+        return 0U;
+    }
+
+    return latest_sequence - block_sequence;
+}
+
+uint8_t LIDAR_IsDmaBlockStale(uint32_t latest_sequence, uint32_t block_sequence)
+{
+    return (LIDAR_GetDmaBlockLag(latest_sequence, block_sequence) >= 2U) ? 1U : 0U;
+}
+
 static uint8_t parse_packet_into_scan(const uint8_t *packet, LidarScanBuffer_t *scan_buffer)
 {
     uint16_t angle_q6;
@@ -117,12 +131,17 @@ static HAL_StatusTypeDef start_lidar_dma_rx(void)
 
 void LIDAR_ResetScanState(void)
 {
+    lidar_raw_overflow = 0U;
+    LIDAR_ResetParserState();
+    memset(lidar_dma_rx_buffer, 0, sizeof(lidar_dma_rx_buffer));
+}
+
+void LIDAR_ResetParserState(void)
+{
     packet_idx = 0U;
     pending_packet_valid = 0U;
-    lidar_raw_overflow = 0U;
     memset(packet_buffer, 0, sizeof(packet_buffer));
     memset(pending_packet, 0, sizeof(pending_packet));
-    memset(lidar_dma_rx_buffer, 0, sizeof(lidar_dma_rx_buffer));
 }
 
 void RPLIDAR_Init(void)

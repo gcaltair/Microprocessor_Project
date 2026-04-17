@@ -70,7 +70,7 @@ osMutexId_t g_controlMutex = NULL;
 
 LidarScanBuffer_t g_lidarScanBuf[LIDAR_SCAN_BUFFER_COUNT];
 FreertosRuntimeStats_t g_runtimeStats;
-static uint32_t g_lidarBlockSequence = 0U;
+static volatile uint32_t g_lidarBlockSequence = 0U;
 static uint32_t g_lidarScanSequence = 0U;
 static volatile uint8_t g_lidarBinaryTxEnabled = 0U;
 static volatile uint8_t g_telemetryStreamingEnabled = 0U;
@@ -101,7 +101,7 @@ const osThreadAttr_t controlTask_attributes = {
 const osThreadAttr_t lidarParseTask_attributes = {
   .name = "lidarParseTask",
   .stack_size = 1536,
-  .priority = (osPriority_t) osPriorityBelowNormal,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 
 const osThreadAttr_t localizationTask_attributes = {
@@ -789,6 +789,8 @@ void StartLiDARParseTask(void *argument)
 {
   const uint8_t *dma_rx_buffer = LIDAR_GetDmaRxBuffer();
   LidarDmaBlockMsg_t block_msg;
+  uint32_t latest_block_sequence;
+  uint32_t block_lag;
   uint8_t write_idx = 0U;
   uint16_t byte_idx;
 
@@ -806,6 +808,20 @@ void StartLiDARParseTask(void *argument)
     if ((lidar_raw_stream_active == 0U) ||
         (block_msg.length == 0U) ||
         ((uint32_t)block_msg.offset + block_msg.length > LIDAR_DMA_RX_BUFFER_SIZE)) {
+      continue;
+    }
+
+    latest_block_sequence = g_lidarBlockSequence;
+    block_lag = LIDAR_GetDmaBlockLag(latest_block_sequence, block_msg.sequence);
+    if (block_lag > g_runtimeStats.lidar_dma_max_block_lag) {
+      g_runtimeStats.lidar_dma_max_block_lag = block_lag;
+    }
+
+    if (LIDAR_IsDmaBlockStale(latest_block_sequence, block_msg.sequence) != 0U) {
+      g_runtimeStats.lidar_dma_stale_block_count++;
+      g_runtimeStats.lidar_parser_resync_count++;
+      g_lidarScanBuf[write_idx].point_count = 0U;
+      LIDAR_ResetParserState();
       continue;
     }
 

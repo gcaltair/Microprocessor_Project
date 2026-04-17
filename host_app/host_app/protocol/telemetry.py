@@ -15,6 +15,11 @@ FRAME_TYPE_MAP_DATA_V2 = 18
 FRAME_TYPE_PATH_V2 = 19
 FRAME_TYPE_SCAN_V2 = 20
 
+MAP_SKIP_REASON_NONE = 0
+MAP_SKIP_REASON_TURNING = 1
+MAP_SKIP_REASON_SETTLE = 2
+MAP_SKIP_REASON_QUALITY = 3
+
 
 def crc16_ccitt(data: bytes) -> int:
     crc = 0xFFFF
@@ -118,7 +123,7 @@ class TelemetryStreamParser:
 
 
 def unpack_status_payload(payload: bytes) -> tuple:
-    return struct.unpack("<I9f4BfHHhhf7IHf4B", payload)
+    return struct.unpack("<I9f4BfHHhhf7IHf4B3I4B", payload)
 
 
 def unpack_map_meta_payload(payload: bytes) -> tuple:

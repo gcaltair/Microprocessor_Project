@@ -5,8 +5,8 @@
 #include "system.h"
 
 #define ANGLE_TOLERANCE_FOR_MOVING  3.0f
-#define TURN_OUTPUT_LIMIT_MOVING    0.12f
-#define TURN_OUTPUT_LIMIT_INPLACE   0.10f
+#define TURN_OUTPUT_LIMIT_MOVING    0.10f
+#define TURN_OUTPUT_LIMIT_INPLACE   0.08f
 
 volatile PID_Controller g_pid_speed_left;
 volatile PID_Controller g_pid_speed_right;

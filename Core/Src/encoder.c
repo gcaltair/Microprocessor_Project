@@ -121,11 +121,11 @@ void Odometry_Update(float dt)
     }
 
     if (g_th > 180.0f) {
-        g_th -= 180.0f;
+        g_th -= 360.0f;
     }
 
     if (g_th < -180.0f) {
-        g_th += 180.0f;
+        g_th += 360.0f;
     }
 
     g_x += ds * cosf((g_th + dth / 2.0f) * PI / 180.0f);

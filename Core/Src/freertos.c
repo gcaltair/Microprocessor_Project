@@ -183,6 +183,13 @@ typedef struct {
   uint32_t min_ever_free_heap_bytes;
   uint16_t localization_inliers;
   float localization_fitness_m;
+  uint8_t map_update_active;
+  uint8_t map_last_skip_reason;
+  uint8_t reserved0;
+  uint8_t reserved1;
+  uint32_t mapping_skipped_turning_count;
+  uint32_t mapping_skipped_settle_count;
+  uint32_t mapping_skipped_quality_count;
   uint8_t lidar_active;
   uint8_t lidar_binary_enabled;
   uint8_t telemetry_enabled;
@@ -510,6 +517,7 @@ static void telemetry_send_status_frame(void)
   FreertosRuntimeStats_t runtime_stats;
   LocalizationTaskStats_t localization_stats;
   NavigationTaskStats_t navigation_stats;
+  MappingTaskStats_t mapping_stats;
 
   (void)memset(&payload, 0, sizeof(payload));
   (void)memset(&odom_pose, 0, sizeof(odom_pose));
@@ -529,6 +537,7 @@ static void telemetry_send_status_frame(void)
   Freertos_GetRuntimeStatsSnapshot(&runtime_stats);
   LocalizationTask_GetStatsSnapshot(&localization_stats);
   NavigationTask_GetStatsSnapshot(&navigation_stats);
+  MappingTask_GetStatsSnapshot(&mapping_stats);
 
   payload.timestamp_ms = HAL_GetTick();
   telemetry_fill_pose(&payload.odom_pose, &odom_pose);
@@ -553,6 +562,13 @@ static void telemetry_send_status_frame(void)
   payload.min_ever_free_heap_bytes = runtime_stats.min_ever_free_heap_bytes;
   payload.localization_inliers = localization_stats.last_inliers;
   payload.localization_fitness_m = localization_stats.last_fitness_m;
+  payload.map_update_active = mapping_stats.map_update_active;
+  payload.map_last_skip_reason = mapping_stats.last_skip_reason;
+  payload.reserved0 = 0U;
+  payload.reserved1 = 0U;
+  payload.mapping_skipped_turning_count = mapping_stats.skipped_turning_count;
+  payload.mapping_skipped_settle_count = mapping_stats.skipped_settle_count;
+  payload.mapping_skipped_quality_count = mapping_stats.skipped_quality_count;
   payload.lidar_active = lidar_raw_stream_active;
   payload.lidar_binary_enabled = g_lidarBinaryTxEnabled;
   payload.telemetry_enabled = g_telemetryStreamingEnabled;

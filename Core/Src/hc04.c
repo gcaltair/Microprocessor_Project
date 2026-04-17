@@ -401,6 +401,21 @@ static void transmit_runtime_snapshot(void)
                 (unsigned long)nav_stats.failure_count);
 }
 
+static const char *mapping_skip_reason_to_string(uint8_t reason)
+{
+    switch ((MappingSkipReason_t)reason) {
+        case MAPPING_SKIP_REASON_TURNING:
+            return "paused(turning)";
+        case MAPPING_SKIP_REASON_SETTLE:
+            return "paused(settle)";
+        case MAPPING_SKIP_REASON_QUALITY:
+            return "paused(quality)";
+        case MAPPING_SKIP_REASON_NONE:
+        default:
+            return "active";
+    }
+}
+
 static void transmit_mapping_snapshot(void)
 {
     MappingTaskStats_t stats;
@@ -424,6 +439,13 @@ static void transmit_mapping_snapshot(void)
                 (unsigned int)stats.last_localization_mode,
                 (unsigned int)stats.last_localization_inliers,
                 (double)(stats.last_localization_fitness_m * 1000.0f));
+    uart_printf("MAP gate=%s dxy_mm=%.1f dth=%.2f skip turn=%lu settle=%lu quality=%lu\r\n",
+                mapping_skip_reason_to_string(stats.last_skip_reason),
+                (double)(stats.last_odom_delta_translation_m * 1000.0f),
+                (double)stats.last_odom_delta_theta_deg,
+                (unsigned long)stats.skipped_turning_count,
+                (unsigned long)stats.skipped_settle_count,
+                (unsigned long)stats.skipped_quality_count);
     uart_printf("MAP nav state=%s goal=(%d,%d) step=%u/%u\r\n",
                 navigation_state_to_string(nav_stats.state),
                 nav_stats.goal_cell.x,

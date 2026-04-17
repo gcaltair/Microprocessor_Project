@@ -185,7 +185,8 @@ static void mapping_task_unlock_grid(void)
 static void mapping_task_update_stats(const LidarScanMsg_t *scan_msg,
                                       uint8_t robot_inside_grid,
                                       const SlamGridCoord_t *robot_cell,
-                                      uint16_t endpoints_written)
+                                      uint16_t endpoints_written,
+                                      MappingSkipReason_t skip_reason)
 {
     if (scan_msg == NULL) {
         return;
@@ -193,6 +194,8 @@ static void mapping_task_update_stats(const LidarScanMsg_t *scan_msg,
 
     g_mappingStats.grid_initialized = g_mappingGrid.initialized;
     g_mappingStats.robot_inside_grid = robot_inside_grid;
+    g_mappingStats.map_update_active = (skip_reason == MAPPING_SKIP_REASON_NONE) ? 1U : 0U;
+    g_mappingStats.last_skip_reason = (uint8_t)skip_reason;
     g_mappingStats.update_count++;
     g_mappingStats.last_scan_sequence = scan_msg->scan_sequence;
     g_mappingStats.last_usable_points = scan_msg->quality.usable_point_count;
@@ -200,7 +203,17 @@ static void mapping_task_update_stats(const LidarScanMsg_t *scan_msg,
     g_mappingStats.last_localization_mode = (LocalizationMode_t)scan_msg->localization_mode;
     g_mappingStats.last_localization_inliers = scan_msg->localization_inliers;
     g_mappingStats.last_localization_fitness_m = scan_msg->localization_fitness_m;
+    g_mappingStats.last_odom_delta_theta_deg = scan_msg->odom_delta_theta_deg;
+    g_mappingStats.last_odom_delta_translation_m = scan_msg->odom_delta_translation_m;
     g_mappingStats.last_pose = scan_msg->corrected_pose;
+
+    if (skip_reason == MAPPING_SKIP_REASON_TURNING) {
+        g_mappingStats.skipped_turning_count++;
+    } else if (skip_reason == MAPPING_SKIP_REASON_SETTLE) {
+        g_mappingStats.skipped_settle_count++;
+    } else if (skip_reason == MAPPING_SKIP_REASON_QUALITY) {
+        g_mappingStats.skipped_quality_count++;
+    }
 
     if (robot_cell != NULL) {
         g_mappingStats.last_robot_cell = *robot_cell;
@@ -230,7 +243,21 @@ static void mapping_task_update_grid_from_scan(const LidarScanMsg_t *scan_msg)
                                                   scan_msg->corrected_pose.y_m,
                                                   &robot_cell);
     if (robot_inside_grid == 0U) {
-        mapping_task_update_stats(scan_msg, 0U, NULL, 0U);
+        mapping_task_update_stats(scan_msg,
+                                  0U,
+                                  NULL,
+                                  0U,
+                                  (MappingSkipReason_t)scan_msg->map_skip_reason);
+        mapping_task_unlock_grid();
+        return;
+    }
+
+    if (scan_msg->map_update_allowed == 0U) {
+        mapping_task_update_stats(scan_msg,
+                                  1U,
+                                  &robot_cell,
+                                  0U,
+                                  (MappingSkipReason_t)scan_msg->map_skip_reason);
         mapping_task_unlock_grid();
         return;
     }
@@ -261,7 +288,11 @@ static void mapping_task_update_grid_from_scan(const LidarScanMsg_t *scan_msg)
         endpoints_written++;
     }
 
-    mapping_task_update_stats(scan_msg, 1U, &robot_cell, endpoints_written);
+    mapping_task_update_stats(scan_msg,
+                              1U,
+                              &robot_cell,
+                              endpoints_written,
+                              MAPPING_SKIP_REASON_NONE);
     mapping_task_unlock_grid();
 }
 

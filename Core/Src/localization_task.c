@@ -19,6 +19,10 @@
 #define LOCALIZATION_CONTROL_MAX_STEP_XY_M      0.004f
 #define LOCALIZATION_CONTROL_MAX_STEP_THETA_DEG 0.35f
 #define LOCALIZATION_CONTROL_MIN_WHEEL_SPEED_MPS 0.02f
+#define LOCALIZATION_MAP_MAX_ODOM_DELTA_XY_M    0.035f
+#define LOCALIZATION_MAP_MAX_ODOM_DELTA_THETA_DEG 4.0f
+#define LOCALIZATION_MAP_MIN_USABLE_POINTS      24U
+#define LOCALIZATION_MAP_SETTLE_MS              200U
 #define LOCALIZATION_DEG_TO_RAD                 0.01745329251994329577f
 #define LOCALIZATION_RAD_TO_DEG                 57.2957795130823208768f
 
@@ -47,7 +51,11 @@ static LocalizationTaskStats_t g_localizationStats;
 static SlamPose2D_t g_estimatedPose;
 static SlamPose2D_t g_controlPose;
 static SlamPose2D_t g_lastOdomPose;
+static SlamPose2D_t g_lastScanOdomPose;
 static uint8_t g_estimatedPoseInitialized = 0U;
+static uint8_t g_lastScanOdomPoseValid = 0U;
+static RelativeMoveState g_lastMoveState = RELATIVE_MOVE_IDLE;
+static uint32_t g_mapSettleUntilMs = 0U;
 static LocalizationPoint_t g_sourcePoints[LOCALIZATION_MAX_SAMPLE_POINTS];
 static LocalizationPoint_t g_workingPoints[LOCALIZATION_MAX_SAMPLE_POINTS];
 static LocalizationPoint_t g_corrSource[LOCALIZATION_MAX_SAMPLE_POINTS];
@@ -484,6 +492,65 @@ static void localization_store_reference(const LidarScanMsg_t *scan_msg, const S
     localization_unlock();
 }
 
+static void localization_update_mapping_gate(LidarScanMsg_t *scan_msg)
+{
+    float odom_delta_x_m = 0.0f;
+    float odom_delta_y_m = 0.0f;
+    float odom_delta_translation_m = 0.0f;
+    float odom_delta_theta_deg = 0.0f;
+    uint8_t turning_detected;
+    uint8_t settle_active = 0U;
+    uint32_t now_ms;
+    MappingSkipReason_t skip_reason = MAPPING_SKIP_REASON_NONE;
+
+    if (scan_msg == NULL) {
+        return;
+    }
+
+    turning_detected = (g_relative_move_state == RELATIVE_MOVE_TURNING) ? 1U : 0U;
+    now_ms = HAL_GetTick();
+
+    if (g_lastScanOdomPoseValid != 0U) {
+        odom_delta_x_m = scan_msg->pose_snapshot.x_m - g_lastScanOdomPose.x_m;
+        odom_delta_y_m = scan_msg->pose_snapshot.y_m - g_lastScanOdomPose.y_m;
+        odom_delta_translation_m = sqrtf((odom_delta_x_m * odom_delta_x_m) +
+                                         (odom_delta_y_m * odom_delta_y_m));
+        odom_delta_theta_deg = fabsf(localization_wrap_angle_deg(scan_msg->pose_snapshot.theta_deg -
+                                                                 g_lastScanOdomPose.theta_deg));
+    }
+
+    if ((g_lastMoveState == RELATIVE_MOVE_TURNING) && (turning_detected == 0U)) {
+        g_mapSettleUntilMs = now_ms + LOCALIZATION_MAP_SETTLE_MS;
+    }
+
+    if ((turning_detected == 0U) && ((int32_t)(g_mapSettleUntilMs - now_ms) > 0)) {
+        settle_active = 1U;
+    }
+
+    if (turning_detected != 0U) {
+        skip_reason = MAPPING_SKIP_REASON_TURNING;
+    } else if (settle_active != 0U) {
+        skip_reason = MAPPING_SKIP_REASON_SETTLE;
+    } else if ((odom_delta_translation_m > LOCALIZATION_MAP_MAX_ODOM_DELTA_XY_M) ||
+               (odom_delta_theta_deg > LOCALIZATION_MAP_MAX_ODOM_DELTA_THETA_DEG) ||
+               (scan_msg->quality.usable_point_count < LOCALIZATION_MAP_MIN_USABLE_POINTS) ||
+               ((scan_msg->localization_mode == LOCALIZATION_MODE_ICP_ACCEPTED) &&
+                ((scan_msg->localization_inliers < LOCALIZATION_MIN_INLIERS) ||
+                 (scan_msg->localization_fitness_m > LOCALIZATION_MAX_ACCEPT_FITNESS_M)))) {
+        skip_reason = MAPPING_SKIP_REASON_QUALITY;
+    }
+
+    scan_msg->turning_detected = turning_detected;
+    scan_msg->odom_delta_theta_deg = odom_delta_theta_deg;
+    scan_msg->odom_delta_translation_m = odom_delta_translation_m;
+    scan_msg->map_skip_reason = (uint8_t)skip_reason;
+    scan_msg->map_update_allowed = (skip_reason == MAPPING_SKIP_REASON_NONE) ? 1U : 0U;
+
+    g_lastMoveState = g_relative_move_state;
+    g_lastScanOdomPose = scan_msg->pose_snapshot;
+    g_lastScanOdomPoseValid = 1U;
+}
+
 void LocalizationTask_UpdatePredictedPose(const SlamPose2D_t *odom_pose)
 {
     float odom_delta_x_m;
@@ -618,6 +685,11 @@ void StartLocalizationTask(void *argument)
         scan_msg.localization_mode = LOCALIZATION_MODE_ODOMETRY_ONLY;
         scan_msg.localization_inliers = 0U;
         scan_msg.localization_fitness_m = 0.0f;
+        scan_msg.map_update_allowed = 1U;
+        scan_msg.turning_detected = 0U;
+        scan_msg.map_skip_reason = (uint8_t)MAPPING_SKIP_REASON_NONE;
+        scan_msg.odom_delta_theta_deg = 0.0f;
+        scan_msg.odom_delta_translation_m = 0.0f;
         (void)memset(&icp_result, 0, sizeof(icp_result));
 
         localization_run_icp(&scan_msg, &icp_result);
@@ -654,6 +726,7 @@ void StartLocalizationTask(void *argument)
         g_lastOdomPose = scan_msg.pose_snapshot;
         localization_unlock();
 
+        localization_update_mapping_gate(&scan_msg);
         localization_store_reference(&scan_msg, &scan_msg.corrected_pose);
         localization_update_stats(&scan_msg, &icp_result);
 
@@ -675,7 +748,11 @@ void LocalizationTask_Reset(void)
     (void)memset(&g_estimatedPose, 0, sizeof(g_estimatedPose));
     (void)memset(&g_controlPose, 0, sizeof(g_controlPose));
     (void)memset(&g_lastOdomPose, 0, sizeof(g_lastOdomPose));
+    (void)memset(&g_lastScanOdomPose, 0, sizeof(g_lastScanOdomPose));
     g_estimatedPoseInitialized = 0U;
+    g_lastScanOdomPoseValid = 0U;
+    g_lastMoveState = RELATIVE_MOVE_IDLE;
+    g_mapSettleUntilMs = 0U;
     localization_unlock();
 }
 

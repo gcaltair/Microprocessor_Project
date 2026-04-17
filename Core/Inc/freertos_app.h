@@ -49,6 +49,11 @@ typedef struct {
     float localization_fitness_m;
     uint16_t localization_inliers;
     uint8_t localization_mode;
+    uint8_t map_update_allowed;
+    uint8_t turning_detected;
+    uint8_t map_skip_reason;
+    float odom_delta_theta_deg;
+    float odom_delta_translation_m;
 } LidarScanMsg_t;
 
 typedef struct {

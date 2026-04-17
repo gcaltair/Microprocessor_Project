@@ -6,16 +6,30 @@
 #include "occupancy_grid.h"
 #include "slam_types.h"
 
+typedef enum {
+    MAPPING_SKIP_REASON_NONE = 0,
+    MAPPING_SKIP_REASON_TURNING = 1,
+    MAPPING_SKIP_REASON_SETTLE = 2,
+    MAPPING_SKIP_REASON_QUALITY = 3
+} MappingSkipReason_t;
+
 typedef struct {
     uint8_t grid_initialized;
     uint8_t robot_inside_grid;
+    uint8_t map_update_active;
+    uint8_t last_skip_reason;
     uint32_t update_count;
     uint32_t last_scan_sequence;
     uint16_t last_usable_points;
     uint16_t last_endpoints_written;
     uint8_t last_localization_mode;
     uint16_t last_localization_inliers;
+    uint32_t skipped_turning_count;
+    uint32_t skipped_settle_count;
+    uint32_t skipped_quality_count;
     float last_localization_fitness_m;
+    float last_odom_delta_theta_deg;
+    float last_odom_delta_translation_m;
     SlamGridCoord_t last_robot_cell;
     SlamPose2D_t last_pose;
 } MappingTaskStats_t;

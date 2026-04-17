@@ -29,6 +29,11 @@ class RuntimeStats:
     localization_mode: int = 0
     navigation_state: int = 0
     base_speed_mps: float = 0.0
+    map_update_active: bool = True
+    map_last_skip_reason: int = 0
+    mapping_skipped_turning_count: int = 0
+    mapping_skipped_settle_count: int = 0
+    mapping_skipped_quality_count: int = 0
     lidar_active: bool = False
     lidar_binary_enabled: bool = False
     telemetry_enabled: bool = False

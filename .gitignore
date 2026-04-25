@@ -1,2 +1,7 @@
 /cmake-build-debug/
 .idea/
+/host_app/release/
+/host_app/logs/
+/host_app/dist/
+/host_app/build/
+/host_app/.pyinstaller/

@@ -38,5 +38,9 @@ void Control_SetManualCommand(float base_speed, float angle_setpoint);
 void Control_SetRelativeTurn(float delta_angle);
 void Control_SetBaseSpeed(float base_speed);
 void Control_StopCommand(void);
+uint8_t Control_GetLastRelativeMoveTravelSnapshot(float *left_distance_m,
+                                                  float *right_distance_m,
+                                                  float *command_distance_m,
+                                                  float *progress_distance_m);
 
 #endif /* __PID_H */

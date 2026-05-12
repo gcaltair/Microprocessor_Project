@@ -32,6 +32,13 @@ static float s_initial_y = 0.0f;
 static float s_drive_direction = 1.0f;
 static float s_drive_axis_x = 1.0f;
 static float s_drive_axis_y = 0.0f;
+static float s_move_start_left_distance_m = 0.0f;
+static float s_move_start_right_distance_m = 0.0f;
+static float s_last_move_left_distance_m = 0.0f;
+static float s_last_move_right_distance_m = 0.0f;
+static float s_last_move_command_distance_m = 0.0f;
+static float s_last_move_progress_distance_m = 0.0f;
+static uint8_t s_last_move_snapshot_valid = 0U;
 
 static float pid_normalize_angle_deg(float angle_deg)
 {
@@ -278,6 +285,7 @@ void Control_SetManualCommand(float command_base_speed, float angle_setpoint)
     g_relative_move_remaining_m = 0.0f;
     g_target_x = 0.0f;
     g_target_y = 0.0f;
+    s_last_move_snapshot_valid = 0U;
 
     unlock_pid_and_control();
 }
@@ -298,6 +306,7 @@ void Control_SetManualDrive(float command_base_speed)
     g_relative_move_remaining_m = 0.0f;
     g_target_x = 0.0f;
     g_target_y = 0.0f;
+    s_last_move_snapshot_valid = 0U;
 
     unlock_pid_control_and_odom();
 }
@@ -319,6 +328,7 @@ void Control_SetRelativeTurn(float delta_angle)
     g_relative_move_remaining_m = 0.0f;
     g_target_x = 0.0f;
     g_target_y = 0.0f;
+    s_last_move_snapshot_valid = 0U;
 
     unlock_pid_control_and_odom();
 }
@@ -354,6 +364,7 @@ void Control_StopCommand(void)
     g_relative_move_remaining_m = 0.0f;
     g_target_x = 0.0f;
     g_target_y = 0.0f;
+    s_last_move_snapshot_valid = 0U;
 
     unlock_pid_control_and_odom();
 }
@@ -382,6 +393,7 @@ void Start_Relative_Move(float dx, float dy)
     g_relative_move_target_distance_m = s_target_distance;
     g_relative_move_progress_m = 0.0f;
     g_relative_move_remaining_m = s_target_distance;
+    s_last_move_snapshot_valid = 0U;
 
     target_heading_deg = atan2f(dy, dx) * 180.0f / PI;
     s_drive_direction = 1.0f;
@@ -437,6 +449,10 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
             if (fabsf(angle_error) < ANGLE_TOLERANCE_FOR_MOVING) {
                 s_initial_x = current_x_m;
                 s_initial_y = current_y_m;
+                Encoder_GetTravelSnapshot(&s_move_start_left_distance_m,
+                                          &s_move_start_right_distance_m,
+                                          NULL,
+                                          NULL);
                 pid_set_drive_axis_from_heading_deg(current_angle_deg);
                 g_relative_move_progress_m = 0.0f;
                 g_relative_move_remaining_m = s_target_distance;
@@ -468,6 +484,18 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
             g_relative_move_remaining_m = (distance_error > 0.0f) ? distance_error : 0.0f;
 
             if (distance_error < POSITION_REACHED_THRESHOLD) {
+                float move_end_left_distance_m = 0.0f;
+                float move_end_right_distance_m = 0.0f;
+
+                Encoder_GetTravelSnapshot(&move_end_left_distance_m,
+                                          &move_end_right_distance_m,
+                                          NULL,
+                                          NULL);
+                s_last_move_left_distance_m = move_end_left_distance_m - s_move_start_left_distance_m;
+                s_last_move_right_distance_m = move_end_right_distance_m - s_move_start_right_distance_m;
+                s_last_move_command_distance_m = s_drive_direction * s_target_distance;
+                s_last_move_progress_distance_m = distance_progress;
+                s_last_move_snapshot_valid = 1U;
                 g_relative_move_state = RELATIVE_MOVE_IDLE;
                 g_control_mode = CONTROL_MODE_MANUAL;
                 base_car_speed = 0.0f;
@@ -497,4 +525,32 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
     }
 
     Angle_Speed_Cascade_Control(current_angle_deg, base_car_speed, dt);
+}
+
+uint8_t Control_GetLastRelativeMoveTravelSnapshot(float *left_distance_m,
+                                                  float *right_distance_m,
+                                                  float *command_distance_m,
+                                                  float *progress_distance_m)
+{
+    if (s_last_move_snapshot_valid == 0U) {
+        return 0U;
+    }
+
+    if (left_distance_m != NULL) {
+        *left_distance_m = s_last_move_left_distance_m;
+    }
+
+    if (right_distance_m != NULL) {
+        *right_distance_m = s_last_move_right_distance_m;
+    }
+
+    if (command_distance_m != NULL) {
+        *command_distance_m = s_last_move_command_distance_m;
+    }
+
+    if (progress_distance_m != NULL) {
+        *progress_distance_m = s_last_move_progress_distance_m;
+    }
+
+    return 1U;
 }

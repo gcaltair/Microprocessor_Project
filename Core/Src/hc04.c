@@ -6,6 +6,7 @@
 #include "localization_task.h"
 #include "mapping_task.h"
 #include "navigation_task.h"
+#include "pid.h"
 #include "system.h"
 
 #define CMD_FORWARD                 'F'
@@ -375,13 +376,29 @@ static void transmit_encoder_calibration_suggestion(float actual_distance_m)
     float right_reverse = 0.0f;
     float suggested_left_scale;
     float suggested_right_scale;
+    float last_move_command_distance_m = 0.0f;
+    float last_move_progress_distance_m = 0.0f;
+    uint8_t has_last_move_snapshot;
 
     if (fabsf(actual_distance_m) < 0.001f) {
         transmit("Calibration suggestion requires non-zero actual distance\r\n");
         return;
     }
 
-    Encoder_GetTravelSnapshot(&left_distance_m, &right_distance_m, NULL, NULL);
+    has_last_move_snapshot = Control_GetLastRelativeMoveTravelSnapshot(&left_distance_m,
+                                                                       &right_distance_m,
+                                                                       &last_move_command_distance_m,
+                                                                       &last_move_progress_distance_m);
+    if (has_last_move_snapshot == 0U) {
+        Encoder_GetTravelSnapshot(&left_distance_m, &right_distance_m, NULL, NULL);
+    } else if ((last_move_command_distance_m * actual_distance_m) < 0.0f) {
+        uart_printf("Calibration suggestion sign mismatch: last move cmd=%.3f but actual=%.3f\r\n",
+                    last_move_command_distance_m,
+                    actual_distance_m);
+        transmit("Use D<positive> for forward and D<negative> for reverse after the matching move\r\n");
+        return;
+    }
+
     Encoder_GetCalibration(&left_forward, &left_reverse, &right_forward, &right_reverse);
 
     if ((fabsf(left_distance_m) < 0.001f) || (fabsf(right_distance_m) < 0.001f)) {
@@ -393,6 +410,18 @@ static void transmit_encoder_calibration_suggestion(float actual_distance_m)
                            ((actual_distance_m >= 0.0f) ? left_forward : left_reverse);
     suggested_right_scale = (actual_distance_m / right_distance_m) *
                             ((actual_distance_m >= 0.0f) ? right_forward : right_reverse);
+
+    if (has_last_move_snapshot != 0U) {
+        uart_printf("CAL source=last_move cmd=%.3f progress=%.3f dl=%.3f dr=%.3f\r\n",
+                    last_move_command_distance_m,
+                    last_move_progress_distance_m,
+                    left_distance_m,
+                    right_distance_m);
+    } else {
+        uart_printf("CAL source=cumulative dl=%.3f dr=%.3f\r\n",
+                    left_distance_m,
+                    right_distance_m);
+    }
 
     if (actual_distance_m >= 0.0f) {
         uart_printf("CAL suggest forward: left=%.3f right=%.3f from actual=%.3f dl=%.3f dr=%.3f\r\n",
@@ -733,7 +762,8 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("P: Show RTOS/runtime stats and scan quality\r\n");
             transmit("K: Show encoder calibration\r\n");
             transmit("Klf,lr,rf,rr: Set encoder calibration\r\n");
-            transmit("Dvalue: Suggest new wheel calibration from actual travel distance in meters\r\n");
+            transmit("Dvalue: Suggest new wheel calibration from measured travel in meters\r\n");
+            transmit("        Prefers the last completed P{x},{y} move segment; otherwise uses cumulative wheel travel\r\n");
             transmit("R0: Reset encoder counts and odometry pose\r\n");
             transmit("M: Start LIDAR (mapping mode, no binary stream)\r\n");
             transmit("N: Stop LIDAR\r\n");

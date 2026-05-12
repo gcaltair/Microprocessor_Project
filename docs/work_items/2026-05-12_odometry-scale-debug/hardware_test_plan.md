@@ -1,151 +1,151 @@
-# Hardware Test Plan
+# 硬件测试计划
 
-## Test Metadata
+## 测试元信息
 
-- Date: 2026-05-12
-- Author: Codex
-- Feature: odometry scale correction and reset/calibration workflow
-- Firmware build: `cmake --build cmake-build-debug` successful
-- Hardware version: current STM32F446 robot car
+- 日期：2026-05-12
+- 编写者：Codex
+- 功能点：里程计比例修正，以及复位/标定工作流
+- 固件构建：`cmake --build cmake-build-debug` 已成功
+- 硬件版本：当前 STM32F446 机器人小车
 
-## Objective
+## 测试目标
 
-Confirm that straight-line and reverse odometry distance error is materially reduced, that reset/calibration workflow supports repeatable measurement, and that `P1.0,0.0` no longer overshoots because of relative-move progress accounting.
+确认直线前进和倒车时的里程计距离误差已明显降低，确认复位/标定流程支持可重复测量，并确认 `P1.0,0.0` 不再因为相对位移进度统计问题而明显冲过头。
 
-## Preconditions
+## 前置条件
 
-- Robot power state: normal boot, wheels free to move on test floor
-- Required sensors/modules: encoders, IMU, Bluetooth command link
-- Map or environment setup: straight 1.0 m test lane with tape marks at 0 m and 1.0 m
-- Safety conditions: keep stop command available; test at conservative speed
+- 机器人上电状态：正常启动，车轮可在测试地面自由运动
+- 所需传感器/模块：编码器、IMU、蓝牙命令链路
+- 场地或环境布置：准备一条 1.0 m 的直线路径，在 0 m 和 1.0 m 位置贴胶带标记
+- 安全条件：保持可随时发送停止命令；使用保守速度测试
 
-## Command Sequence
+## 命令顺序
 
-1. Power on robot and connect Bluetooth serial
-2. Send `R0`
-3. Send `K` and record current calibration factors
-4. Send `V0.20`
-5. Send `P1.0,0.0`
-6. Wait for motion complete, then send `O`
-7. Measure physical stop position against 1.0 m mark
-8. Note whether the robot made heading trims during the run and whether physical stop position still overshot despite `ODOM` being near 1.0 m
-9. Send `R0`
-10. Send `P-1.0,0.0`
-11. Wait for motion complete, then send `O`
-12. Measure physical stop position against -1.0 m mark
+1. 给机器人上电，并连接蓝牙串口
+2. 发送 `R0`
+3. 发送 `K`，记录当前标定系数
+4. 发送 `V0.20`
+5. 发送 `P1.0,0.0`
+6. 等待运动完成，然后发送 `O`
+7. 测量实际停车位置相对 1.0 m 标记的位置
+8. 记录运行过程中机器人是否做了航向修正，以及当 `ODOM` 接近 1.0 m 时，实体停车位置是否仍然冲过头
+9. 发送 `R0`
+10. 发送 `P-1.0,0.0`
+11. 等待运动完成，然后发送 `O`
+12. 测量实际停车位置相对 -1.0 m 标记的位置
 
-If forward or reverse scale is still off, adjust with:
+如果前进或倒车的比例仍然不准，可按以下步骤调整：
 
-13. Send `Klf,lr,rf,rr` using revised factors
-14. Repeat steps 2-12
+13. 使用修正后的系数发送 `Klf,lr,rf,rr`
+14. 重复步骤 2-12
 
-Optional calibration helper:
+可选的标定辅助命令：
 
-13.5 After measuring actual travel, send `D0.95` or `D-0.92`
-13.6 Record the suggested `K...` line printed by firmware
-13.7 Apply that suggestion with `Klf,lr,rf,rr`
+13.5 在测出实际行驶距离后，发送 `D0.95` 或 `D-0.92`
+13.6 记录固件打印出的建议 `K...` 命令
+13.7 用 `Klf,lr,rf,rr` 应用该建议
 
-## Expected Behavior
+## 预期行为
 
-- Serial output:
-  - reset acknowledgement and a clean localization/navigation reset
-  - calibration printout
-  - `O` shows odometry close to commanded distance
-  - `O` now includes the just-finished run's `MOVE cmd/target/progress/remain` for relative-move completion diagnosis
-  - `O` now includes `ENC dl/dr/cntL/cntR/cal=...` for left-right diagnosis
-  - `D...` prints a suggested `K...` calibration command
-- Physical robot behavior:
-  - straight movement without large heading drift
-  - forward and reverse stop positions closer to commanded distance than before
-  - when heading trims happen mid-run, `P1.0,0.0` should not show the old "ODOM near target but body still physically overshoots" pattern
-- Timing or tolerance expectations:
-  - target odometry error after calibration: preferably within 5%
+- 串口输出：
+  - 应看到复位确认，以及干净的定位/导航状态复位
+  - 应看到标定系数打印
+  - `O` 应显示里程计距离接近指令目标距离
+  - `O` 现在应包含刚结束这次运动的 `MOVE cmd/target/progress/remain`，用于判断相对位移完成逻辑
+  - `O` 现在应包含 `ENC dl/dr/cntL/cntR/cal=...`，用于判断左右轮差异
+  - `D...` 应打印一条建议的 `K...` 标定命令
+- 机器人实体行为：
+  - 小车应基本直行，不应出现明显航向漂移
+  - 前进和倒车的停车位置应比之前更接近指令距离
+  - 如果运行中出现航向修正，`P1.0,0.0` 不应再出现旧问题，即“`ODOM` 接近目标，但车体实体位置仍明显冲过头”
+- 时间或误差容忍目标：
+  - 标定后的目标里程计误差最好控制在 5% 以内
 
-## Failure Signs
+## 失败征兆
 
-- Unexpected serial output
-- odometry resets but physical pose does not start from stable zero reference
-- `R0` is accepted but `O` still shows stale `EST / CTRL / MOVE` state from a previous run
-- forward or reverse distance still biased by about 10-20%
-- `ENC dl` and `ENC dr` differ significantly during straight motion
-- obvious heading drift dominating the distance error
-- `P1.0,0.0` still overshoots materially whenever the robot drives a shallow arc
-- `MOVE progress` remains clearly below physical travel even when `ENC dl/dr` and stop position imply the car already went far enough
+- 出现异常串口输出
+- 里程计虽然清零，但实体位姿并没有从稳定的零参考开始
+- `R0` 已被接受，但 `O` 仍显示上一次运行残留的 `EST / CTRL / MOVE` 状态
+- 前进或倒车距离仍然有大约 10%-20% 的系统性偏差
+- 直线运行时 `ENC dl` 和 `ENC dr` 差异明显
+- 明显航向漂移主导了距离误差
+- 只要机器人走出浅弧线，`P1.0,0.0` 仍然会明显冲过头
+- 即使 `ENC dl/dr` 和停车位置都表明小车已经走够，`MOVE progress` 仍明显小于实际行驶距离
 
-## Result Interpretation
+## 结果判读
 
-Use the forward and reverse runs to separate root causes:
+利用前进和倒车两轮测试来区分主要原因：
 
-- If physical stop distance is wrong, and `ENC dl/dr` are both wrong by a similar ratio:
-  - likely dominant issue: wheel-scale calibration
-  - next action: use `D...`, then apply suggested `K...`
+- 如果实体停车距离不对，而且 `ENC dl/dr` 都以相近比例一起偏差：
+  - 主要问题很可能是：轮距比例标定不准
+  - 下一步动作：使用 `D...`，再应用建议的 `K...`
 
-- If physical stop distance is wrong, and `ENC dl` and `ENC dr` differ a lot during straight motion:
-  - likely dominant issue: left/right asymmetry, traction, or wheel-specific calibration
-  - next action: tune `Klf/lr/rf/rr` separately and inspect floor / wheel condition
+- 如果实体停车距离不对，而且直线行驶时 `ENC dl` 和 `ENC dr` 差很多：
+  - 主要问题很可能是：左右轮不对称、地面附着差异，或单侧车轮标定不准
+  - 下一步动作：分别微调 `Klf/lr/rf/rr`，并检查地面和车轮状态
 
-- If physical stop distance is near target, but `MOVE progress` is still much smaller than actual travel:
-  - likely dominant issue: relative-move progress accounting still mismatches real motion
-  - next action: inspect `Core/Src/pid.c` distance-progress logic
+- 如果实体停车距离接近目标，但 `MOVE progress` 仍明显小于实际行驶距离：
+  - 主要问题很可能是：相对位移进度统计仍与真实运动不一致
+  - 下一步动作：检查 `Core/Src/pid.c` 里的距离进度逻辑
 
-- If `MOVE progress` is near target, but physical stop still overshoots while `ENC dl/dr` also overshoot:
-  - likely dominant issue: odometry scale is still biased
-  - next action: prioritize encoder calibration workflow
+- 如果 `MOVE progress` 接近目标，但实体停车仍冲过头，同时 `ENC dl/dr` 也一起超出：
+  - 主要问题很可能是：里程计比例仍有系统偏差
+  - 下一步动作：优先继续走编码器标定流程
 
-- If forward is acceptable but reverse is still poor:
-  - likely dominant issue: reverse-direction wheel scale or traction asymmetry
-  - next action: focus on reverse coefficients `lr` / `rr`
+- 如果前进结果可以接受，但倒车仍明显较差：
+  - 主要问题很可能是：倒车方向的轮系比例或附着对称性有问题
+  - 下一步动作：重点检查和调整倒车系数 `lr` / `rr`
 
-- If `R0` is issued and the next `O` still shows stale `MOVE` or nonzero pose state before motion:
-  - likely dominant issue: reset path not fully clean
-  - next action: inspect `R0`, `LocalizationTask_Reset()`, and control-state reset sequence
+- 如果发送了 `R0`，但下一次 `O` 在运动前仍显示残留的 `MOVE` 或非零位姿状态：
+  - 主要问题很可能是：复位路径还不够干净
+  - 下一步动作：检查 `R0`、`LocalizationTask_Reset()` 以及控制状态复位顺序
 
-## Safe Stop / Recovery
+## 安全停止 / 恢复
 
-- Stop command: `S`
-- Reset command: `R0`
-- Required operator action: lift wheels or power-cycle if motion becomes unsafe
+- 停止命令：`S`
+- 复位命令：`R0`
+- 需要操作人执行的动作：如果运动不安全，请抬起车轮或直接断电重启
 
-## Result
+## 测试结果
 
-- Status: not run
-- Tester:
-- Notes:
+- 状态：未执行
+- 测试者：
+- 备注：
 
-## Quick Reply Template
+## 快速回复模板
 
-Copy this back after testing:
+测试后可直接把下面内容回传给我：
 
 ```text
-[Step 1]
+[步骤 1]
 R0 / O:
-ODOM zero?:
-MOVE zero?:
-EST/CTRL zero?:
+ODOM 是否为零:
+MOVE 是否为零:
+EST/CTRL 是否为零:
 
-[Step 2]
-L behavior:
-O after L:
-R behavior:
-O after R:
-Relative turn ok?:
+[步骤 2]
+L 的行为:
+L 后的 O:
+R 的行为:
+R 后的 O:
+相对转向是否正常:
 
-[Step 3]
-K output:
-O after P1.0,0.0:
-Physical forward distance:
-Forward drift:
-MOVE forward:
-ENC forward:
+[步骤 3]
+K 输出:
+P1.0,0.0 后的 O:
+前进实际距离:
+前进漂移:
+前进时 MOVE:
+前进时 ENC:
 
-[Step 4]
-O after P-1.0,0.0:
-Physical reverse distance:
-Reverse drift:
-MOVE reverse:
-ENC reverse:
+[步骤 4]
+P-1.0,0.0 后的 O:
+倒车实际距离:
+倒车漂移:
+倒车时 MOVE:
+倒车时 ENC:
 
-[Step 5]
-D output, if any:
-Applied K, if any:
+[步骤 5]
+D 输出（如果有）:
+应用的 K（如果有）:
 ```

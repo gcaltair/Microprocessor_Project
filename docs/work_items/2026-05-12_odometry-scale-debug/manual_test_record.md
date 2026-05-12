@@ -1,92 +1,92 @@
-# Manual Test Record
+# 手工测试记录
 
-## Test Reference
+## 测试引用信息
 
-- Date:
-- Tester:
-- Related test plan: `hardware_test_plan.md`
-- Firmware build:
-- Environment:
+- 日期：
+- 测试者：
+- 对应测试计划：`hardware_test_plan.md`
+- 固件构建版本：
+- 测试环境：
 
-## Execution
+## 执行情况
 
-- Was the exact plan followed?
-- If not, what changed?
+- 是否严格按计划执行？
+- 如果没有，改动了什么？
 
-## Step-by-Step Return
+## 分步骤回填
 
-### Step 1: Baseline after `R0`
+### 步骤 1：`R0` 之后的基线状态
 
-- Commands sent:
-- Raw `O` output:
-- `ODOM` near zero?:
-- `MOVE` near zero?:
-- `EST / CTRL` near zero?:
+- 已发送命令：
+- 原始 `O` 输出：
+- `ODOM` 是否接近零：
+- `MOVE` 是否接近零：
+- `EST / CTRL` 是否接近零：
 
-### Step 2: Manual turn check
+### 步骤 2：手动转向检查
 
-- Commands sent:
-- `L` behavior observation:
-- Raw `O` after `L`:
-- `R` behavior observation:
-- Raw `O` after `R`:
-- Did `L / R` behave as relative turns?:
+- 已发送命令：
+- `L` 的行为观察：
+- `L` 之后原始 `O` 输出：
+- `R` 的行为观察：
+- `R` 之后原始 `O` 输出：
+- `L / R` 是否表现为相对转向：
 
-### Step 3: Forward 1.0 m run
+### 步骤 3：前进 1.0 m 测试
 
-- Commands sent:
-- Raw `K` output:
-- Raw `O` output:
-- Physical stop distance:
-- Heading drift observation:
-- `MOVE target/progress/remain`:
-- `ENC dl/dr/cntL/cntR`:
+- 已发送命令：
+- 原始 `K` 输出：
+- 原始 `O` 输出：
+- 实际停车距离：
+- 航向漂移观察：
+- `MOVE target/progress/remain`：
+- `ENC dl/dr/cntL/cntR`：
 
-### Step 4: Reverse 1.0 m run
+### 步骤 4：倒车 1.0 m 测试
 
-- Commands sent:
-- Raw `O` output:
-- Physical stop distance:
-- Heading drift observation:
-- `MOVE target/progress/remain`:
-- `ENC dl/dr/cntL/cntR`:
+- 已发送命令：
+- 原始 `O` 输出：
+- 实际停车距离：
+- 航向漂移观察：
+- `MOVE target/progress/remain`：
+- `ENC dl/dr/cntL/cntR`：
 
-### Step 5: Calibration helper, if used
+### 步骤 5：标定辅助命令（如使用）
 
-- Commands sent:
-- Raw `D...` output:
-- Suggested `K...`:
-- Was suggested `K...` applied?:
+- 已发送命令：
+- 原始 `D...` 输出：
+- 建议的 `K...`：
+- 是否应用了建议的 `K...`：
 
-## Observations
+## 观察记录
 
-- Serial/log observations:
-- `MOVE target/progress/remain` during forward run:
-- `ENC dl/dr/cntL/cntR` during forward run:
-- `ENC dl/dr/cntL/cntR` during reverse run:
-- Relative-move overshoot observation during `P1.0,0.0`:
-- `D...` suggestion output:
-- Robot behavior observations:
-- Forward 1.0 m physical result:
-- Reverse 1.0 m physical result:
+- 串口/日志观察：
+- 前进阶段的 `MOVE target/progress/remain`：
+- 前进阶段的 `ENC dl/dr/cntL/cntR`：
+- 倒车阶段的 `ENC dl/dr/cntL/cntR`：
+- 执行 `P1.0,0.0` 时相对位移冲过头的现象：
+- `D...` 建议输出：
+- 机器人行为观察：
+- 前进 1.0 m 的实体结果：
+- 倒车 1.0 m 的实体结果：
 
-## Result
+## 测试结果
 
-- Status: blocked
-- Primary reason: hardware test not run by agent; manual tester required
+- 状态：阻塞
+- 主要原因：硬件测试无法由代理执行，必须由人工测试者完成
 
-## Deviations
+## 偏差说明
 
-- Expected:
-- Actual:
+- 预期：
+- 实际：
 
-## Follow-Up
+## 后续处理
 
-- Required fix:
-- Retest needed: yes
-- Likely root cause based on interpretation matrix:
-- Suggested next command or coefficient change:
-- Related files:
+- 需要修复的问题：
+- 是否需要复测：是
+- 根据判读矩阵推测的主要原因：
+- 建议的下一条命令或系数调整：
+- 相关文件：
   - `Core/Src/encoder.c`
   - `Core/Src/encoder.h`
   - `Core/Src/hc04.c`

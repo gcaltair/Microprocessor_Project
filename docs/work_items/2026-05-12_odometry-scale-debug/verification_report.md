@@ -1,44 +1,44 @@
-# Verification Report
+# 验证报告
 
-## Verification Summary
+## 验证摘要
 
-- Date: 2026-05-12
-- Feature: odometry scale correction
-- Owner: Codex
+- 日期：2026-05-12
+- 功能点：里程计比例修正
+- 负责人：Codex
 
-## Verification Levels Reached
+## 已达到的验证层级
 
-- Level 0 static review: yes
-- Level 1 desktop verification: yes
-- Level 2 prepared operator verification: yes
-- Level 3 hardware verification: no
+- Level 0 静态审查：是
+- Level 1 桌面验证：是
+- Level 2 操作人测试准备：是
+- Level 3 硬件验证：否
 
-## Desktop Evidence
+## 桌面验证证据
 
-- Commands run: `cmake --build cmake-build-debug`
-- Result: success
-- Latest build note: passed after `L / R` manual turn commands were switched back to relative-turn semantics; RAM `98.85%`, FLASH `22.06%`
-- Limits of coverage: cannot prove physical wheel-scale accuracy on desktop
+- 已执行命令：`cmake --build cmake-build-debug`
+- 结果：成功
+- 最近一次构建说明：在将 `L / R` 手动转向命令恢复为相对转向语义后构建通过；RAM `98.85%`，FLASH `22.06%`
+- 覆盖范围限制：桌面环境无法证明实体车轮比例精度
 
-## Hardware Evidence
+## 硬件验证证据
 
-- Test plan: `hardware_test_plan.md`
-- Manual test record: `manual_test_record.md`
-- Result: not run
-- Operator aid added: result-interpretation matrix for distinguishing scale bias, left-right asymmetry, progress-accounting error, and reset-path residue
-- Operator aid added: copy-paste reply template for baseline, turn, forward, reverse, and `D...` outputs
+- 测试计划：`hardware_test_plan.md`
+- 手工测试记录：`manual_test_record.md`
+- 结果：未执行
+- 已补充给操作人的辅助内容：结果判读矩阵，用于区分比例偏差、左右不对称、进度统计错误和复位残留
+- 已补充给操作人的辅助内容：可直接复制回传的回复模板，覆盖基线、转向、前进、倒车以及 `D...` 输出
 
-## Remaining Gaps
+## 仍然存在的缺口
 
-- Need real forward/reverse distance measurements
-- Need compare `ENC dl/dr` symmetry during straight motion
-- Need confirm `P1.0,0.0` no longer overshoots when heading corrections occur during the drive phase
-- Need confirm new `MOVE target/progress/remain` telemetry matches physical stop behavior during the same run
-- Need confirm post-stop `O` still preserves the just-finished `MOVE` diagnostic values until the next command/reset
-- Need confirm `R0` now gives a clean odometry/localization/navigation baseline before each calibration run
-- Need confirm `L / R` manual turn commands now behave as relative turns during operator setup and alignment
-- Need confirm whether residual error is still scale bias or mainly heading drift / traction
+- 需要真实的前进/倒车距离测量结果
+- 需要比较直线运行时 `ENC dl/dr` 的左右对称性
+- 需要确认当运行阶段发生航向修正时，`P1.0,0.0` 是否已经不再冲过头
+- 需要确认新的 `MOVE target/progress/remain` 遥测是否与同一次运行中的实体停车行为一致
+- 需要确认停车后 `O` 是否仍会保留刚结束那次运行的 `MOVE` 诊断值，直到下一条命令或复位
+- 需要确认 `R0` 现在是否能在每次标定测试前提供干净的里程计/定位/导航基线
+- 需要确认 `L / R` 手动转向命令在操作人摆位和对准阶段是否已恢复为相对转向
+- 需要确认剩余误差究竟仍以比例偏差为主，还是主要来自航向漂移/附着差异
 
-## Release / Merge Recommendation
+## 发布 / 合并建议
 
-- Ready with hardware follow-up
+- 可继续推进，但必须补上硬件验证

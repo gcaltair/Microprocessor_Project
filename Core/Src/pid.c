@@ -425,8 +425,6 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
     {
         case RELATIVE_MOVE_IDLE:
             base_car_speed = 0.0f;
-            g_relative_move_progress_m = 0.0f;
-            g_relative_move_remaining_m = 0.0f;
             break;
 
         case RELATIVE_MOVE_TURNING:
@@ -478,11 +476,7 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
                 g_pid_position.last_error = 0.0f;
                 pid_set_drive_axis_from_heading_deg(current_angle_deg);
                 g_pid_angle.setpoint = current_angle_deg;
-                g_relative_move_target_distance_m = 0.0f;
-                g_relative_move_progress_m = 0.0f;
                 g_relative_move_remaining_m = 0.0f;
-                g_target_x = 0.0f;
-                g_target_y = 0.0f;
                 break;
             }
 

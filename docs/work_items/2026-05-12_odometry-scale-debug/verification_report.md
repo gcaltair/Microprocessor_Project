@@ -17,7 +17,7 @@
 
 - Commands run: `cmake --build cmake-build-debug`
 - Result: success
-- Latest build note: passed after control-loop heading/distance reference was unified back to odometry; RAM `98.85%`, FLASH `22.07%`
+- Latest build note: passed after `MOVE` diagnostics were kept through post-stop inspection; RAM `98.85%`, FLASH `22.06%`
 - Limits of coverage: cannot prove physical wheel-scale accuracy on desktop
 
 ## Hardware Evidence
@@ -32,6 +32,7 @@
 - Need compare `ENC dl/dr` symmetry during straight motion
 - Need confirm `P1.0,0.0` no longer overshoots when heading corrections occur during the drive phase
 - Need confirm new `MOVE target/progress/remain` telemetry matches physical stop behavior during the same run
+- Need confirm post-stop `O` still preserves the just-finished `MOVE` diagnostic values until the next command/reset
 - Need confirm `R0` now gives a clean odometry/localization/navigation baseline before each calibration run
 - Need confirm whether residual error is still scale bias or mainly heading drift / traction
 

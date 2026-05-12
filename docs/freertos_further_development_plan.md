@@ -167,7 +167,7 @@
 ### 5.2 位姿与定位
 
 - `O`：`ODOM / ENC / EST / CTRL / pred / corr / slow`
-- `O` 同时包含 `MOVE cmd/target/progress/remain` 相对位移诊断信息
+- `O` 同时包含 `MOVE cmd/target/progress/remain` 相对位移诊断信息，并保留最近一次动作结果直到下一次命令或复位
 - `P`：定位状态摘要
 
 ### 5.3 编码器标定
@@ -222,7 +222,7 @@
 当前资源占用大致为：
 
 - RAM：`98.85%`
-- FLASH：`22.07%`
+- FLASH：`22.06%`
 
 这意味着后续新增模块必须优先考虑 RAM。
 

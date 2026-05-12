@@ -51,7 +51,7 @@ Optional calibration helper:
   - reset acknowledgement and a clean localization/navigation reset
   - calibration printout
   - `O` shows odometry close to commanded distance
-  - `O` now includes `MOVE cmd/target/progress/remain` for relative-move completion diagnosis
+  - `O` now includes the just-finished run's `MOVE cmd/target/progress/remain` for relative-move completion diagnosis
   - `O` now includes `ENC dl/dr/cntL/cntR/cal=...` for left-right diagnosis
   - `D...` prints a suggested `K...` calibration command
 - Physical robot behavior:

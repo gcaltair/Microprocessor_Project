@@ -34,6 +34,7 @@ For firmware or mixed tasks, prefer this set:
 - `hardware_test_plan.md`
 - `manual_test_record.md`
 - `verification_report.md`
+- `calibration_quick_reference.md` when the task includes repeated wheel/odometry calibration or hardware operator handoff
 
 For documentation-only or small host-app tasks, this may be enough:
 

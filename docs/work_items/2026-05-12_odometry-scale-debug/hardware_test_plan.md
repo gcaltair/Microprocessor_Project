@@ -152,3 +152,7 @@ P-1.0,0.0 后的 O:
 D 输出（如果有）:
 应用的 K（如果有）:
 ```
+
+补充说明：
+
+- 如果需要快速判断 `LMOVE`、`CAL diag` 和 `Klf/lr/rf/rr` 的关系，可直接查看同目录下的 `calibration_quick_reference.md`

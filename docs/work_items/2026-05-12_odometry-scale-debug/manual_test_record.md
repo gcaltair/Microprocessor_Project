@@ -16,6 +16,7 @@
 ## Observations
 
 - Serial/log observations:
+- `MOVE target/progress/remain` during forward run:
 - `ENC dl/dr/cntL/cntR` during forward run:
 - `ENC dl/dr/cntL/cntR` during reverse run:
 - Relative-move overshoot observation during `P1.0,0.0`:

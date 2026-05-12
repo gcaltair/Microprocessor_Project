@@ -271,6 +271,11 @@ static void transmit_odometry_snapshot(void)
     float right_speed;
     float current_base_speed;
     float angle_setpoint;
+    float move_target_dx_m;
+    float move_target_dy_m;
+    float move_target_distance_m;
+    float move_progress_m;
+    float move_remaining_m;
     ControlMode mode;
     RelativeMoveState move_state;
     int16_t left_counter_raw;
@@ -297,6 +302,11 @@ static void transmit_odometry_snapshot(void)
                               &right_counter_raw);
     current_base_speed = base_car_speed;
     angle_setpoint = g_pid_angle.setpoint;
+    move_target_dx_m = g_target_x;
+    move_target_dy_m = g_target_y;
+    move_target_distance_m = g_relative_move_target_distance_m;
+    move_progress_m = g_relative_move_progress_m;
+    move_remaining_m = g_relative_move_remaining_m;
     mode = g_control_mode;
     move_state = g_relative_move_state;
 
@@ -321,6 +331,12 @@ static void transmit_odometry_snapshot(void)
                 angle_setpoint,
                 control_mode_to_string(mode),
                 move_state_to_string(move_state));
+    uart_printf("MOVE cmd=(%.3f,%.3f) target=%.3f progress=%.3f remain=%.3f\r\n",
+                move_target_dx_m,
+                move_target_dy_m,
+                move_target_distance_m,
+                move_progress_m,
+                move_remaining_m);
     uart_printf("ENC  dl=%.3f dr=%.3f cntL=%d cntR=%d cal=(%.3f,%.3f,%.3f,%.3f)\r\n",
                 left_distance_m,
                 right_distance_m,

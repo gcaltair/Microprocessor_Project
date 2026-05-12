@@ -33,6 +33,9 @@ extern volatile float g_dl_acc;
 extern volatile float g_dr_acc;
 extern volatile float g_target_x;
 extern volatile float g_target_y;
+extern volatile float g_relative_move_target_distance_m;
+extern volatile float g_relative_move_progress_m;
+extern volatile float g_relative_move_remaining_m;
 extern volatile float g_th;
 extern volatile float g_th_continuous;
 

@@ -17,7 +17,7 @@
 
 - Commands run: `cmake --build cmake-build-debug`
 - Result: success
-- Latest build note: passed after `Core/Src/pid.c` relative-move progress fix; RAM `98.83%`, FLASH `21.96%`
+- Latest build note: passed after `MOVE target/progress/remain` diagnostics were added; RAM `98.85%`, FLASH `22.08%`
 - Limits of coverage: cannot prove physical wheel-scale accuracy on desktop
 
 ## Hardware Evidence
@@ -31,6 +31,7 @@
 - Need real forward/reverse distance measurements
 - Need compare `ENC dl/dr` symmetry during straight motion
 - Need confirm `P1.0,0.0` no longer overshoots when heading corrections occur during the drive phase
+- Need confirm new `MOVE target/progress/remain` telemetry matches physical stop behavior during the same run
 - Need confirm whether residual error is still scale bias or mainly heading drift / traction
 
 ## Release / Merge Recommendation

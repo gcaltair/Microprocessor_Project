@@ -23,6 +23,9 @@ volatile float g_target_x = 0.0f;
 volatile float g_target_y = 0.0f;
 volatile RelativeMoveState g_relative_move_state = RELATIVE_MOVE_IDLE;
 volatile ControlMode g_control_mode = CONTROL_MODE_MANUAL;
+volatile float g_relative_move_target_distance_m = 0.0f;
+volatile float g_relative_move_progress_m = 0.0f;
+volatile float g_relative_move_remaining_m = 0.0f;
 
 static float s_target_distance = 0.0f;
 static float s_initial_x = 0.0f;
@@ -285,6 +288,11 @@ void Control_SetManualCommand(float command_base_speed, float angle_setpoint)
     g_control_mode = CONTROL_MODE_MANUAL;
     base_car_speed = command_base_speed;
     g_pid_angle.setpoint = ControlLogic_WrapAngleDeg(angle_setpoint);
+    g_relative_move_target_distance_m = 0.0f;
+    g_relative_move_progress_m = 0.0f;
+    g_relative_move_remaining_m = 0.0f;
+    g_target_x = 0.0f;
+    g_target_y = 0.0f;
 
     unlock_pid_and_control();
 }
@@ -300,6 +308,11 @@ void Control_SetManualDrive(float command_base_speed)
     g_control_mode = CONTROL_MODE_MANUAL;
     base_car_speed = command_base_speed;
     g_pid_angle.setpoint = pose.theta_deg;
+    g_relative_move_target_distance_m = 0.0f;
+    g_relative_move_progress_m = 0.0f;
+    g_relative_move_remaining_m = 0.0f;
+    g_target_x = 0.0f;
+    g_target_y = 0.0f;
 
     unlock_pid_control_and_odom();
 }
@@ -316,6 +329,11 @@ void Control_SetRelativeTurn(float delta_angle)
     base_car_speed = 0.0f;
     g_pid_angle.setpoint = ControlLogic_ResolveAbsoluteSetpointFromCurrentHeading(pose.theta_deg,
                                                                                   delta_angle);
+    g_relative_move_target_distance_m = 0.0f;
+    g_relative_move_progress_m = 0.0f;
+    g_relative_move_remaining_m = 0.0f;
+    g_target_x = 0.0f;
+    g_target_y = 0.0f;
 
     unlock_pid_control_and_odom();
 }
@@ -346,6 +364,11 @@ void Control_StopCommand(void)
     s_drive_direction = 1.0f;
     pid_set_drive_axis_from_heading_deg(pose.theta_deg);
     g_pid_angle.setpoint = pose.theta_deg;
+    g_relative_move_target_distance_m = 0.0f;
+    g_relative_move_progress_m = 0.0f;
+    g_relative_move_remaining_m = 0.0f;
+    g_target_x = 0.0f;
+    g_target_y = 0.0f;
 
     unlock_pid_control_and_odom();
 }
@@ -368,6 +391,12 @@ void Start_Relative_Move(float dx, float dy)
         unlock_pid_control_and_odom();
         return;
     }
+
+    g_target_x = dx;
+    g_target_y = dy;
+    g_relative_move_target_distance_m = s_target_distance;
+    g_relative_move_progress_m = 0.0f;
+    g_relative_move_remaining_m = s_target_distance;
 
     target_heading_deg = atan2f(dy, dx) * 180.0f / PI;
     s_drive_direction = 1.0f;
@@ -411,6 +440,8 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
     {
         case RELATIVE_MOVE_IDLE:
             base_car_speed = 0.0f;
+            g_relative_move_progress_m = 0.0f;
+            g_relative_move_remaining_m = 0.0f;
             break;
 
         case RELATIVE_MOVE_TURNING:
@@ -424,6 +455,8 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
                 s_initial_x = current_x_m;
                 s_initial_y = current_y_m;
                 pid_set_drive_axis_from_heading_deg(current_angle_deg);
+                g_relative_move_progress_m = 0.0f;
+                g_relative_move_remaining_m = s_target_distance;
                 g_pid_position.integral = 0.0f;
                 g_pid_position.last_error = 0.0f;
                 g_relative_move_state = RELATIVE_MOVE_DRIVING;
@@ -448,6 +481,8 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
              * displacement smaller than real path progress and causes consistent overshoot.
              */
             distance_error = s_target_distance - distance_progress;
+            g_relative_move_progress_m = distance_progress;
+            g_relative_move_remaining_m = (distance_error > 0.0f) ? distance_error : 0.0f;
 
             if (distance_error < POSITION_REACHED_THRESHOLD) {
                 g_relative_move_state = RELATIVE_MOVE_IDLE;
@@ -458,6 +493,11 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
                 g_pid_position.last_error = 0.0f;
                 pid_set_drive_axis_from_heading_deg(current_angle_deg);
                 g_pid_angle.setpoint = current_angle_deg;
+                g_relative_move_target_distance_m = 0.0f;
+                g_relative_move_progress_m = 0.0f;
+                g_relative_move_remaining_m = 0.0f;
+                g_target_x = 0.0f;
+                g_target_y = 0.0f;
                 break;
             }
 

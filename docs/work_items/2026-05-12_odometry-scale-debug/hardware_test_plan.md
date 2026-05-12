@@ -51,6 +51,7 @@ Optional calibration helper:
   - reset acknowledgement
   - calibration printout
   - `O` shows odometry close to commanded distance
+  - `O` now includes `MOVE cmd/target/progress/remain` for relative-move completion diagnosis
   - `O` now includes `ENC dl/dr/cntL/cntR/cal=...` for left-right diagnosis
   - `D...` prints a suggested `K...` calibration command
 - Physical robot behavior:
@@ -68,6 +69,7 @@ Optional calibration helper:
 - `ENC dl` and `ENC dr` differ significantly during straight motion
 - obvious heading drift dominating the distance error
 - `P1.0,0.0` still overshoots materially whenever the robot drives a shallow arc
+- `MOVE progress` remains clearly below physical travel even when `ENC dl/dr` and stop position imply the car already went far enough
 
 ## Safe Stop / Recovery
 

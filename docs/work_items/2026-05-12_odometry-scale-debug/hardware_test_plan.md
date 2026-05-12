@@ -55,6 +55,7 @@
   - `O` 现在应包含刚结束这次运动的 `MOVE cmd/target/progress/remain`，用于判断相对位移完成逻辑
   - `O` 现在应包含 `ENC dl/dr/cntL/cntR/cal=...`，用于判断左右轮差异
   - `O` 现在还应包含 `LMOVE valid/cmd/progress/dl/dr`，用于直接查看最近一次完成的相对位移段轮程，而不是手工从累计 `ENC` 做差
+  - `D...` 现在还应包含 `CAL diag left_err/right_err/asym`，用于直接判断左右轮各自相对实测距离的偏差，以及左右轮不对称程度
   - `D...` 应打印一条建议的 `K...` 标定命令
 - 机器人实体行为：
   - 小车应基本直行，不应出现明显航向漂移

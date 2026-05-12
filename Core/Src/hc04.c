@@ -393,6 +393,12 @@ static void transmit_encoder_calibration_suggestion(float actual_distance_m)
     float suggested_right_scale;
     float last_move_command_distance_m = 0.0f;
     float last_move_progress_distance_m = 0.0f;
+    float actual_distance_abs_m;
+    float left_distance_abs_m;
+    float right_distance_abs_m;
+    float left_error_percent;
+    float right_error_percent;
+    float asymmetry_percent;
     uint8_t has_last_move_snapshot;
 
     if (fabsf(actual_distance_m) < 0.001f) {
@@ -425,6 +431,16 @@ static void transmit_encoder_calibration_suggestion(float actual_distance_m)
                            ((actual_distance_m >= 0.0f) ? left_forward : left_reverse);
     suggested_right_scale = (actual_distance_m / right_distance_m) *
                             ((actual_distance_m >= 0.0f) ? right_forward : right_reverse);
+    actual_distance_abs_m = fabsf(actual_distance_m);
+    left_distance_abs_m = fabsf(left_distance_m);
+    right_distance_abs_m = fabsf(right_distance_m);
+    left_error_percent = ((left_distance_abs_m / actual_distance_abs_m) - 1.0f) * 100.0f;
+    right_error_percent = ((right_distance_abs_m / actual_distance_abs_m) - 1.0f) * 100.0f;
+    asymmetry_percent = 0.0f;
+    if ((left_distance_abs_m + right_distance_abs_m) > 0.001f) {
+        asymmetry_percent = (fabsf(left_distance_abs_m - right_distance_abs_m) /
+                            ((left_distance_abs_m + right_distance_abs_m) * 0.5f)) * 100.0f;
+    }
 
     if (has_last_move_snapshot != 0U) {
         uart_printf("CAL source=last_move cmd=%.3f progress=%.3f dl=%.3f dr=%.3f\r\n",
@@ -437,6 +453,10 @@ static void transmit_encoder_calibration_suggestion(float actual_distance_m)
                     left_distance_m,
                     right_distance_m);
     }
+    uart_printf("CAL diag left_err=%.1f%% right_err=%.1f%% asym=%.1f%%\r\n",
+                left_error_percent,
+                right_error_percent,
+                asymmetry_percent);
 
     if (actual_distance_m >= 0.0f) {
         uart_printf("CAL suggest forward: left=%.3f right=%.3f from actual=%.3f dl=%.3f dr=%.3f\r\n",

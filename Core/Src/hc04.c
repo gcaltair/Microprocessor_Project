@@ -277,10 +277,15 @@ static void transmit_odometry_snapshot(void)
     float move_target_distance_m;
     float move_progress_m;
     float move_remaining_m;
+    float last_move_left_distance_m = 0.0f;
+    float last_move_right_distance_m = 0.0f;
+    float last_move_command_distance_m = 0.0f;
+    float last_move_progress_distance_m = 0.0f;
     ControlMode mode;
     RelativeMoveState move_state;
     int16_t left_counter_raw;
     int16_t right_counter_raw;
+    uint8_t has_last_move_snapshot = 0U;
 
     if (g_odomMutex != NULL) {
         (void)osMutexAcquire(g_odomMutex, osWaitForever);
@@ -310,6 +315,10 @@ static void transmit_odometry_snapshot(void)
     move_remaining_m = g_relative_move_remaining_m;
     mode = g_control_mode;
     move_state = g_relative_move_state;
+    has_last_move_snapshot = Control_GetLastRelativeMoveTravelSnapshot(&last_move_left_distance_m,
+                                                                       &last_move_right_distance_m,
+                                                                       &last_move_command_distance_m,
+                                                                       &last_move_progress_distance_m);
 
     if (g_pidMutex != NULL) {
         (void)osMutexRelease(g_pidMutex);
@@ -347,6 +356,12 @@ static void transmit_odometry_snapshot(void)
                 g_encoder_left_reverse_scale,
                 g_encoder_right_forward_scale,
                 g_encoder_right_reverse_scale);
+    uart_printf("LMOVE valid=%u cmd=%.3f progress=%.3f dl=%.3f dr=%.3f\r\n",
+                (unsigned int)has_last_move_snapshot,
+                last_move_command_distance_m,
+                last_move_progress_distance_m,
+                last_move_left_distance_m,
+                last_move_right_distance_m);
     uart_printf("EST  x=%.3f y=%.3f th=%.2f CTRL=(%.3f,%.3f,%.2f)\r\n",
                 loc_stats.current_estimated_pose.x_m,
                 loc_stats.current_estimated_pose.y_m,
@@ -758,7 +773,7 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("J: Show navigation status\r\n");
             transmit("Jx,y: Navigate to map cell x,y\r\n");
             transmit("C: Cancel active navigation\r\n");
-            transmit("O: Show odometry snapshot\r\n");
+            transmit("O: Show odometry snapshot, cumulative ENC, and last completed relative-move travel\r\n");
             transmit("P: Show RTOS/runtime stats and scan quality\r\n");
             transmit("K: Show encoder calibration\r\n");
             transmit("Klf,lr,rf,rr: Set encoder calibration\r\n");

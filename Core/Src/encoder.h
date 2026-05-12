@@ -44,9 +44,14 @@ void encoder_update_speed(void);
 
 // 复位
 void encoder_Reset(void);
+void Odometry_ResetPose(void);
 
 void Odometry_Update(float dt);
 void Odometry_GetPoseSnapshot(SlamPose2D_t *pose);
+void Encoder_GetTravelSnapshot(float *left_distance_m,
+                               float *right_distance_m,
+                               int16_t *left_counter_raw,
+                               int16_t *right_counter_raw);
 void Encoder_GetCalibration(float *left_forward, float *left_reverse, float *right_forward, float *right_reverse);
 uint8_t Encoder_SetCalibration(float left_forward, float left_reverse, float right_forward, float right_reverse);
 

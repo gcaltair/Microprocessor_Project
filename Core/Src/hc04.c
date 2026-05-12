@@ -263,6 +263,8 @@ static void transmit_odometry_snapshot(void)
     float x;
     float y;
     float th;
+    float left_distance_m;
+    float right_distance_m;
     LocalizationTaskStats_t loc_stats;
     float left_speed;
     float right_speed;
@@ -270,6 +272,8 @@ static void transmit_odometry_snapshot(void)
     float angle_setpoint;
     ControlMode mode;
     RelativeMoveState move_state;
+    int16_t left_counter_raw;
+    int16_t right_counter_raw;
 
     if (g_odomMutex != NULL) {
         (void)osMutexAcquire(g_odomMutex, osWaitForever);
@@ -286,6 +290,10 @@ static void transmit_odometry_snapshot(void)
     th = g_th_continuous;
     left_speed = g_left_speed;
     right_speed = g_right_speed;
+    Encoder_GetTravelSnapshot(&left_distance_m,
+                              &right_distance_m,
+                              &left_counter_raw,
+                              &right_counter_raw);
     current_base_speed = base_car_speed;
     angle_setpoint = g_pid_angle.setpoint;
     mode = g_control_mode;
@@ -312,6 +320,15 @@ static void transmit_odometry_snapshot(void)
                 angle_setpoint,
                 control_mode_to_string(mode),
                 move_state_to_string(move_state));
+    uart_printf("ENC  dl=%.3f dr=%.3f cntL=%d cntR=%d cal=(%.3f,%.3f,%.3f,%.3f)\r\n",
+                left_distance_m,
+                right_distance_m,
+                left_counter_raw,
+                right_counter_raw,
+                g_encoder_left_forward_scale,
+                g_encoder_left_reverse_scale,
+                g_encoder_right_forward_scale,
+                g_encoder_right_reverse_scale);
     uart_printf("EST  x=%.3f y=%.3f th=%.2f CTRL=(%.3f,%.3f,%.2f)\r\n",
                 loc_stats.current_estimated_pose.x_m,
                 loc_stats.current_estimated_pose.y_m,
@@ -643,6 +660,7 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("P: Show RTOS/runtime stats and scan quality\r\n");
             transmit("K: Show encoder calibration\r\n");
             transmit("Klf,lr,rf,rr: Set encoder calibration\r\n");
+            transmit("R0: Reset encoder counts and odometry pose\r\n");
             transmit("M: Start LIDAR (mapping mode, no binary stream)\r\n");
             transmit("N: Stop LIDAR\r\n");
             transmit("T0/T1: Disable/enable binary LiDAR telemetry on Bluetooth\r\n");
@@ -901,6 +919,17 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
             transmit("Invalid J format. Use Jx,y\r\n");
             HC04_RecordCommandAck(cmd, size, 0U, "invalid-j-format");
         }
+    } else if ((size == 2U) && (cmd[0] == 'R') && (cmd[1] == '0')) {
+        if (g_odomMutex != NULL) {
+            (void)osMutexAcquire(g_odomMutex, osWaitForever);
+        }
+        encoder_Reset();
+        Odometry_ResetPose();
+        if (g_odomMutex != NULL) {
+            (void)osMutexRelease(g_odomMutex);
+        }
+        transmit("Odometry and encoder accumulators reset\r\n");
+        HC04_RecordCommandAck(cmd, size, 1U, "odometry-reset");
     } else if ((size >= 2U) && (cmd[0] == 'X')) {
         int downsample = 0;
 

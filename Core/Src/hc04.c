@@ -684,13 +684,13 @@ void process_command(uint8_t *cmd, uint16_t size)
             break;
 
         case CMD_LEFT:
-            Control_SetManualCommand(0.0f, -PID_DEFAULT_TURN_SETPOINT);
+            Control_SetRelativeTurn(-PID_DEFAULT_TURN_SETPOINT);
             transmit("Turning left (PID)\r\n");
             HC04_RecordCommandAck(cmd, size, 1U, "manual-left");
             break;
 
         case CMD_RIGHT:
-            Control_SetManualCommand(0.0f, PID_DEFAULT_TURN_SETPOINT);
+            Control_SetRelativeTurn(PID_DEFAULT_TURN_SETPOINT);
             transmit("Turning right (PID)\r\n");
             HC04_RecordCommandAck(cmd, size, 1U, "manual-right");
             break;

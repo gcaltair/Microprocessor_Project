@@ -1,14 +1,16 @@
-# 小车上位机 V1
+# Host App
 
-`host_app` 是基于 `Python + PySide6` 的 Windows 优先桌面上位机，用于连接当前 STM32 固件并完成：
+`host_app` is a Windows-first Python + PySide6 desktop application for the STM32 robot car.
 
-- 串口连接与断线重连
-- 文本兼容模式与结构化 telemetry 模式切换
-- 手动控制、LiDAR 启停、导航目标下发
-- 运行状态、地图、路径、点云和日志可视化
-- 原始串口录包与离线回放
+It is used to:
 
-## 安装
+- connect to the robot over serial
+- switch between text-compatible and structured telemetry workflows
+- send manual control, LiDAR, and navigation commands
+- visualize runtime state, occupancy map, path, scan points, and logs
+- record raw serial sessions and replay saved logs
+
+## Install
 
 ```powershell
 cd host_app
@@ -17,16 +19,42 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## 运行
+## Run
 
 ```powershell
 cd host_app
 python main.py
 ```
 
-## 打包
+## Tests
+
+```powershell
+cd host_app
+pytest
+```
+
+## Package
 
 ```powershell
 cd host_app
 .\build.ps1
 ```
+
+## Source Layout
+
+- `host_app/app.py`: application entrypoint
+- `host_app/protocol/`: command building and telemetry parsing
+- `host_app/services/`: controller and session state management
+- `host_app/transport/`: serial transport
+- `host_app/ui/`: Qt UI widgets and views
+- `tests/`: parser and state tests
+
+## Agent Notes
+
+For host-app-only work, read this file together with:
+
+- `../AGENTS.md`
+- `../docs/agent_workflow/README.md`
+- `pyproject.toml`
+
+If a task changes host-app workflow, protocol usage, or test commands, update this file in the same task.

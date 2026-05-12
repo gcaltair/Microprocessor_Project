@@ -2,6 +2,29 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Current Planning Entry Point
+
+For current development status and agent workflow, read these first:
+
+1. `AGENTS.md`
+2. `README.md`
+3. `docs/README.md`
+4. `docs/agent_workflow/README.md`
+5. `docs/development_plan/README.md`
+6. `docs/development_plan/slam_icp_progress_status.md`
+
+The detailed architecture notes below are useful background, but the current phase is tracked in `docs/development_plan/README.md`.
+
+## Status Warning
+
+Some sections in this file preserve historical architecture notes from earlier migration stages.
+
+Current source of truth:
+
+- FreeRTOS task architecture is live in `Core/Src/freertos.c`
+- Current phase and priorities live in `docs/development_plan/*`
+- If a section below conflicts with those files, prefer the newer files
+
 ## Project Overview
 
 This is an STM32F446-based robot car project for a microprocessor course competition. The robot navigates a 5x5 meter maze autonomously using SLAM (Simultaneous Localization and Mapping), with capabilities for mapping, path planning, and autonomous exploration.
@@ -46,9 +69,11 @@ The project is typically flashed using STM32CubeProgrammer or OpenOCD. In CLion/
 
 ## Architecture Overview
 
-### Current Control Loop Architecture (Pre-FreeRTOS Migration)
+### Historical Control Loop Architecture (Pre-FreeRTOS Migration)
 
-**WARNING**: Current code is in transition state. FreeRTOS is initialized but main control logic still runs in bare-metal `while(1)` loop after `osKernelStart()`.
+This section is historical background only.
+
+The current code no longer runs the main control loop in bare-metal `while(1)` after `osKernelStart()`. The active task wiring now lives in `Core/Src/freertos.c`.
 
 ```
 main():
@@ -60,7 +85,7 @@ main():
   ├─ MX_FREERTOS_Init(): Creates defaultTask only (empty loop)
   └─ osKernelStart()  <-- SHOULD NOT RETURN
 
-  while(1)  <-- CURRENTLY RUNNING (should be in tasks)
+  while(1)  <-- historical state before task migration
     ├─ LIDAR_ParseTask()          // Parse LiDAR data from ring buffer
     ├─ if (g_system_update_flag): // Set by TIM4 @ 100Hz
     │   ├─ MPU_update()           // Read IMU (gyro for heading)
@@ -73,9 +98,9 @@ main():
         └─ send_binary_packaged_data()
 ```
 
-### Planned FreeRTOS Task Architecture
+### Historical Planned FreeRTOS Task Architecture
 
-Per `docs/team_worksplit_analysis.md`, planned task structure:
+Per earlier planning documents, the migration target structure was:
 
 | Task | Priority | Period | Responsibility |
 |------|----------|--------|----------------|

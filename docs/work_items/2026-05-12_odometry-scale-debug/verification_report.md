@@ -25,6 +25,8 @@
 - Test plan: `hardware_test_plan.md`
 - Manual test record: `manual_test_record.md`
 - Result: not run
+- Operator aid added: result-interpretation matrix for distinguishing scale bias, left-right asymmetry, progress-accounting error, and reset-path residue
+- Operator aid added: copy-paste reply template for baseline, turn, forward, reverse, and `D...` outputs
 
 ## Remaining Gaps
 

@@ -72,6 +72,34 @@ Optional calibration helper:
 - `P1.0,0.0` still overshoots materially whenever the robot drives a shallow arc
 - `MOVE progress` remains clearly below physical travel even when `ENC dl/dr` and stop position imply the car already went far enough
 
+## Result Interpretation
+
+Use the forward and reverse runs to separate root causes:
+
+- If physical stop distance is wrong, and `ENC dl/dr` are both wrong by a similar ratio:
+  - likely dominant issue: wheel-scale calibration
+  - next action: use `D...`, then apply suggested `K...`
+
+- If physical stop distance is wrong, and `ENC dl` and `ENC dr` differ a lot during straight motion:
+  - likely dominant issue: left/right asymmetry, traction, or wheel-specific calibration
+  - next action: tune `Klf/lr/rf/rr` separately and inspect floor / wheel condition
+
+- If physical stop distance is near target, but `MOVE progress` is still much smaller than actual travel:
+  - likely dominant issue: relative-move progress accounting still mismatches real motion
+  - next action: inspect `Core/Src/pid.c` distance-progress logic
+
+- If `MOVE progress` is near target, but physical stop still overshoots while `ENC dl/dr` also overshoot:
+  - likely dominant issue: odometry scale is still biased
+  - next action: prioritize encoder calibration workflow
+
+- If forward is acceptable but reverse is still poor:
+  - likely dominant issue: reverse-direction wheel scale or traction asymmetry
+  - next action: focus on reverse coefficients `lr` / `rr`
+
+- If `R0` is issued and the next `O` still shows stale `MOVE` or nonzero pose state before motion:
+  - likely dominant issue: reset path not fully clean
+  - next action: inspect `R0`, `LocalizationTask_Reset()`, and control-state reset sequence
+
 ## Safe Stop / Recovery
 
 - Stop command: `S`
@@ -83,3 +111,41 @@ Optional calibration helper:
 - Status: not run
 - Tester:
 - Notes:
+
+## Quick Reply Template
+
+Copy this back after testing:
+
+```text
+[Step 1]
+R0 / O:
+ODOM zero?:
+MOVE zero?:
+EST/CTRL zero?:
+
+[Step 2]
+L behavior:
+O after L:
+R behavior:
+O after R:
+Relative turn ok?:
+
+[Step 3]
+K output:
+O after P1.0,0.0:
+Physical forward distance:
+Forward drift:
+MOVE forward:
+ENC forward:
+
+[Step 4]
+O after P-1.0,0.0:
+Physical reverse distance:
+Reverse drift:
+MOVE reverse:
+ENC reverse:
+
+[Step 5]
+D output, if any:
+Applied K, if any:
+```

@@ -28,6 +28,8 @@ static float s_target_distance = 0.0f;
 static float s_initial_x = 0.0f;
 static float s_initial_y = 0.0f;
 static float s_drive_direction = 1.0f;
+static float s_drive_axis_x = 1.0f;
+static float s_drive_axis_y = 0.0f;
 
 static float pid_normalize_angle_deg(float angle_deg)
 {
@@ -90,6 +92,14 @@ static float pid_clamp_float(float value, float min_value, float max_value)
     }
 
     return value;
+}
+
+static void pid_set_drive_axis_from_heading_deg(float heading_deg)
+{
+    float heading_rad = heading_deg * PI / 180.0f;
+
+    s_drive_axis_x = cosf(heading_rad);
+    s_drive_axis_y = sinf(heading_rad);
 }
 
 static void pid_get_odometry_pose_snapshot(SlamPose2D_t *pose)
@@ -334,6 +344,7 @@ void Control_StopCommand(void)
     g_control_mode = CONTROL_MODE_MANUAL;
     base_car_speed = 0.0f;
     s_drive_direction = 1.0f;
+    pid_set_drive_axis_from_heading_deg(pose.theta_deg);
     g_pid_angle.setpoint = pose.theta_deg;
 
     unlock_pid_control_and_odom();
@@ -371,6 +382,7 @@ void Start_Relative_Move(float dx, float dy)
     g_pid_angle.setpoint = pose.theta_deg + target_heading_deg;
     s_initial_x = pose.x_m;
     s_initial_y = pose.y_m;
+    pid_set_drive_axis_from_heading_deg(g_pid_angle.setpoint);
     g_pid_position.integral = 0.0f;
     g_pid_position.last_error = 0.0f;
     base_car_speed = 0.0f;
@@ -411,6 +423,7 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
             if (fabsf(angle_error) < ANGLE_TOLERANCE_FOR_MOVING) {
                 s_initial_x = current_x_m;
                 s_initial_y = current_y_m;
+                pid_set_drive_axis_from_heading_deg(current_angle_deg);
                 g_pid_position.integral = 0.0f;
                 g_pid_position.last_error = 0.0f;
                 g_relative_move_state = RELATIVE_MOVE_DRIVING;
@@ -422,8 +435,19 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
         {
             float dx_traveled = current_x_m - s_initial_x;
             float dy_traveled = current_y_m - s_initial_y;
-            float distance_traveled = sqrtf(dx_traveled * dx_traveled + dy_traveled * dy_traveled);
-            float distance_error = s_target_distance - distance_traveled;
+            float distance_progress = (dx_traveled * s_drive_axis_x + dy_traveled * s_drive_axis_y) * s_drive_direction;
+            float distance_error;
+
+            if (distance_progress < 0.0f) {
+                distance_progress = 0.0f;
+            }
+
+            /*
+             * Use commanded-path progress instead of start-to-current Euclidean distance.
+             * When the robot drives while trimming heading, arc motion makes straight-line
+             * displacement smaller than real path progress and causes consistent overshoot.
+             */
+            distance_error = s_target_distance - distance_progress;
 
             if (distance_error < POSITION_REACHED_THRESHOLD) {
                 g_relative_move_state = RELATIVE_MOVE_IDLE;
@@ -432,6 +456,7 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
                 s_drive_direction = 1.0f;
                 g_pid_position.integral = 0.0f;
                 g_pid_position.last_error = 0.0f;
+                pid_set_drive_axis_from_heading_deg(current_angle_deg);
                 g_pid_angle.setpoint = current_angle_deg;
                 break;
             }

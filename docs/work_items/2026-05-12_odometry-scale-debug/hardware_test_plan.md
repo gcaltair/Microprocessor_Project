@@ -10,7 +10,7 @@
 
 ## Objective
 
-Confirm that straight-line and reverse odometry distance error is materially reduced and that reset/calibration workflow supports repeatable measurement.
+Confirm that straight-line and reverse odometry distance error is materially reduced, that reset/calibration workflow supports repeatable measurement, and that `P1.0,0.0` no longer overshoots because of relative-move progress accounting.
 
 ## Preconditions
 
@@ -28,21 +28,22 @@ Confirm that straight-line and reverse odometry distance error is materially red
 5. Send `P1.0,0.0`
 6. Wait for motion complete, then send `O`
 7. Measure physical stop position against 1.0 m mark
-8. Send `R0`
-9. Send `P-1.0,0.0`
-10. Wait for motion complete, then send `O`
-11. Measure physical stop position against -1.0 m mark
+8. Note whether the robot made heading trims during the run and whether physical stop position still overshot despite `ODOM` being near 1.0 m
+9. Send `R0`
+10. Send `P-1.0,0.0`
+11. Wait for motion complete, then send `O`
+12. Measure physical stop position against -1.0 m mark
 
 If forward or reverse scale is still off, adjust with:
 
-12. Send `Klf,lr,rf,rr` using revised factors
-13. Repeat steps 2-11
+13. Send `Klf,lr,rf,rr` using revised factors
+14. Repeat steps 2-12
 
 Optional calibration helper:
 
-12.5 After measuring actual travel, send `D0.95` or `D-0.92`
-12.6 Record the suggested `K...` line printed by firmware
-12.7 Apply that suggestion with `Klf,lr,rf,rr`
+13.5 After measuring actual travel, send `D0.95` or `D-0.92`
+13.6 Record the suggested `K...` line printed by firmware
+13.7 Apply that suggestion with `Klf,lr,rf,rr`
 
 ## Expected Behavior
 
@@ -55,6 +56,7 @@ Optional calibration helper:
 - Physical robot behavior:
   - straight movement without large heading drift
   - forward and reverse stop positions closer to commanded distance than before
+  - when heading trims happen mid-run, `P1.0,0.0` should not show the old "ODOM near target but body still physically overshoots" pattern
 - Timing or tolerance expectations:
   - target odometry error after calibration: preferably within 5%
 
@@ -65,6 +67,7 @@ Optional calibration helper:
 - forward or reverse distance still biased by about 10-20%
 - `ENC dl` and `ENC dr` differ significantly during straight motion
 - obvious heading drift dominating the distance error
+- `P1.0,0.0` still overshoots materially whenever the robot drives a shallow arc
 
 ## Safe Stop / Recovery
 

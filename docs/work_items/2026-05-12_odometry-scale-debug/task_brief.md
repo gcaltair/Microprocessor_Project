@@ -17,6 +17,7 @@ Reduce systematic odometry distance error by fixing basic motion-control / encod
 - In scope:
   - encoder pulse-to-distance handling
   - odometry integration logic
+  - relative-move distance completion logic
   - calibration and reset support for bench testing
   - serial-visible diagnostics needed for manual verification
 - Out of scope:
@@ -29,7 +30,7 @@ Reduce systematic odometry distance error by fixing basic motion-control / encod
 
 - Architecture constraints: keep control, localization, and mapping boundaries intact
 - Memory or timing constraints: no new dynamic allocation, no heavy logging in control loop
-- Safe edit boundaries: `Core/Src/encoder.c`, `Core/Src/encoder.h`, `Core/Src/hc04.c`
+- Safe edit boundaries: `Core/Src/encoder.c`, `Core/Src/encoder.h`, `Core/Src/hc04.c`, `Core/Src/pid.c`
 
 ## Expected Files
 
@@ -37,6 +38,7 @@ Reduce systematic odometry distance error by fixing basic motion-control / encod
   - `Core/Src/encoder.c`
   - `Core/Src/encoder.h`
   - `Core/Src/hc04.c`
+  - `Core/Src/pid.c`
   - `docs/work_items/2026-05-12_odometry-scale-debug/*`
 - Files to avoid:
   - generated peripheral setup
@@ -45,7 +47,7 @@ Reduce systematic odometry distance error by fixing basic motion-control / encod
 ## Verification Plan
 
 - Desktop verification: firmware build
-- Hardware verification: manual straight-line and reverse-line distance test
+- Hardware verification: manual straight-line and reverse-line distance test, plus relative-move overshoot check
 - Required logs or outputs: `O`, `K`, new reset/calibration command outputs
 
 ## Completion Criteria

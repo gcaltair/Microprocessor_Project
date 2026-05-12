@@ -18,6 +18,7 @@
 - Serial/log observations:
 - `ENC dl/dr/cntL/cntR` during forward run:
 - `ENC dl/dr/cntL/cntR` during reverse run:
+- Relative-move overshoot observation during `P1.0,0.0`:
 - `D...` suggestion output:
 - Robot behavior observations:
 - Forward 1.0 m physical result:
@@ -41,3 +42,4 @@
   - `Core/Src/encoder.c`
   - `Core/Src/encoder.h`
   - `Core/Src/hc04.c`
+  - `Core/Src/pid.c`

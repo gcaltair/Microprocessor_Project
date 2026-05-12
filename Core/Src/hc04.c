@@ -1004,6 +1004,7 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
             HC04_RecordCommandAck(cmd, size, 0U, "invalid-j-format");
         }
     } else if ((size == 2U) && (cmd[0] == 'R') && (cmd[1] == '0')) {
+        NavigationTask_Reset();
         if (g_odomMutex != NULL) {
             (void)osMutexAcquire(g_odomMutex, osWaitForever);
         }
@@ -1012,7 +1013,9 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         if (g_odomMutex != NULL) {
             (void)osMutexRelease(g_odomMutex);
         }
-        transmit("Odometry and encoder accumulators reset\r\n");
+        LocalizationTask_Reset();
+        Control_SetManualCommand(0.0f, 0.0f);
+        transmit("Odometry, localization, and navigation state reset\r\n");
         HC04_RecordCommandAck(cmd, size, 1U, "odometry-reset");
     } else if ((size >= 2U) && (cmd[0] == 'X')) {
         int downsample = 0;

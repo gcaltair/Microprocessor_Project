@@ -48,7 +48,7 @@ Optional calibration helper:
 ## Expected Behavior
 
 - Serial output:
-  - reset acknowledgement
+  - reset acknowledgement and a clean localization/navigation reset
   - calibration printout
   - `O` shows odometry close to commanded distance
   - `O` now includes `MOVE cmd/target/progress/remain` for relative-move completion diagnosis
@@ -65,6 +65,7 @@ Optional calibration helper:
 
 - Unexpected serial output
 - odometry resets but physical pose does not start from stable zero reference
+- `R0` is accepted but `O` still shows stale `EST / CTRL / MOVE` state from a previous run
 - forward or reverse distance still biased by about 10-20%
 - `ENC dl` and `ENC dr` differ significantly during straight motion
 - obvious heading drift dominating the distance error

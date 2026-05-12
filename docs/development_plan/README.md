@@ -4,7 +4,7 @@ This is the current planning entrypoint for agents.
 
 ## Current Phase
 
-Status date: 2026-04-25.
+Status date: 2026-05-12.
 
 The project is in a runnable integration phase:
 
@@ -17,7 +17,7 @@ The project is in a runnable integration phase:
 
 Current system goal:
 
-> Keep control stable, keep maps usable, make known-target navigation robust, then enter full exploration and return-to-start work.
+> Keep control stable, keep maps usable, validate odometry scale conservatively, make known-target navigation robust, then enter full exploration and return-to-start work.
 
 ## Authoritative Files
 
@@ -65,6 +65,7 @@ Suggested files:
 Tasks that fit this priority:
 
 - Preserve `odometry`, `control_pose`, and `corrected_pose` separation.
+- Tighten odometry scale diagnostics and calibration workflow before relying on longer navigation runs.
 - Improve diagnostics for drift, correction magnitude, and slow correction.
 - Keep PID input stable; do not directly replace control state with LiDAR-corrected pose.
 
@@ -120,3 +121,5 @@ pytest
 ```
 
 For behavior changes that cannot be fully verified on the desktop, include the exact serial command sequence to test on the robot.
+
+For odometry or motion-scale changes, also record the measured forward/reverse travel, resulting `K...` coefficients, and whether `R0 -> motion -> O -> D...` was exercised in the task work item.

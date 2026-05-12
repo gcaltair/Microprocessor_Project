@@ -1,4 +1,5 @@
 #include <stdarg.h>
+#include <math.h>
 #include <stdio.h>
 
 #include "freertos_app.h"
@@ -348,6 +349,62 @@ static void transmit_odometry_snapshot(void)
                 loc_stats.last_control_correction_delta.theta_deg);
 }
 
+static void transmit_encoder_calibration_suggestion(float actual_distance_m)
+{
+    float left_distance_m = 0.0f;
+    float right_distance_m = 0.0f;
+    float left_forward = 0.0f;
+    float left_reverse = 0.0f;
+    float right_forward = 0.0f;
+    float right_reverse = 0.0f;
+    float suggested_left_scale;
+    float suggested_right_scale;
+
+    if (fabsf(actual_distance_m) < 0.001f) {
+        transmit("Calibration suggestion requires non-zero actual distance\r\n");
+        return;
+    }
+
+    Encoder_GetTravelSnapshot(&left_distance_m, &right_distance_m, NULL, NULL);
+    Encoder_GetCalibration(&left_forward, &left_reverse, &right_forward, &right_reverse);
+
+    if ((fabsf(left_distance_m) < 0.001f) || (fabsf(right_distance_m) < 0.001f)) {
+        transmit("Calibration suggestion unavailable: wheel travel too small\r\n");
+        return;
+    }
+
+    suggested_left_scale = (actual_distance_m / left_distance_m) *
+                           ((actual_distance_m >= 0.0f) ? left_forward : left_reverse);
+    suggested_right_scale = (actual_distance_m / right_distance_m) *
+                            ((actual_distance_m >= 0.0f) ? right_forward : right_reverse);
+
+    if (actual_distance_m >= 0.0f) {
+        uart_printf("CAL suggest forward: left=%.3f right=%.3f from actual=%.3f dl=%.3f dr=%.3f\r\n",
+                    suggested_left_scale,
+                    suggested_right_scale,
+                    actual_distance_m,
+                    left_distance_m,
+                    right_distance_m);
+        uart_printf("Use: K%.3f,%.3f,%.3f,%.3f\r\n",
+                    suggested_left_scale,
+                    left_reverse,
+                    suggested_right_scale,
+                    right_reverse);
+    } else {
+        uart_printf("CAL suggest reverse: left=%.3f right=%.3f from actual=%.3f dl=%.3f dr=%.3f\r\n",
+                    suggested_left_scale,
+                    suggested_right_scale,
+                    actual_distance_m,
+                    left_distance_m,
+                    right_distance_m);
+        uart_printf("Use: K%.3f,%.3f,%.3f,%.3f\r\n",
+                    left_forward,
+                    suggested_left_scale,
+                    right_forward,
+                    suggested_right_scale);
+    }
+}
+
 static void transmit_runtime_snapshot(void)
 {
     FreertosRuntimeStats_t stats;
@@ -660,6 +717,7 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("P: Show RTOS/runtime stats and scan quality\r\n");
             transmit("K: Show encoder calibration\r\n");
             transmit("Klf,lr,rf,rr: Set encoder calibration\r\n");
+            transmit("Dvalue: Suggest new wheel calibration from actual travel distance in meters\r\n");
             transmit("R0: Reset encoder counts and odometry pose\r\n");
             transmit("M: Start LIDAR (mapping mode, no binary stream)\r\n");
             transmit("N: Stop LIDAR\r\n");
@@ -890,6 +948,16 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         } else {
             transmit("Invalid K format. Use Klf,lr,rf,rr\r\n");
             HC04_RecordCommandAck(cmd, size, 0U, "invalid-k-format");
+        }
+    } else if ((size > 2U) && (cmd[0] == 'D')) {
+        float actual_distance_m = 0.0f;
+
+        if (sscanf((char *)cmd, "D%f", &actual_distance_m) == 1) {
+            transmit_encoder_calibration_suggestion(actual_distance_m);
+            HC04_RecordCommandAck(cmd, size, 1U, "encoder-calibration-suggestion");
+        } else {
+            transmit("Invalid D format. Use D0.95 or D-0.92\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-d-format");
         }
     } else if ((size > 2U) && (cmd[0] == 'P')) {
         float dx = 0.0f;

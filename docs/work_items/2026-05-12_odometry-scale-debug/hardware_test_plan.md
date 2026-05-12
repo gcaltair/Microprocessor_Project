@@ -38,6 +38,12 @@ If forward or reverse scale is still off, adjust with:
 12. Send `Klf,lr,rf,rr` using revised factors
 13. Repeat steps 2-11
 
+Optional calibration helper:
+
+12.5 After measuring actual travel, send `D0.95` or `D-0.92`
+12.6 Record the suggested `K...` line printed by firmware
+12.7 Apply that suggestion with `Klf,lr,rf,rr`
+
 ## Expected Behavior
 
 - Serial output:
@@ -45,6 +51,7 @@ If forward or reverse scale is still off, adjust with:
   - calibration printout
   - `O` shows odometry close to commanded distance
   - `O` now includes `ENC dl/dr/cntL/cntR/cal=...` for left-right diagnosis
+  - `D...` prints a suggested `K...` calibration command
 - Physical robot behavior:
   - straight movement without large heading drift
   - forward and reverse stop positions closer to commanded distance than before

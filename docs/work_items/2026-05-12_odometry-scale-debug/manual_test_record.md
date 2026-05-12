@@ -18,6 +18,7 @@
 - Serial/log observations:
 - `ENC dl/dr/cntL/cntR` during forward run:
 - `ENC dl/dr/cntL/cntR` during reverse run:
+- `D...` suggestion output:
 - Robot behavior observations:
 - Forward 1.0 m physical result:
 - Reverse 1.0 m physical result:

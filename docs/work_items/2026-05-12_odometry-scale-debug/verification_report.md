@@ -17,7 +17,7 @@
 
 - Commands run: `cmake --build cmake-build-debug`
 - Result: success
-- Latest build note: passed after `R0` was extended to reset odometry/localization/navigation state; RAM `98.85%`, FLASH `22.09%`
+- Latest build note: passed after control-loop heading/distance reference was unified back to odometry; RAM `98.85%`, FLASH `22.07%`
 - Limits of coverage: cannot prove physical wheel-scale accuracy on desktop
 
 ## Hardware Evidence

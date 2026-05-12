@@ -733,11 +733,9 @@ static uint32_t telemetry_compose_nav_signature(const NavigationTaskStats_t *sta
 void StartControlTask(void *argument)
 {
   const float dt = 0.01f;
-  SlamPose2D_t control_pose;
   SlamPose2D_t odom_pose;
 
   (void)argument;
-  (void)memset(&control_pose, 0, sizeof(control_pose));
   (void)memset(&odom_pose, 0, sizeof(odom_pose));
 
   for (;;) {
@@ -753,7 +751,6 @@ void StartControlTask(void *argument)
     Odometry_Update(dt);
     Odometry_GetPoseSnapshot(&odom_pose);
     LocalizationTask_UpdatePredictedPose(&odom_pose);
-    LocalizationTask_GetControlPoseSnapshot(&control_pose);
 
     if (g_controlMutex != NULL) {
       (void)osMutexAcquire(g_controlMutex, osWaitForever);
@@ -764,9 +761,9 @@ void StartControlTask(void *argument)
     }
 
     if (g_control_mode == CONTROL_MODE_POSITION) {
-      Update_Relative_Move_PID(dt, &control_pose);
+      Update_Relative_Move_PID(dt, &odom_pose);
     } else {
-      Angle_Speed_Cascade_Control(control_pose.theta_deg, base_car_speed, dt);
+      Angle_Speed_Cascade_Control(odom_pose.theta_deg, base_car_speed, dt);
     }
 
     if (g_pidMutex != NULL) {

@@ -1,7 +1,6 @@
 #include <math.h>
 
 #include "../Inc/control_logic.h"
-#include "../Inc/localization_task.h"
 #include "freertos_app.h"
 #include "pid.h"
 #include "system.h"
@@ -118,20 +117,6 @@ static void pid_get_odometry_pose_snapshot(SlamPose2D_t *pose)
         pose->theta_deg = g_th_continuous;
         pose->timestamp_ms = HAL_GetTick();
     }
-}
-
-static void pid_get_control_pose_snapshot(SlamPose2D_t *pose)
-{
-    if (pose == NULL) {
-        return;
-    }
-
-    LocalizationTask_GetControlPoseSnapshot(pose);
-    if (pose->timestamp_ms != 0U) {
-        return;
-    }
-
-    pid_get_odometry_pose_snapshot(pose);
 }
 
 static void lock_control_and_pid(void)
@@ -302,7 +287,7 @@ void Control_SetManualDrive(float command_base_speed)
     SlamPose2D_t pose;
 
     lock_odom_control_and_pid();
-    pid_get_control_pose_snapshot(&pose);
+    pid_get_odometry_pose_snapshot(&pose);
 
     g_relative_move_state = RELATIVE_MOVE_IDLE;
     g_control_mode = CONTROL_MODE_MANUAL;
@@ -322,7 +307,7 @@ void Control_SetRelativeTurn(float delta_angle)
     SlamPose2D_t pose;
 
     lock_odom_control_and_pid();
-    pid_get_control_pose_snapshot(&pose);
+    pid_get_odometry_pose_snapshot(&pose);
 
     g_relative_move_state = RELATIVE_MOVE_IDLE;
     g_control_mode = CONTROL_MODE_MANUAL;
@@ -356,7 +341,7 @@ void Control_StopCommand(void)
     SlamPose2D_t pose;
 
     lock_odom_control_and_pid();
-    pid_get_control_pose_snapshot(&pose);
+    pid_get_odometry_pose_snapshot(&pose);
 
     g_relative_move_state = RELATIVE_MOVE_IDLE;
     g_control_mode = CONTROL_MODE_MANUAL;

@@ -19,6 +19,7 @@ Reduce systematic odometry distance error by fixing basic motion-control / encod
   - odometry integration logic
   - relative-move distance completion logic
   - relative-move progress diagnostics
+  - keep basic motion-control reference frame consistent
   - calibration and reset support for bench testing
   - serial-visible diagnostics needed for manual verification
 - Out of scope:

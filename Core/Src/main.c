@@ -73,7 +73,7 @@ void system_init(void)
 
 void PID_system_init(void)
 {
-  PID_Init((PID_Controller *)&g_pid_angle, 0.0575f, 0.00f, 0.001f, -0.22f, 0.22f);
+  PID_Init((PID_Controller *)&g_pid_angle, 0.006f, 0.00f, 0.0005f, -0.22f, 0.22f);
   PID_Init((PID_Controller *)&g_pid_speed_left, 8000, 33705, 33, -10000.0f, 10000.0f);
   PID_Init((PID_Controller *)&g_pid_speed_right, 8000, 33705, 33, -10000.0f, 10000.0f);
   PID_Init((PID_Controller *)&g_pid_position, 0.8f, 0.00f, 0.0f, 0.0f, MAX_BASE_SPEED);

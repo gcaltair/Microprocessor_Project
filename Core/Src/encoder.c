@@ -16,10 +16,10 @@ volatile float g_th = 0.0f;
 
 volatile float g_left_speed = 0.0f;
 volatile float g_right_speed = 0.0f;
-volatile float g_encoder_left_forward_scale = 1.0f;
-volatile float g_encoder_left_reverse_scale = 1.0f;
-volatile float g_encoder_right_forward_scale = 1.0f;
-volatile float g_encoder_right_reverse_scale = 1.0f;
+volatile float g_encoder_left_forward_scale = 0.957f;
+volatile float g_encoder_left_reverse_scale = 0.992f;
+volatile float g_encoder_right_forward_scale = 0.896f;
+volatile float g_encoder_right_reverse_scale = 1.030f;
 
 static const float delta_t = 0.01f;
 static int16_t last_left_count = 0;

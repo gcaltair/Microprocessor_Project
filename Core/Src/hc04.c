@@ -761,6 +761,71 @@ static void transmit_mapping_ascii(uint8_t downsample)
     transmit("MAP dump done\r\n");
 }
 
+static const char *pid_loop_name(char loop_id)
+{
+    switch (loop_id) {
+        case 'A':
+            return "angle";
+        case 'L':
+            return "left_speed";
+        case 'R':
+            return "right_speed";
+        case 'P':
+            return "position";
+        default:
+            return "unknown";
+    }
+}
+
+static char normalize_pid_loop_id(char loop_id)
+{
+    switch (loop_id) {
+        case 'A':
+        case 'a':
+            return 'A';
+        case 'L':
+        case 'l':
+            return 'L';
+        case 'R':
+        case 'r':
+            return 'R';
+        case 'P':
+        case 'p':
+            return 'P';
+        default:
+            return '?';
+    }
+}
+
+static void transmit_pid_tuning(char loop_id)
+{
+    float kp = 0.0f;
+    float ki = 0.0f;
+    float kd = 0.0f;
+    char normalized_loop_id = normalize_pid_loop_id(loop_id);
+
+    if ((normalized_loop_id == '?') ||
+        (Control_GetPidTunings(normalized_loop_id, &kp, &ki, &kd) == 0U)) {
+        uart_printf("PID invalid loop=%c use A,L,R,P\r\n", loop_id);
+        return;
+    }
+
+    uart_printf("PID loop=%c name=%s kp=%.6g ki=%.6g kd=%.6g\r\n",
+                normalized_loop_id,
+                pid_loop_name(normalized_loop_id),
+                kp,
+                ki,
+                kd);
+}
+
+static void transmit_all_pid_tunings(void)
+{
+    transmit_pid_tuning('A');
+    transmit_pid_tuning('L');
+    transmit_pid_tuning('R');
+    transmit_pid_tuning('P');
+}
+
 void process_command(uint8_t *cmd, uint16_t size)
 {
     if (cmd == NULL) {
@@ -842,6 +907,7 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("P: Show RTOS/runtime stats and scan quality\r\n");
             transmit("K: Show encoder calibration\r\n");
             transmit("Klf,lr,rf,rr: Set encoder calibration\r\n");
+            transmit("PK: Show PID tunings, PKA/L/R/P: show loop, PK<loop>,kp,ki,kd: set RAM tuning\r\n");
             transmit("Dvalue: Suggest new wheel calibration from measured travel in meters\r\n");
             transmit("        Prefers the last completed P{x},{y} move segment; otherwise uses cumulative wheel travel\r\n");
             transmit("R0: Reset encoder counts and odometry pose\r\n");
@@ -1048,6 +1114,39 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         } else {
             transmit("Invalid angle value. Use -360.0 to 360.0\r\n");
             HC04_RecordCommandAck(cmd, size, 0U, "invalid-angle-value");
+        }
+    } else if ((size >= 2U) && (cmd[0] == 'P') && (cmd[1] == 'K')) {
+        if (size == 2U) {
+            transmit_all_pid_tunings();
+            HC04_RecordCommandAck(cmd, size, 1U, "pid-tuning-show-all");
+        } else if (size == 3U) {
+            transmit_pid_tuning((char)cmd[2]);
+            HC04_RecordCommandAck(cmd, size, 1U, "pid-tuning-show-one");
+        } else {
+            char loop_id = '?';
+            float kp = 0.0f;
+            float ki = 0.0f;
+            float kd = 0.0f;
+
+            if (sscanf((char *)cmd, "PK%c,%f,%f,%f", &loop_id, &kp, &ki, &kd) == 4) {
+                char normalized_loop_id = normalize_pid_loop_id(loop_id);
+                if ((normalized_loop_id != '?') &&
+                    (Control_SetPidTunings(normalized_loop_id, kp, ki, kd) != 0U)) {
+                    uart_printf("PID set loop=%c name=%s kp=%.6g ki=%.6g kd=%.6g\r\n",
+                                normalized_loop_id,
+                                pid_loop_name(normalized_loop_id),
+                                kp,
+                                ki,
+                                kd);
+                    HC04_RecordCommandAck(cmd, size, 1U, "pid-tuning-updated");
+                } else {
+                    transmit("Invalid PID loop or values. Use PK<loop>,kp,ki,kd with loop A,L,R,P\r\n");
+                    HC04_RecordCommandAck(cmd, size, 0U, "invalid-pid-tuning-values");
+                }
+            } else {
+                transmit("Invalid PID format. Use PK or PKA or PK<loop>,kp,ki,kd\r\n");
+                HC04_RecordCommandAck(cmd, size, 0U, "invalid-pid-format");
+            }
         }
     } else if ((size > 2U) && (cmd[0] == 'K')) {
         float left_forward = 0.0f;

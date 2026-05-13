@@ -244,6 +244,26 @@ static void unlock_pid_control_and_odom(void)
     }
 }
 
+static PID_Controller *pid_select_controller(char loop_id)
+{
+    switch (loop_id) {
+        case 'A':
+        case 'a':
+            return (PID_Controller *)&g_pid_angle;
+        case 'L':
+        case 'l':
+            return (PID_Controller *)&g_pid_speed_left;
+        case 'R':
+        case 'r':
+            return (PID_Controller *)&g_pid_speed_right;
+        case 'P':
+        case 'p':
+            return (PID_Controller *)&g_pid_position;
+        default:
+            return NULL;
+    }
+}
+
 void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, float out_max)
 {
     pid->Kp = Kp;
@@ -372,6 +392,65 @@ void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt
     if ((abs_base_speed <= 0.001f) && (fabsf(turn_output) > 0.0005f)) {
         pid_capture_last_turn_control_snapshot();
     }
+}
+
+uint8_t Control_GetPidTunings(char loop_id, float *kp, float *ki, float *kd)
+{
+    PID_Controller *pid = pid_select_controller(loop_id);
+
+    if ((pid == NULL) || (kp == NULL) || (ki == NULL) || (kd == NULL)) {
+        return 0U;
+    }
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexAcquire(g_pidMutex, osWaitForever);
+    }
+
+    *kp = pid->Kp;
+    *ki = pid->Ki;
+    *kd = pid->Kd;
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexRelease(g_pidMutex);
+    }
+
+    return 1U;
+}
+
+uint8_t Control_SetPidTunings(char loop_id, float kp, float ki, float kd)
+{
+    PID_Controller *pid = pid_select_controller(loop_id);
+
+    if ((pid == NULL) ||
+        (isfinite(kp) == 0) ||
+        (isfinite(ki) == 0) ||
+        (isfinite(kd) == 0) ||
+        (kp < 0.0f) ||
+        (ki < 0.0f) ||
+        (kd < 0.0f)) {
+        return 0U;
+    }
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexAcquire(g_pidMutex, osWaitForever);
+    }
+
+    pid->Kp = kp;
+    pid->Ki = ki;
+    pid->Kd = kd;
+    pid->integral = 0.0f;
+    pid->last_error = 0.0f;
+    if (pid->Ki > 0.0001f) {
+        pid->integral_max = (pid->output_max * 0.5f) / pid->Ki;
+    } else {
+        pid->integral_max = 0.0f;
+    }
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexRelease(g_pidMutex);
+    }
+
+    return 1U;
 }
 
 void Control_SetManualCommand(float command_base_speed, float angle_setpoint)

@@ -169,7 +169,16 @@
 - `O`：`ODOM / ENC / LMOVE / EST / CTRL / pred / corr / slow`
 - `O` 同时包含 `MOVE cmd/target/progress/remain` 相对位移诊断信息，并保留最近一次动作结果直到下一次命令或复位
 - `O` 同时包含 `LMOVE valid/cmd/progress/dl/dr`，直接显示最近一次完成的相对位移段轮程
+- `O` 同时包含 `CTRLDBG / LCTRL / TCTRL`，用于 PID 调参和抖动复盘
 - `P`：定位状态摘要
+
+### 5.2.1 PID 调参
+
+- `PK`：查看所有 PID 环参数
+- `PKA / PKL / PKR / PKP`：查看角度、左轮速度、右轮速度、位置环参数
+- `PK<loop>,kp,ki,kd`：临时设置 RAM 中的 PID 参数，例如 `PKA,0.05,0,0.001`
+- 参数不写 Flash，控制器重启后恢复 `PID_system_init()` 中的默认值
+- 上位机 PID 面板和 CLI 只作为调参辅助，不能替代急停和人工安全观察
 
 ### 5.3 编码器标定
 
@@ -213,6 +222,8 @@
 - `O` 输出新增 `CTRLDBG pos_err/ang_err/turn/l_sp/r_sp/pwm`，用于下一轮实车定位抖动来源
 - `O` 输出新增 `LCTRL`，保留最近一次相对位移动作结束前最后一轮驱动控制输出，避免动作结束后只能看到停止态
 - `O` 输出新增 `TCTRL`，保留最近一次原地转向有输出时的控制状态，避免转角结束后只能看到静止态
+- `PK` / `PKA` / `PKL` / `PKR` / `PKP` 可查看 PID 参数，`PK<loop>,kp,ki,kd` 可临时设置 RAM 中的 PID 参数，重启后恢复编译默认值
+- 上位机新增 PID 面板和 `car-pid-tuner` CLI，用于可视化 `CTRLDBG / LCTRL / TCTRL` 并为后续 AI agent 调参保留 JSONL 数据入口
 
 首轮硬件量距已经暴露出更具体的问题：
 

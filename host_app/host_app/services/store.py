@@ -27,6 +27,7 @@ from host_app.protocol.telemetry import (
     unpack_scan_header,
     unpack_status_payload,
 )
+from host_app.protocol.pid_tuning import ControlDebugSample, PidTuning, parse_pid_text_line
 
 
 class SessionStore:
@@ -39,6 +40,11 @@ class SessionStore:
     def apply_event(self, event: TelemetryFrame | TextLine) -> None:
         if isinstance(event, TextLine):
             self.append_log(event.text)
+            pid_event = parse_pid_text_line(event.text)
+            if isinstance(pid_event, PidTuning):
+                self.state.pid_tunings[pid_event.loop] = pid_event
+            elif isinstance(pid_event, ControlDebugSample):
+                self.state.control_debug_samples.append(pid_event)
             return
 
         if event.frame_type == FRAME_TYPE_STATUS_V2:

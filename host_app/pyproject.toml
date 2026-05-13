@@ -23,6 +23,7 @@ dev = [
 
 [project.scripts]
 car-host-app = "host_app.app:main"
+car-pid-tuner = "host_app.tools.pid_tuner_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["host_app*"]

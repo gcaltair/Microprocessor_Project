@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from host_app.services.controller import HostSessionController
 from host_app.ui.map_view import MapCanvas
+from host_app.ui.pid_tuning_panel import PidTuningPanel
 from host_app.ui.status_panel import StatusPanel
 
 
@@ -165,9 +166,11 @@ class MainWindow(QMainWindow):
     def _build_scan_log_splitter(self) -> QWidget:
         splitter = QSplitter(Qt.Vertical)
         splitter.addWidget(self._build_scan_box())
+        splitter.addWidget(self._build_pid_box())
         splitter.addWidget(self._build_log_box())
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 1)
         return splitter
 
     def _build_scan_box(self) -> QWidget:
@@ -179,6 +182,13 @@ class MainWindow(QMainWindow):
         self.scan_scatter = pg.ScatterPlotItem(size=5, brush=pg.mkBrush("#2563eb"))
         self.scan_plot.addItem(self.scan_scatter)
         layout.addWidget(self.scan_plot)
+        return box
+
+    def _build_pid_box(self) -> QWidget:
+        box = QGroupBox("PID")
+        layout = QVBoxLayout(box)
+        self.pid_panel = PidTuningPanel(self.controller)
+        layout.addWidget(self.pid_panel)
         return box
 
     def _build_log_box(self) -> QWidget:
@@ -221,6 +231,7 @@ class MainWindow(QMainWindow):
 
     def _on_state_changed(self, state) -> None:
         self.status_panel.update_state(state)
+        self.pid_panel.update_state(state)
         pose = state.control_pose
         if pose.timestamp_ms == 0:
             pose = state.estimated_pose if state.estimated_pose.timestamp_ms != 0 else state.odom_pose

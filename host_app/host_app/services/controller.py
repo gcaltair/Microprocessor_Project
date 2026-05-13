@@ -103,6 +103,12 @@ class HostSessionController(QObject):
     def switch_baud(self, baud_rate: int) -> None:
         self.send_command(DeviceCommandBuilder.baud(baud_rate))
 
+    def show_pid_tunings(self, loop: str | None = None) -> None:
+        self.send_command(DeviceCommandBuilder.pid_show(loop))
+
+    def set_pid_tuning(self, loop: str, kp: float, ki: float, kd: float) -> None:
+        self.send_command(DeviceCommandBuilder.pid_set(loop, kp, ki, kd))
+
     def replay_log(self, file_path: str) -> None:
         data = Path(file_path).read_bytes()
         for event in self.parser.feed(data):

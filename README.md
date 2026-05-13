@@ -36,7 +36,7 @@ The active work is:
 | `Drivers/` | STM32 HAL and CMSIS vendor code | Treat as vendor code. Avoid edits unless the task explicitly requires HAL-level changes. |
 | `Middlewares/` | FreeRTOS middleware | Treat as vendor code. Avoid edits except RTOS configuration or explicit porting tasks. |
 | `cmake/` | Toolchain and STM32CubeMX CMake integration | Change only for build-system tasks. |
-| `host_app/` | Python/PySide6 host app for serial control, telemetry, maps, and logs | Use normal Python tests before changing host protocol/UI behavior. |
+| `host_app/` | Python/PySide6 host app for serial control, telemetry, maps, PID diagnostics, and logs | Use normal Python tests before changing host protocol/UI behavior. |
 | `docs/` | Course brief, reports, and development plans | Keep current status and agent plans indexed here. |
 | `cmake-build-debug/` | Local firmware build output | Generated artifact; do not edit manually. |
 | `host_app/build/`, `host_app/dist/`, `host_app/release/` | Host app packaging output | Generated or release artifacts; do not touch unless the task is packaging. |

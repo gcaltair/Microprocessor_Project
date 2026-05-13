@@ -29,6 +29,18 @@ def test_parse_pid_set_line() -> None:
     assert event.kp == 0.05
 
 
+def test_parse_line_with_command_echo_prefix() -> None:
+    pid = parse_pid_text_line("PKPID loop=A name=angle kp=0.0575 ki=0 kd=0.001")
+    odom = parse_pid_text_line(
+        "OODOM x=0.948 y=-0.001 th=-0.32 ls=0.123 rs=0.145 base=0.100 ang_sp=90.00 mode=MANUAL move=IDLE"
+    )
+
+    assert pid is not None
+    assert pid.loop == "A"
+    assert odom is not None
+    assert odom.theta_deg == -0.32
+
+
 def test_parse_control_debug_lines() -> None:
     ctrl = parse_pid_text_line("CTRLDBG pos_err=0.040 ang_err=-0.50 turn=0.010 l_sp=0.020 r_sp=0.040 pwm=(120,130)")
     lctrl = parse_pid_text_line("LCTRL pos_err=0.052 ang_err=1.20 base=0.020 turn=0.008 l_sp=0.012 r_sp=0.028 pwm=(90,110)")

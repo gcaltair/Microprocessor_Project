@@ -121,7 +121,7 @@ def build_pid_set_command(loop: str, kp: float, ki: float, kd: float) -> str:
 
 
 def parse_pid_text_line(text: str) -> PidTextEvent | None:
-    stripped = text.strip()
+    stripped = _strip_command_echo(text.strip())
     pid_match = _PID_LINE_RE.match(stripped)
     if pid_match is not None:
         loop = normalize_loop_id(pid_match.group("loop"))
@@ -159,6 +159,18 @@ def parse_pid_text_line(text: str) -> PidTextEvent | None:
         )
 
     return None
+
+
+def _strip_command_echo(text: str) -> str:
+    known_prefixes = ("PID", "CTRLDBG", "LCTRL", "TCTRL", "ODOM")
+    best_index: int | None = None
+    for prefix in known_prefixes:
+        index = text.find(prefix)
+        if index >= 0 and (best_index is None or index < best_index):
+            best_index = index
+    if best_index is None:
+        return text
+    return text[best_index:]
 
 
 def _control_sample_from_match(

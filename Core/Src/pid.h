@@ -26,6 +26,18 @@ typedef struct
     float integral_max;
 } PID_Controller;
 
+typedef struct
+{
+    float position_error_m;
+    float angle_error_deg;
+    float turn_output_mps;
+    float base_speed_mps;
+    float left_speed_setpoint_mps;
+    float right_speed_setpoint_mps;
+    int pwm_left;
+    int pwm_right;
+} ControlDebugSnapshot_t;
+
 void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, float out_max);
 float PID_Calculate(PID_Controller *pid, float current_value, float dt);
 void Speed_Control_Loop(float dt);
@@ -42,5 +54,7 @@ uint8_t Control_GetLastRelativeMoveTravelSnapshot(float *left_distance_m,
                                                   float *right_distance_m,
                                                   float *command_distance_m,
                                                   float *progress_distance_m);
+uint8_t Control_GetLastRelativeMoveControlSnapshot(ControlDebugSnapshot_t *snapshot);
+uint8_t Control_GetLastTurnControlSnapshot(ControlDebugSnapshot_t *snapshot);
 
 #endif /* __PID_H */

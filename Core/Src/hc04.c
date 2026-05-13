@@ -277,15 +277,24 @@ static void transmit_odometry_snapshot(void)
     float move_target_distance_m;
     float move_progress_m;
     float move_remaining_m;
+    float control_angle_error_deg;
+    float control_turn_output_mps;
+    float control_position_error_m;
+    float control_left_speed_setpoint_mps;
+    float control_right_speed_setpoint_mps;
     float last_move_left_distance_m = 0.0f;
     float last_move_right_distance_m = 0.0f;
     float last_move_command_distance_m = 0.0f;
     float last_move_progress_distance_m = 0.0f;
+    ControlDebugSnapshot_t last_move_control_snapshot;
+    ControlDebugSnapshot_t last_turn_control_snapshot;
     ControlMode mode;
     RelativeMoveState move_state;
     int16_t left_counter_raw;
     int16_t right_counter_raw;
     uint8_t has_last_move_snapshot = 0U;
+    uint8_t has_last_move_control_snapshot = 0U;
+    uint8_t has_last_turn_control_snapshot = 0U;
 
     if (g_odomMutex != NULL) {
         (void)osMutexAcquire(g_odomMutex, osWaitForever);
@@ -313,12 +322,19 @@ static void transmit_odometry_snapshot(void)
     move_target_distance_m = g_relative_move_target_distance_m;
     move_progress_m = g_relative_move_progress_m;
     move_remaining_m = g_relative_move_remaining_m;
+    control_angle_error_deg = g_control_angle_error_deg;
+    control_turn_output_mps = g_control_turn_output_mps;
+    control_position_error_m = g_control_position_error_m;
+    control_left_speed_setpoint_mps = g_control_left_speed_setpoint_mps;
+    control_right_speed_setpoint_mps = g_control_right_speed_setpoint_mps;
     mode = g_control_mode;
     move_state = g_relative_move_state;
     has_last_move_snapshot = Control_GetLastRelativeMoveTravelSnapshot(&last_move_left_distance_m,
                                                                        &last_move_right_distance_m,
                                                                        &last_move_command_distance_m,
                                                                        &last_move_progress_distance_m);
+    has_last_move_control_snapshot = Control_GetLastRelativeMoveControlSnapshot(&last_move_control_snapshot);
+    has_last_turn_control_snapshot = Control_GetLastTurnControlSnapshot(&last_turn_control_snapshot);
 
     if (g_pidMutex != NULL) {
         (void)osMutexRelease(g_pidMutex);
@@ -347,6 +363,14 @@ static void transmit_odometry_snapshot(void)
                 move_target_distance_m,
                 move_progress_m,
                 move_remaining_m);
+    uart_printf("CTRLDBG pos_err=%.3f ang_err=%.2f turn=%.3f l_sp=%.3f r_sp=%.3f pwm=(%d,%d)\r\n",
+                control_position_error_m,
+                control_angle_error_deg,
+                control_turn_output_mps,
+                control_left_speed_setpoint_mps,
+                control_right_speed_setpoint_mps,
+                pwm_output_left,
+                pwm_output_right);
     uart_printf("ENC  dl=%.3f dr=%.3f cntL=%d cntR=%d cal=(%.3f,%.3f,%.3f,%.3f)\r\n",
                 left_distance_m,
                 right_distance_m,
@@ -362,6 +386,27 @@ static void transmit_odometry_snapshot(void)
                 last_move_progress_distance_m,
                 last_move_left_distance_m,
                 last_move_right_distance_m);
+    if (has_last_move_control_snapshot != 0U) {
+        uart_printf("LCTRL pos_err=%.3f ang_err=%.2f base=%.3f turn=%.3f l_sp=%.3f r_sp=%.3f pwm=(%d,%d)\r\n",
+                    last_move_control_snapshot.position_error_m,
+                    last_move_control_snapshot.angle_error_deg,
+                    last_move_control_snapshot.base_speed_mps,
+                    last_move_control_snapshot.turn_output_mps,
+                    last_move_control_snapshot.left_speed_setpoint_mps,
+                    last_move_control_snapshot.right_speed_setpoint_mps,
+                    last_move_control_snapshot.pwm_left,
+                    last_move_control_snapshot.pwm_right);
+    }
+    if (has_last_turn_control_snapshot != 0U) {
+        uart_printf("TCTRL ang_err=%.2f base=%.3f turn=%.3f l_sp=%.3f r_sp=%.3f pwm=(%d,%d)\r\n",
+                    last_turn_control_snapshot.angle_error_deg,
+                    last_turn_control_snapshot.base_speed_mps,
+                    last_turn_control_snapshot.turn_output_mps,
+                    last_turn_control_snapshot.left_speed_setpoint_mps,
+                    last_turn_control_snapshot.right_speed_setpoint_mps,
+                    last_turn_control_snapshot.pwm_left,
+                    last_turn_control_snapshot.pwm_right);
+    }
     uart_printf("EST  x=%.3f y=%.3f th=%.2f CTRL=(%.3f,%.3f,%.2f)\r\n",
                 loc_stats.current_estimated_pose.x_m,
                 loc_stats.current_estimated_pose.y_m,
@@ -793,7 +838,7 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("J: Show navigation status\r\n");
             transmit("Jx,y: Navigate to map cell x,y\r\n");
             transmit("C: Cancel active navigation\r\n");
-            transmit("O: Show odometry snapshot, cumulative ENC, and last completed relative-move travel\r\n");
+            transmit("O: Show odometry, ENC, CTRLDBG, LCTRL/TCTRL, and last relative-move travel\r\n");
             transmit("P: Show RTOS/runtime stats and scan quality\r\n");
             transmit("K: Show encoder calibration\r\n");
             transmit("Klf,lr,rf,rr: Set encoder calibration\r\n");

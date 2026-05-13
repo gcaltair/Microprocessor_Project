@@ -36,6 +36,11 @@ extern volatile float g_target_y;
 extern volatile float g_relative_move_target_distance_m;
 extern volatile float g_relative_move_progress_m;
 extern volatile float g_relative_move_remaining_m;
+extern volatile float g_control_angle_error_deg;
+extern volatile float g_control_turn_output_mps;
+extern volatile float g_control_position_error_m;
+extern volatile float g_control_left_speed_setpoint_mps;
+extern volatile float g_control_right_speed_setpoint_mps;
 extern volatile float g_th;
 extern volatile float g_th_continuous;
 

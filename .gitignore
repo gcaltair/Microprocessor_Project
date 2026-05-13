@@ -5,3 +5,8 @@
 /host_app/dist/
 /host_app/build/
 /host_app/.pyinstaller/
+/host_app/.pytest_cache/
+/host_app/.venv/
+__pycache__/
+*.py[cod]
+/cmake-build-release/

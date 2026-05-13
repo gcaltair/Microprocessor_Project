@@ -77,13 +77,14 @@ class HostSessionController(QObject):
             self.log_message.emit("录包已停止")
         self.state_changed.emit(self.store.state)
 
-    def send_command(self, command: str) -> None:
+    def send_command(self, command: str, log: bool = True) -> None:
         try:
             self.transport.write_line(command)
         except Exception as exc:
             self.error.emit(f"发送失败: {exc}")
             return
-        self.log_message.emit(f"> {command}")
+        if log:
+            self.log_message.emit(f"> {command}")
 
     def send_manual(self, command: str) -> None:
         self.send_command(DeviceCommandBuilder.manual(command))
@@ -108,6 +109,13 @@ class HostSessionController(QObject):
 
     def set_pid_tuning(self, loop: str, kp: float, ki: float, kd: float) -> None:
         self.send_command(DeviceCommandBuilder.pid_set(loop, kp, ki, kd))
+
+    def request_control_snapshot(self) -> None:
+        self.send_command("O", log=False)
+
+    def clear_pid_samples(self) -> None:
+        self.store.clear_pid_samples()
+        self.state_changed.emit(self.store.state)
 
     def replay_log(self, file_path: str) -> None:
         data = Path(file_path).read_bytes()

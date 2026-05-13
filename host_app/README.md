@@ -27,18 +27,31 @@ cd host_app
 python main.py
 ```
 
-## PID Tuning
+## PID 调参
 
-The desktop app includes a PID panel. It parses firmware text lines:
+桌面上位机右侧有 `PID` 面板，调参时建议按这个流程使用：
 
-- `PID ...`
-- `CTRLDBG ...`
-- `LCTRL ...`
-- `TCTRL ...`
+1. 连接串口后点击 `Read All`，读取当前四个 PID 环参数。
+2. 选择 `angle / left_speed / right_speed / position`，点击 `Load` 把当前值载入输入框。
+3. 修改 `Kp / Ki / Kd` 后点击 `Apply RAM`，参数只写入控制器 RAM，重启后恢复固件默认值。
+4. 勾选 `Live O`，上位机会按间隔自动发送 `O` 并刷新曲线。
+5. 点击 `A Test` 可执行一次指定角度的转向测试；必要时点击 `Stop`。
 
-The panel can read all loop gains, read one loop, apply RAM-only gains, and plot recent control diagnostics.
+曲线页含义：
 
-CLI usage:
+- `Angle`：角度误差、实际角度、目标角度、转向输出。
+- `Speed`：左右轮目标速度与编码器实际速度。
+- `PWM`：左右轮 PWM 输出。
+
+面板解析的固件文本行：
+
+- `PID ...`：当前 PID 参数
+- `ODOM ...`：角度、左右轮实际速度等响应数据
+- `CTRLDBG ...`：当前控制误差、目标速度和 PWM
+- `LCTRL ...`：最近一次相对位移结束前的控制快照
+- `TCTRL ...`：最近一次原地转向有输出时的控制快照
+
+CLI 用法：
 
 ```powershell
 cd host_app

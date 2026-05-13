@@ -27,7 +27,7 @@ from host_app.protocol.telemetry import (
     unpack_scan_header,
     unpack_status_payload,
 )
-from host_app.protocol.pid_tuning import ControlDebugSample, PidTuning, parse_pid_text_line
+from host_app.protocol.pid_tuning import ControlDebugSample, ControlResponseSample, PidTuning, parse_pid_text_line
 
 
 class SessionStore:
@@ -43,8 +43,10 @@ class SessionStore:
             pid_event = parse_pid_text_line(event.text)
             if isinstance(pid_event, PidTuning):
                 self.state.pid_tunings[pid_event.loop] = pid_event
-            elif isinstance(pid_event, ControlDebugSample):
+            elif isinstance(pid_event, ControlDebugSample) and pid_event.source == "CTRLDBG":
                 self.state.control_debug_samples.append(pid_event)
+            elif isinstance(pid_event, ControlResponseSample):
+                self.state.control_response_samples.append(pid_event)
             return
 
         if event.frame_type == FRAME_TYPE_STATUS_V2:
@@ -59,6 +61,10 @@ class SessionStore:
             self._apply_scan(event)
         elif event.frame_type in {FRAME_TYPE_ACK_V2, FRAME_TYPE_ERR_V2}:
             self._apply_ack(event)
+
+    def clear_pid_samples(self) -> None:
+        self.state.control_debug_samples.clear()
+        self.state.control_response_samples.clear()
 
     def _apply_status(self, event: TelemetryFrame) -> None:
         values = unpack_status_payload(event.payload)

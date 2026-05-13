@@ -1,5 +1,5 @@
 from host_app.protocol.ascii_commands import DeviceCommandBuilder
-from host_app.protocol.pid_tuning import ControlDebugSample, PidTuning, parse_pid_text_line
+from host_app.protocol.pid_tuning import ControlDebugSample, ControlResponseSample, PidTuning, parse_pid_text_line
 from host_app.protocol.telemetry import (
     FRAME_TYPE_ACK_V2,
     FRAME_TYPE_ERR_V2,
@@ -16,6 +16,7 @@ from host_app.protocol.telemetry import (
 __all__ = [
     "DeviceCommandBuilder",
     "ControlDebugSample",
+    "ControlResponseSample",
     "FRAME_TYPE_ACK_V2",
     "FRAME_TYPE_ERR_V2",
     "FRAME_TYPE_MAP_DATA_V2",

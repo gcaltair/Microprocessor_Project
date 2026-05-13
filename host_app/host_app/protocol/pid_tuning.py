@@ -57,10 +57,25 @@ class ControlDebugSample:
         return asdict(self)
 
 
-PidTextEvent = PidTuning | ControlDebugSample
+@dataclass(slots=True)
+class ControlResponseSample:
+    x_m: float
+    y_m: float
+    theta_deg: float
+    left_speed_mps: float
+    right_speed_mps: float
+    base_speed_mps: float
+    angle_setpoint_deg: float
+    raw: str
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+PidTextEvent = PidTuning | ControlDebugSample | ControlResponseSample
 
 _PID_LINE_RE = re.compile(
-    r"^PID\s+loop=(?P<loop>[ALRP])\s+name=(?P<name>\S+)\s+"
+    r"^PID(?:\s+set)?\s+loop=(?P<loop>[ALRP])\s+name=(?P<name>\S+)\s+"
     r"kp=(?P<kp>[-+0-9.eE]+)\s+ki=(?P<ki>[-+0-9.eE]+)\s+kd=(?P<kd>[-+0-9.eE]+)$"
 )
 _CTRLDBG_RE = re.compile(
@@ -78,6 +93,11 @@ _TCTRL_RE = re.compile(
     r"^TCTRL\s+ang_err=(?P<ang>[-+0-9.eE]+)\s+base=(?P<base>[-+0-9.eE]+)\s+"
     r"turn=(?P<turn>[-+0-9.eE]+)\s+l_sp=(?P<left>[-+0-9.eE]+)\s+"
     r"r_sp=(?P<right>[-+0-9.eE]+)\s+pwm=\((?P<pwm_left>-?\d+),(?P<pwm_right>-?\d+)\)$"
+)
+_ODOM_RE = re.compile(
+    r"^ODOM\s+x=(?P<x>[-+0-9.eE]+)\s+y=(?P<y>[-+0-9.eE]+)\s+th=(?P<th>[-+0-9.eE]+)\s+"
+    r"ls=(?P<left>[-+0-9.eE]+)\s+rs=(?P<right>[-+0-9.eE]+)\s+"
+    r"base=(?P<base>[-+0-9.eE]+)\s+ang_sp=(?P<ang_sp>[-+0-9.eE]+)"
 )
 
 
@@ -124,6 +144,19 @@ def parse_pid_text_line(text: str) -> PidTextEvent | None:
     tctrl_match = _TCTRL_RE.match(stripped)
     if tctrl_match is not None:
         return _control_sample_from_match("TCTRL", tctrl_match, stripped)
+
+    odom_match = _ODOM_RE.match(stripped)
+    if odom_match is not None:
+        return ControlResponseSample(
+            x_m=float(odom_match.group("x")),
+            y_m=float(odom_match.group("y")),
+            theta_deg=float(odom_match.group("th")),
+            left_speed_mps=float(odom_match.group("left")),
+            right_speed_mps=float(odom_match.group("right")),
+            base_speed_mps=float(odom_match.group("base")),
+            angle_setpoint_deg=float(odom_match.group("ang_sp")),
+            raw=stripped,
+        )
 
     return None
 

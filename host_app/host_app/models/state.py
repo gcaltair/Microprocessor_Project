@@ -4,7 +4,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Deque
 
-from host_app.protocol.pid_tuning import ControlDebugSample, PidLoopId, PidTuning
+from host_app.protocol.pid_tuning import ControlDebugSample, ControlResponseSample, PidLoopId, PidTuning
 
 
 @dataclass(slots=True)
@@ -111,5 +111,6 @@ class SessionState:
     latest_scan: LidarScan = field(default_factory=LidarScan)
     pid_tunings: dict[PidLoopId, PidTuning] = field(default_factory=dict)
     control_debug_samples: Deque[ControlDebugSample] = field(default_factory=lambda: deque(maxlen=500))
+    control_response_samples: Deque[ControlResponseSample] = field(default_factory=lambda: deque(maxlen=500))
     acks: Deque[CommandAck] = field(default_factory=lambda: deque(maxlen=50))
     logs: Deque[str] = field(default_factory=lambda: deque(maxlen=500))

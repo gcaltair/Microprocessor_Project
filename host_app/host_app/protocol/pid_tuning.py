@@ -72,7 +72,20 @@ class ControlResponseSample:
         return asdict(self)
 
 
-PidTextEvent = PidTuning | ControlDebugSample | ControlResponseSample
+@dataclass(slots=True)
+class MoveProgressSample:
+    command_x_m: float
+    command_y_m: float
+    target_distance_m: float
+    progress_m: float
+    remaining_m: float
+    raw: str
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+PidTextEvent = PidTuning | ControlDebugSample | ControlResponseSample | MoveProgressSample
 
 _PID_LINE_RE = re.compile(
     r"^PID(?:\s+set)?\s+loop=(?P<loop>[ALRP])\s+name=(?P<name>\S+)\s+"
@@ -98,6 +111,11 @@ _ODOM_RE = re.compile(
     r"^ODOM\s+x=(?P<x>[-+0-9.eE]+)\s+y=(?P<y>[-+0-9.eE]+)\s+th=(?P<th>[-+0-9.eE]+)\s+"
     r"ls=(?P<left>[-+0-9.eE]+)\s+rs=(?P<right>[-+0-9.eE]+)\s+"
     r"base=(?P<base>[-+0-9.eE]+)\s+ang_sp=(?P<ang_sp>[-+0-9.eE]+)"
+)
+_MOVE_RE = re.compile(
+    r"^MOVE\s+cmd=\((?P<x>[-+0-9.eE]+),(?P<y>[-+0-9.eE]+)\)\s+"
+    r"target=(?P<target>[-+0-9.eE]+)\s+progress=(?P<progress>[-+0-9.eE]+)\s+"
+    r"remain=(?P<remain>[-+0-9.eE]+)$"
 )
 
 
@@ -158,11 +176,22 @@ def parse_pid_text_line(text: str) -> PidTextEvent | None:
             raw=stripped,
         )
 
+    move_match = _MOVE_RE.match(stripped)
+    if move_match is not None:
+        return MoveProgressSample(
+            command_x_m=float(move_match.group("x")),
+            command_y_m=float(move_match.group("y")),
+            target_distance_m=float(move_match.group("target")),
+            progress_m=float(move_match.group("progress")),
+            remaining_m=float(move_match.group("remain")),
+            raw=stripped,
+        )
+
     return None
 
 
 def _strip_command_echo(text: str) -> str:
-    known_prefixes = ("PID", "CTRLDBG", "LCTRL", "TCTRL", "ODOM")
+    known_prefixes = ("PID", "CTRLDBG", "LCTRL", "TCTRL", "ODOM", "MOVE")
     best_index: int | None = None
     for prefix in known_prefixes:
         index = text.find(prefix)

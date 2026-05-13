@@ -227,7 +227,15 @@ void HC04_RecordCommandAck(const uint8_t *cmd, uint16_t size, uint8_t ok, const 
 
 static const char *control_mode_to_string(ControlMode mode)
 {
-    return (mode == CONTROL_MODE_POSITION) ? "POSITION" : "MANUAL";
+    switch (mode) {
+        case CONTROL_MODE_POSITION:
+            return "POSITION";
+        case CONTROL_MODE_SPEED_TEST:
+            return "SPEED_TEST";
+        case CONTROL_MODE_MANUAL:
+        default:
+            return "MANUAL";
+    }
 }
 
 static const char *move_state_to_string(RelativeMoveState state)
@@ -899,6 +907,7 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("Z: Clear occupancy grid\r\n");
             transmit("A+angle: Set relative angle turn\r\n");
             transmit("V+speed: Set speed for manual mode\r\n");
+            transmit("WSleft,right: Isolate wheel speed loop setpoints in m/s, e.g. WS-0.03,-0.03\r\n");
             transmit("P{x},{y}: Set relative target point (e.g., P0.5,1.2)\r\n");
             transmit("J: Show navigation status\r\n");
             transmit("Jx,y: Navigate to map cell x,y\r\n");
@@ -1041,7 +1050,26 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
 {
     char reply[100];
 
-    if ((size >= 2U) && (cmd[0] == CMD_SPEED)) {
+    if ((size >= 3U) && (cmd[0] == 'W') && (cmd[1] == 'S')) {
+        float left_speed_mps = 0.0f;
+        float right_speed_mps = 0.0f;
+
+        if (sscanf((char *)cmd, "WS%f,%f", &left_speed_mps, &right_speed_mps) == 2) {
+            if (Control_SetWheelSpeedTest(left_speed_mps, right_speed_mps) != 0U) {
+                uart_printf("Wheel speed test set left=%.3f right=%.3f m/s\r\n",
+                            left_speed_mps,
+                            right_speed_mps);
+                HC04_RecordCommandAck(cmd, size, 1U, "wheel-speed-test");
+            } else {
+                uart_printf("Invalid wheel speed. Use |left|,|right| <= %.2f m/s\r\n",
+                            SPEED_TEST_MAX_SETPOINT_MPS);
+                HC04_RecordCommandAck(cmd, size, 0U, "invalid-wheel-speed-value");
+            }
+        } else {
+            transmit("Invalid WS format. Use WSleft,right, e.g. WS-0.03,-0.03\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-wheel-speed-format");
+        }
+    } else if ((size >= 2U) && (cmd[0] == CMD_SPEED)) {
         float int_part = 0.0f;
         float frac_part = 0.0f;
         float frac_divisor = 1.0f;

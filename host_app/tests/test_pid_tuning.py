@@ -67,6 +67,15 @@ def test_parse_odometry_response_line() -> None:
     assert event.angle_setpoint_deg == 90.0
 
 
+def test_parse_move_progress_line() -> None:
+    event = parse_pid_text_line("MOVE cmd=(0.300,0.000) target=0.300 progress=0.239 remain=0.061")
+
+    assert event is not None
+    assert event.target_distance_m == 0.3
+    assert event.progress_m == 0.239
+    assert event.remaining_m == 0.061
+
+
 def test_store_tracks_pid_tuning_and_control_samples() -> None:
     store = SessionStore()
 
@@ -77,12 +86,15 @@ def test_store_tracks_pid_tuning_and_control_samples() -> None:
     store.apply_event(
         TextLine("ODOM x=0.948 y=-0.001 th=-0.32 ls=0.123 rs=0.145 base=0.100 ang_sp=90.00 mode=MANUAL move=IDLE")
     )
+    store.apply_event(TextLine("MOVE cmd=(0.300,0.000) target=0.300 progress=0.239 remain=0.061"))
 
     assert store.state.pid_tunings["A"].kp == 0.0575
     assert len(store.state.control_debug_samples) == 1
     assert store.state.control_debug_samples[-1].source == "CTRLDBG"
     assert len(store.state.control_response_samples) == 1
     assert store.state.control_response_samples[-1].left_speed_mps == 0.123
+    assert len(store.state.move_progress_samples) == 1
+    assert store.state.move_progress_samples[-1].remaining_m == 0.061
 
 
 def test_store_ignores_historical_control_snapshots_for_live_plot() -> None:
@@ -101,10 +113,12 @@ def test_store_clears_pid_samples() -> None:
     store.apply_event(
         TextLine("ODOM x=0.948 y=-0.001 th=-0.32 ls=0.123 rs=0.145 base=0.100 ang_sp=90.00 mode=MANUAL move=IDLE")
     )
+    store.apply_event(TextLine("MOVE cmd=(0.300,0.000) target=0.300 progress=0.239 remain=0.061"))
     store.clear_pid_samples()
 
     assert len(store.state.control_debug_samples) == 0
     assert len(store.state.control_response_samples) == 0
+    assert len(store.state.move_progress_samples) == 0
 
 
 def test_cli_accepts_options_after_subcommand() -> None:

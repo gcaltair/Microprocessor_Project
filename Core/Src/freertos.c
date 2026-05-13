@@ -760,7 +760,9 @@ void StartControlTask(void *argument)
       (void)osMutexAcquire(g_pidMutex, osWaitForever);
     }
 
-    if (g_control_mode == CONTROL_MODE_POSITION) {
+    if (g_control_mode == CONTROL_MODE_SPEED_TEST) {
+      Control_UpdateWheelSpeedTest(dt);
+    } else if (g_control_mode == CONTROL_MODE_POSITION) {
       Update_Relative_Move_PID(dt, &odom_pose);
     } else {
       Angle_Speed_Cascade_Control(odom_pose.theta_deg, base_car_speed, dt);

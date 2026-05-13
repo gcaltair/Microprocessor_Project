@@ -27,7 +27,13 @@ from host_app.protocol.telemetry import (
     unpack_scan_header,
     unpack_status_payload,
 )
-from host_app.protocol.pid_tuning import ControlDebugSample, ControlResponseSample, PidTuning, parse_pid_text_line
+from host_app.protocol.pid_tuning import (
+    ControlDebugSample,
+    ControlResponseSample,
+    MoveProgressSample,
+    PidTuning,
+    parse_pid_text_line,
+)
 
 
 class SessionStore:
@@ -47,6 +53,8 @@ class SessionStore:
                 self.state.control_debug_samples.append(pid_event)
             elif isinstance(pid_event, ControlResponseSample):
                 self.state.control_response_samples.append(pid_event)
+            elif isinstance(pid_event, MoveProgressSample):
+                self.state.move_progress_samples.append(pid_event)
             return
 
         if event.frame_type == FRAME_TYPE_STATUS_V2:
@@ -65,6 +73,7 @@ class SessionStore:
     def clear_pid_samples(self) -> None:
         self.state.control_debug_samples.clear()
         self.state.control_response_samples.clear()
+        self.state.move_progress_samples.clear()
 
     def _apply_status(self, event: TelemetryFrame) -> None:
         values = unpack_status_payload(event.payload)

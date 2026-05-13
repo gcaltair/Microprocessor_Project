@@ -46,7 +46,8 @@ extern volatile float g_th_continuous;
 
 typedef enum {
     CONTROL_MODE_MANUAL = 0,
-    CONTROL_MODE_POSITION = 1
+    CONTROL_MODE_POSITION = 1,
+    CONTROL_MODE_SPEED_TEST = 2
 } ControlMode;
 
 typedef enum {

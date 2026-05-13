@@ -144,6 +144,15 @@ class PidTuningPanel(QWidget):
         self.right_pwm_curve = self.pwm_plot.plot(pen=pg.mkPen("#f59e0b", width=2), name="right pwm")
         tabs.addTab(self.pwm_plot, "PWM")
 
+        self.position_plot = pg.PlotWidget()
+        self.position_plot.showGrid(x=True, y=True, alpha=0.25)
+        self.position_plot.addLegend(offset=(8, 8))
+        self.position_error_curve = self.position_plot.plot(pen=pg.mkPen("#ef4444", width=2), name="pos err")
+        self.move_progress_curve = self.position_plot.plot(pen=pg.mkPen("#0f766e", width=2), name="progress")
+        self.move_remaining_curve = self.position_plot.plot(pen=pg.mkPen("#7c3aed", width=2), name="remaining")
+        self.base_speed_curve = self.position_plot.plot(pen=pg.mkPen("#2563eb", width=2), name="base speed")
+        tabs.addTab(self.position_plot, "Position")
+
         return tabs
 
     @staticmethod
@@ -210,8 +219,9 @@ class PidTuningPanel(QWidget):
     def _update_plot(self, state: SessionState) -> None:
         control_samples = list(state.control_debug_samples)
         response_samples = list(state.control_response_samples)
-        self.sample_label.setText(f"control={len(control_samples)} response={len(response_samples)}")
-        if not control_samples and not response_samples:
+        move_samples = list(state.move_progress_samples)
+        self.sample_label.setText(f"control={len(control_samples)} response={len(response_samples)} move={len(move_samples)}")
+        if not control_samples and not response_samples and not move_samples:
             self.angle_error_curve.setData([], [])
             self.turn_curve.setData([], [])
             self.angle_actual_curve.setData([], [])
@@ -222,11 +232,16 @@ class PidTuningPanel(QWidget):
             self.right_actual_curve.setData([], [])
             self.left_pwm_curve.setData([], [])
             self.right_pwm_curve.setData([], [])
+            self.position_error_curve.setData([], [])
+            self.move_progress_curve.setData([], [])
+            self.move_remaining_curve.setData([], [])
+            self.base_speed_curve.setData([], [])
             self.last_sample_label.setText("-")
             return
 
         control_xs = list(range(len(control_samples)))
         response_xs = list(range(len(response_samples)))
+        move_xs = list(range(len(move_samples)))
         self.angle_error_curve.setData(control_xs, [sample.angle_error_deg for sample in control_samples])
         self.turn_curve.setData(control_xs, [sample.turn_output_mps * 100.0 for sample in control_samples])
         self.left_setpoint_curve.setData(control_xs, [sample.left_speed_setpoint_mps for sample in control_samples])
@@ -238,6 +253,10 @@ class PidTuningPanel(QWidget):
         self.angle_setpoint_curve.setData(response_xs, [sample.angle_setpoint_deg for sample in response_samples])
         self.left_actual_curve.setData(response_xs, [sample.left_speed_mps for sample in response_samples])
         self.right_actual_curve.setData(response_xs, [sample.right_speed_mps for sample in response_samples])
+        self.position_error_curve.setData(control_xs, [sample.position_error_m or 0.0 for sample in control_samples])
+        self.base_speed_curve.setData(response_xs, [sample.base_speed_mps for sample in response_samples])
+        self.move_progress_curve.setData(move_xs, [sample.progress_m for sample in move_samples])
+        self.move_remaining_curve.setData(move_xs, [sample.remaining_m for sample in move_samples])
 
         parts = []
         if control_samples:
@@ -253,4 +272,7 @@ class PidTuningPanel(QWidget):
                 f"ODOM: th={last_response.theta_deg:.2f}/{last_response.angle_setpoint_deg:.2f}, "
                 f"actual=({last_response.left_speed_mps:.3f},{last_response.right_speed_mps:.3f})"
             )
+        if move_samples:
+            last_move = move_samples[-1]
+            parts.append(f"MOVE: progress={last_move.progress_m:.3f}, remain={last_move.remaining_m:.3f}")
         self.last_sample_label.setText(" | ".join(parts))

@@ -394,6 +394,21 @@ void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt
     }
 }
 
+void Control_UpdateWheelSpeedTest(float dt)
+{
+    float left_setpoint = g_pid_speed_left.setpoint;
+    float right_setpoint = g_pid_speed_right.setpoint;
+
+    base_car_speed = (left_setpoint + right_setpoint) * 0.5f;
+    g_control_angle_error_deg = 0.0f;
+    g_control_turn_output_mps = (right_setpoint - left_setpoint) * 0.5f;
+    g_control_position_error_m = 0.0f;
+    g_control_left_speed_setpoint_mps = left_setpoint;
+    g_control_right_speed_setpoint_mps = right_setpoint;
+
+    Speed_Control_Loop(dt);
+}
+
 uint8_t Control_GetPidTunings(char loop_id, float *kp, float *ki, float *kd)
 {
     PID_Controller *pid = pid_select_controller(loop_id);
@@ -533,6 +548,49 @@ void Control_SetBaseSpeed(float command_base_speed)
     }
 }
 
+uint8_t Control_SetWheelSpeedTest(float left_speed_mps, float right_speed_mps)
+{
+    if ((isfinite(left_speed_mps) == 0) ||
+        (isfinite(right_speed_mps) == 0) ||
+        (fabsf(left_speed_mps) > SPEED_TEST_MAX_SETPOINT_MPS) ||
+        (fabsf(right_speed_mps) > SPEED_TEST_MAX_SETPOINT_MPS)) {
+        return 0U;
+    }
+
+    lock_control_and_pid();
+
+    g_relative_move_state = RELATIVE_MOVE_IDLE;
+    g_control_mode = CONTROL_MODE_SPEED_TEST;
+    base_car_speed = (left_speed_mps + right_speed_mps) * 0.5f;
+    g_pid_speed_left.setpoint = left_speed_mps;
+    g_pid_speed_right.setpoint = right_speed_mps;
+    g_pid_speed_left.integral = 0.0f;
+    g_pid_speed_left.last_error = 0.0f;
+    g_pid_speed_right.integral = 0.0f;
+    g_pid_speed_right.last_error = 0.0f;
+    g_pid_angle.integral = 0.0f;
+    g_pid_angle.last_error = 0.0f;
+    g_pid_position.integral = 0.0f;
+    g_pid_position.last_error = 0.0f;
+    g_relative_move_target_distance_m = 0.0f;
+    g_relative_move_progress_m = 0.0f;
+    g_relative_move_remaining_m = 0.0f;
+    g_control_angle_error_deg = 0.0f;
+    g_control_turn_output_mps = (right_speed_mps - left_speed_mps) * 0.5f;
+    g_control_position_error_m = 0.0f;
+    g_control_left_speed_setpoint_mps = left_speed_mps;
+    g_control_right_speed_setpoint_mps = right_speed_mps;
+    g_target_x = 0.0f;
+    g_target_y = 0.0f;
+    s_last_move_snapshot_valid = 0U;
+    s_last_turn_snapshot_valid = 0U;
+    s_angle_control_active = 0U;
+
+    unlock_pid_and_control();
+
+    return 1U;
+}
+
 void Control_StopCommand(void)
 {
     SlamPose2D_t pose;
@@ -546,9 +604,20 @@ void Control_StopCommand(void)
     s_drive_direction = 1.0f;
     pid_set_drive_axis_from_heading_deg(pose.theta_deg);
     g_pid_angle.setpoint = pose.theta_deg;
+    g_pid_speed_left.setpoint = 0.0f;
+    g_pid_speed_right.setpoint = 0.0f;
+    g_pid_speed_left.integral = 0.0f;
+    g_pid_speed_left.last_error = 0.0f;
+    g_pid_speed_right.integral = 0.0f;
+    g_pid_speed_right.last_error = 0.0f;
     g_relative_move_target_distance_m = 0.0f;
     g_relative_move_progress_m = 0.0f;
     g_relative_move_remaining_m = 0.0f;
+    g_control_angle_error_deg = 0.0f;
+    g_control_turn_output_mps = 0.0f;
+    g_control_position_error_m = 0.0f;
+    g_control_left_speed_setpoint_mps = 0.0f;
+    g_control_right_speed_setpoint_mps = 0.0f;
     g_target_x = 0.0f;
     g_target_y = 0.0f;
     s_last_move_snapshot_valid = 0U;

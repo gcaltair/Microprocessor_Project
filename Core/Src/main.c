@@ -73,9 +73,9 @@ void system_init(void)
 
 void PID_system_init(void)
 {
-  PID_Init((PID_Controller *)&g_pid_angle, 0.006f, 0.00f, 0.0005f, -0.22f, 0.22f);
-  PID_Init((PID_Controller *)&g_pid_speed_left, 1800, 3000, 0, -10000.0f, 10000.0f);
-  PID_Init((PID_Controller *)&g_pid_speed_right, 1800, 3000, 0, -10000.0f, 10000.0f);
+  PID_Init((PID_Controller *)&g_pid_angle, 0.008f, 0.00f, 0.0005f, -0.22f, 0.22f);
+  PID_Init((PID_Controller *)&g_pid_speed_left, 3500, 6000, 0, -10000.0f, 10000.0f);
+  PID_Init((PID_Controller *)&g_pid_speed_right, 3500, 6000, 0, -10000.0f, 10000.0f);
   PID_Init((PID_Controller *)&g_pid_position, 0.8f, 0.00f, 0.0f, 0.0f, MAX_BASE_SPEED);
 }
 /* USER CODE END 0 */

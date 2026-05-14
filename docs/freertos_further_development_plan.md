@@ -231,6 +231,7 @@
 - `O` 输出新增 `TCTRL`，保留最近一次原地转向有输出时的控制状态，避免转角结束后只能看到静止态
 - `PK` / `PKA` / `PKL` / `PKR` / `PKP` 可查看 PID 参数，`PK<loop>,kp,ki,kd` 可临时设置 RAM 中的 PID 参数，重启后恢复编译默认值
 - 上位机新增 PID 面板和 `car-pid-tuner` CLI，用于可视化 `CTRLDBG / LCTRL / TCTRL` 并为后续 AI agent 调参保留 JSONL 数据入口
+- `rollback/before-deadzone-debug` 分支地面三环调参结果：速度环默认值更新为左右轮 `Kp=3500 Ki=6000 Kd=0`，角度环默认值更新为 `Kp=0.008 Ki=0 Kd=0.0005`，位置环暂保持 `Kp=0.8 Ki=0 Kd=0`。不采用 `Kp=4500 Ki=9000`，因为 `WS/P0.50` 样本出现低速编码器反向尖峰后 PID 反向大输出。后续应优先修速度反馈抗尖峰和到达阈值，而不是继续加大位置环
 
 首轮硬件量距已经暴露出更具体的问题：
 

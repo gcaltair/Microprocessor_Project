@@ -4,8 +4,11 @@
 #include "system.h"
 
 #define PULSE_TO_SPEED_FACTOR   (PI * DIAMETER / ENCODER_PULSES_PER_REV / ENCODER_SAMPLING_PERIOD)
-#define MAX_REASONABLE_SPEED    1.2f
-#define SPEED_FILTER_ALPHA      0.8f
+#define MAX_REASONABLE_SPEED    0.8f
+#define SPEED_FILTER_ALPHA      0.35f
+#define SIGN_SPIKE_PREV_SPEED_THRESHOLD_MPS 0.02f
+#define SIGN_SPIKE_RAW_SPEED_THRESHOLD_MPS  0.25f
+#define SIGN_SPIKE_MAX_REJECT_COUNT         2U
 
 volatile float g_dl_acc = 0.0f;
 volatile float g_dr_acc = 0.0f;
@@ -26,6 +29,8 @@ static int16_t last_left_count = 0;
 static int16_t last_right_count = 0;
 static float g_left_distance_total_m = 0.0f;
 static float g_right_distance_total_m = 0.0f;
+static uint8_t s_left_sign_spike_reject_count = 0U;
+static uint8_t s_right_sign_spike_reject_count = 0U;
 static EncoderDebugSnapshot_t s_encoder_debug;
 
 static float encoder_apply_odometry_scale(float wheel_speed, float forward_scale, float reverse_scale)
@@ -35,6 +40,26 @@ static float encoder_apply_odometry_scale(float wheel_speed, float forward_scale
     }
 
     return wheel_speed * reverse_scale;
+}
+
+static float encoder_reject_single_sample_sign_spike(float raw_speed,
+                                                     float previous_filtered_speed,
+                                                     uint8_t *reject_count)
+{
+    if ((reject_count != NULL) &&
+        ((raw_speed * previous_filtered_speed) < 0.0f) &&
+        (fabsf(previous_filtered_speed) >= SIGN_SPIKE_PREV_SPEED_THRESHOLD_MPS) &&
+        (fabsf(raw_speed) >= SIGN_SPIKE_RAW_SPEED_THRESHOLD_MPS) &&
+        (*reject_count < SIGN_SPIKE_MAX_REJECT_COUNT)) {
+        (*reject_count)++;
+        return previous_filtered_speed;
+    }
+
+    if (reject_count != NULL) {
+        *reject_count = 0U;
+    }
+
+    return raw_speed;
 }
 
 void encoder_init(void)
@@ -69,6 +94,13 @@ void encoder_update_speed(void)
     if (fabsf(raw_right_speed) > MAX_REASONABLE_SPEED) {
         raw_right_speed = g_right_speed;
     }
+
+    raw_left_speed = encoder_reject_single_sample_sign_spike(raw_left_speed,
+                                                             g_left_speed,
+                                                             &s_left_sign_spike_reject_count);
+    raw_right_speed = encoder_reject_single_sample_sign_spike(raw_right_speed,
+                                                              g_right_speed,
+                                                              &s_right_sign_spike_reject_count);
 
     g_left_speed = (1.0f - SPEED_FILTER_ALPHA) * g_left_speed + SPEED_FILTER_ALPHA * raw_left_speed;
     g_right_speed = (1.0f - SPEED_FILTER_ALPHA) * g_right_speed + SPEED_FILTER_ALPHA * raw_right_speed;
@@ -105,6 +137,8 @@ void encoder_Reset(void)
     last_right_count = 0;
     g_left_speed = 0.0f;
     g_right_speed = 0.0f;
+    s_left_sign_spike_reject_count = 0U;
+    s_right_sign_spike_reject_count = 0U;
     g_dl_acc = 0.0f;
     g_dr_acc = 0.0f;
     g_left_distance_total_m = 0.0f;

@@ -8,6 +8,8 @@ const ScanPreprocessConfig_t g_scanPreprocessConfig = {
     .min_quality = 8U,
 };
 
+static int8_t g_scanAngleSign = 1;
+
 uint8_t ScanPreprocess_IsPointUsable(const LidarPoint_t *point)
 {
     if (point == NULL) {
@@ -72,4 +74,19 @@ void ScanPreprocess_Analyze(const LidarPoint_t *points, uint16_t point_count, Li
 
         quality->usable_point_count++;
     }
+}
+
+int8_t ScanPreprocess_GetAngleSign(void)
+{
+    return g_scanAngleSign;
+}
+
+void ScanPreprocess_SetAngleSign(int8_t angle_sign)
+{
+    g_scanAngleSign = (angle_sign < 0) ? -1 : 1;
+}
+
+float ScanPreprocess_BeamWorldAngleDeg(float pose_theta_deg, float scan_angle_deg)
+{
+    return pose_theta_deg + ((float)g_scanAngleSign * scan_angle_deg);
 }

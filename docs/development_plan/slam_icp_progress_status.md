@@ -286,7 +286,16 @@
 - `docs/work_items/2026-05-14_slam-turn-rotation-debug/hardware_test_plan.md`
 - `docs/work_items/2026-05-14_slam-turn-rotation-debug/verification_report.md`
 
-下一步不应直接大改算法，而应先执行 `R0 -> Z -> M -> 静止建图 -> A90 -> P/G/O/X4 -> A-90 -> P/G/O/X4` 的硬件记录，确认 `LOC mode / inliers / fit_mm / MAP gate / ODOM th / EST th / POSE pred/corr` 与地图旋转之间的对应关系。
+本轮固件已补第一版保护和诊断：
+
+- 新增 `SL` 命令输出 SLAM 专用诊断，包括 ICP delta、gate reason、turn recovery、写图端点和 skip 计数。
+- `G` 的 `MAP loc` 输出补充 ICP `delta_theta`。
+- `G` 的 `MAP gate` 输出补充 recovery 状态和 recovery skip 计数。
+- 相对转向结束后进入 turn recovery，先等待约 `800 ms`，之后必须等到可靠 ICP accepted 才恢复写图。
+- turning / settle / recovery / quality gate 阻止写图时，不再更新下一帧 ICP reference scan，避免坏扫描污染匹配基准。
+- 固件构建已通过，当前 RAM 占用 `99.13%`；本阶段以 SLAM 调试优先，RAM 收口后置。
+
+下一步应执行 `R0 -> Z -> M -> 静止建图 -> A90 -> P/G/O/SL/X4 -> A-90 -> P/G/O/SL/X4` 的硬件记录，确认 `LOC mode / inliers / fit_mm / ICP delta / MAP gate / SLAM gate / ODOM th / EST th / POSE pred/corr` 与地图旋转之间的对应关系。
 
 ---
 

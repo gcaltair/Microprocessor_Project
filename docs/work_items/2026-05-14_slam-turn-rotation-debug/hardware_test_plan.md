@@ -32,6 +32,7 @@ M
 P
 G
 O
+SL
 X4
 ```
 
@@ -40,6 +41,8 @@ X4
 - `LOC init/updates/accept/reject/odom/mode/pts/inliers/fit_mm`
 - `MAP loc mode/inliers/fit_mm`
 - `MAP gate`
+- `SLAM gate`
+- ICP `delta=(dx,dy,dth)`
 - `ODOM th`
 - `EST th`
 - `POSE pred/corr`
@@ -57,6 +60,7 @@ A90
 P
 G
 O
+SL
 X4
 ```
 
@@ -74,6 +78,7 @@ A-90
 P
 G
 O
+SL
 X4
 ```
 
@@ -99,6 +104,7 @@ A20
 P
 G
 O
+SL
 X4
 ```
 
@@ -108,7 +114,10 @@ X4
 
 - 静止时 `LOC mode` 多数为 accepted 或稳定初始化。
 - 转向结束后，短暂出现 `MAP gate=paused(settle)` 是正常的。
-- settle 后恢复写图时，应至少看到一次质量较好的 ICP accepted。
+- settle 后可能继续出现 `MAP gate=paused(recovery)`，这是正常的；它表示固件正在等待可靠 ICP 重新锁定。
+- `A90 / A-90` 原地转向期间或刚结束后，`SLAM gate` 不应一直显示 `allowed=1 reason=active`。
+- 恢复写图时，应至少看到一次质量较好的 ICP accepted。
+- `SLAM gate allowed=0 reason=paused(recovery)` 时，`SLAM map written` 不应继续增加大量端点。
 - `EST th` 和 `ODOM th` 不应长期大幅分离。
 - `X4` 中已有墙体不应整体旋转出第二套轮廓。
 
@@ -116,10 +125,11 @@ X4
 
 任一情况都说明需要改 SLAM 链路：
 
-- 转向后 `LOC reject` 或 `odom-only` 增加明显，但 `MAP gate=active` 继续写图。
+- 转向后 `LOC reject` 或 `odom-only` 增加明显，但 `MAP gate=active` 或 `SLAM gate allowed=1` 继续写图。
 - `LOC accepted`，但 `fit_mm` 偏大或 `inliers` 很低，地图仍被写入。
 - `ODOM th` 与 `EST th` 看似合理，但地图仍旋转，优先怀疑 LiDAR 角度方向或投影公式。
 - `MAP gate` 在转向结束后过快恢复 active，且第一批 active 扫描造成地图重影。
+- recovery 长时间无法退出，说明 ICP 对转向后的场景匹配能力不足，需要下一轮改 yaw 匹配或参考策略。
 
 ## 记录格式
 
@@ -129,6 +139,7 @@ X4
 - `P` 输出
 - `G` 输出
 - `O` 输出
+- `SL` 输出
 - `X4` 输出或上位机截图
 - 肉眼观察：地图是否出现第二套旋转墙体、机器人红点是否合理
 

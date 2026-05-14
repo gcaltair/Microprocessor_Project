@@ -26,5 +26,8 @@ extern const ScanPreprocessConfig_t g_scanPreprocessConfig;
 
 uint8_t ScanPreprocess_IsPointUsable(const LidarPoint_t *point);
 void ScanPreprocess_Analyze(const LidarPoint_t *points, uint16_t point_count, LidarScanQuality_t *quality);
+int8_t ScanPreprocess_GetAngleSign(void);
+void ScanPreprocess_SetAngleSign(int8_t angle_sign);
+float ScanPreprocess_BeamWorldAngleDeg(float pose_theta_deg, float scan_angle_deg);
 
 #endif /* SCAN_PREPROCESS_H */

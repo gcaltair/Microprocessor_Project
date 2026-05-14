@@ -10,7 +10,8 @@ typedef enum {
     MAPPING_SKIP_REASON_NONE = 0,
     MAPPING_SKIP_REASON_TURNING = 1,
     MAPPING_SKIP_REASON_SETTLE = 2,
-    MAPPING_SKIP_REASON_QUALITY = 3
+    MAPPING_SKIP_REASON_QUALITY = 3,
+    MAPPING_SKIP_REASON_RECOVERY = 4
 } MappingSkipReason_t;
 
 typedef struct {
@@ -27,6 +28,7 @@ typedef struct {
     uint32_t skipped_turning_count;
     uint32_t skipped_settle_count;
     uint32_t skipped_quality_count;
+    uint32_t skipped_recovery_count;
     float last_localization_fitness_m;
     float last_odom_delta_theta_deg;
     float last_odom_delta_translation_m;

@@ -125,7 +125,7 @@ const osThreadAttr_t commTask_attributes = {
 const osThreadAttr_t safetyTask_attributes = {
   .name = "safetyTask",
   .stack_size = 512,
-  .priority = (osPriority_t) osPriorityBelowNormal,
+  .priority = (osPriority_t) osPriorityAboveNormal,
 };
 
 const osMutexAttr_t odomMutex_attributes = {

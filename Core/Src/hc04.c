@@ -151,6 +151,9 @@ static void transmit_buffer(const uint8_t *message, uint16_t size)
     if (wait_for_uart5_tx_ready(200U) == HAL_OK) {
         (void)HAL_UART_Transmit(&huart5, (uint8_t *)message, size, UART5_TX_TIMEOUT_MS);
         try_rearm_uart5_rx_dma();
+        if (osKernelGetState() == osKernelRunning) {
+            osDelay(1U);
+        }
     }
 }
 
@@ -702,6 +705,8 @@ static const char *mapping_skip_reason_to_string(uint8_t reason)
             return "paused(settle)";
         case MAPPING_SKIP_REASON_QUALITY:
             return "paused(quality)";
+        case MAPPING_SKIP_REASON_RECOVERY:
+            return "paused(recovery)";
         case MAPPING_SKIP_REASON_NONE:
         default:
             return "active";
@@ -711,9 +716,11 @@ static const char *mapping_skip_reason_to_string(uint8_t reason)
 static void transmit_mapping_snapshot(void)
 {
     MappingTaskStats_t stats;
+    LocalizationTaskStats_t loc_stats;
     NavigationTaskStats_t nav_stats;
 
     MappingTask_GetStatsSnapshot(&stats);
+    LocalizationTask_GetStatsSnapshot(&loc_stats);
     NavigationTask_GetStatsSnapshot(&nav_stats);
     uart_printf("MAP init=%u inside=%u updates=%lu seq=%lu usable=%u written=%u cell=%d,%d pose=(%.3f,%.3f,%.2f)\r\n",
                 stats.grid_initialized,
@@ -731,19 +738,73 @@ static void transmit_mapping_snapshot(void)
                 (unsigned int)stats.last_localization_mode,
                 (unsigned int)stats.last_localization_inliers,
                 (double)(stats.last_localization_fitness_m * 1000.0f));
-    uart_printf("MAP gate=%s dxy_mm=%.1f dth=%.2f skip turn=%lu settle=%lu quality=%lu\r\n",
+    uart_printf("MAP gate=%s dxy_mm=%.1f dth=%.2f skip turn=%lu settle=%lu quality=%lu recovery=%lu\r\n",
                 mapping_skip_reason_to_string(stats.last_skip_reason),
                 (double)(stats.last_odom_delta_translation_m * 1000.0f),
                 (double)stats.last_odom_delta_theta_deg,
                 (unsigned long)stats.skipped_turning_count,
                 (unsigned long)stats.skipped_settle_count,
-                (unsigned long)stats.skipped_quality_count);
+                (unsigned long)stats.skipped_quality_count,
+                (unsigned long)loc_stats.skipped_recovery_count);
     uart_printf("MAP nav state=%s goal=(%d,%d) step=%u/%u\r\n",
                 navigation_state_to_string(nav_stats.state),
                 nav_stats.goal_cell.x,
                 nav_stats.goal_cell.y,
                 (unsigned int)nav_stats.current_waypoint_index,
                 (unsigned int)nav_stats.path_length);
+}
+
+static void transmit_slam_diagnostics(void)
+{
+    LocalizationTaskStats_t loc_stats;
+    MappingTaskStats_t map_stats;
+    int8_t angle_sign;
+
+    LocalizationTask_GetStatsSnapshot(&loc_stats);
+    MappingTask_GetStatsSnapshot(&map_stats);
+    angle_sign = ScanPreprocess_GetAngleSign();
+
+    uart_printf("SLAM cfg angle=%c\r\n", (angle_sign < 0) ? '-' : '+');
+    uart_printf("SLAM loc init=%u updates=%lu mode=%u accept=%lu reject=%lu odom=%lu pts=%u/%u inliers=%u fit_mm=%.1f\r\n",
+                loc_stats.initialized,
+                (unsigned long)loc_stats.update_count,
+                (unsigned int)loc_stats.last_mode,
+                (unsigned long)loc_stats.icp_accept_count,
+                (unsigned long)loc_stats.icp_reject_count,
+                (unsigned long)loc_stats.odom_only_count,
+                (unsigned int)loc_stats.last_reference_points,
+                (unsigned int)loc_stats.last_current_points,
+                (unsigned int)loc_stats.last_inliers,
+                (double)(loc_stats.last_fitness_m * 1000.0f));
+    uart_printf("SLAM pose pred=(%.3f,%.3f,%.2f) corr=(%.3f,%.3f,%.2f) delta=(%.1f,%.1f,%.2f)\r\n",
+                loc_stats.last_predicted_pose.x_m,
+                loc_stats.last_predicted_pose.y_m,
+                loc_stats.last_predicted_pose.theta_deg,
+                loc_stats.last_corrected_pose.x_m,
+                loc_stats.last_corrected_pose.y_m,
+                loc_stats.last_corrected_pose.theta_deg,
+                (double)(loc_stats.last_correction_delta.x_m * 1000.0f),
+                (double)(loc_stats.last_correction_delta.y_m * 1000.0f),
+                loc_stats.last_correction_delta.theta_deg);
+    uart_printf("SLAM gate allowed=%u reason=%s turning=%u recovery=%u odom_dxy_mm=%.1f odom_dth=%.2f\r\n",
+                (unsigned int)loc_stats.last_map_update_allowed,
+                mapping_skip_reason_to_string(loc_stats.last_map_skip_reason),
+                (unsigned int)loc_stats.last_turning_detected,
+                (unsigned int)loc_stats.turn_recovery_active,
+                (double)(loc_stats.last_odom_delta_translation_m * 1000.0f),
+                (double)loc_stats.last_odom_delta_theta_deg);
+    uart_printf("SLAM map updates=%lu written=%u gate=%s rec=%u skip=(%lu,%lu,%lu,%lu) pose=(%.3f,%.3f,%.2f)\r\n",
+                (unsigned long)map_stats.update_count,
+                (unsigned int)map_stats.last_endpoints_written,
+                mapping_skip_reason_to_string(map_stats.last_skip_reason),
+                (unsigned int)loc_stats.turn_recovery_active,
+                (unsigned long)map_stats.skipped_turning_count,
+                (unsigned long)map_stats.skipped_settle_count,
+                (unsigned long)map_stats.skipped_quality_count,
+                (unsigned long)loc_stats.skipped_recovery_count,
+                map_stats.last_pose.x_m,
+                map_stats.last_pose.y_m,
+                map_stats.last_pose.theta_deg);
 }
 
 static void transmit_live_map_snapshot(void)
@@ -999,6 +1060,8 @@ void process_command(uint8_t *cmd, uint16_t size)
             transmit("C: Cancel active navigation\r\n");
             transmit("O: Show odometry, ENC, CTRLDBG, LCTRL/TCTRL, and last relative-move travel\r\n");
             transmit("P: Show RTOS/runtime stats and scan quality\r\n");
+            transmit("SL: Show SLAM ICP delta, map gate, and turn-recovery diagnostics\r\n");
+            transmit("SG/SG+/SG-: Show or set SLAM LiDAR angle sign convention\r\n");
             transmit("K: Show encoder calibration\r\n");
             transmit("Klf,lr,rf,rr: Set encoder calibration\r\n");
             transmit("PK: Show PID tunings, PKA/L/R/P: show loop, PK<loop>,kp,ki,kd: set RAM tuning\r\n");
@@ -1153,6 +1216,26 @@ void process_complex_command(uint8_t *cmd, uint16_t size)
         } else {
             transmit("Invalid WS format. Use WSleft,right, e.g. WS-0.03,-0.03\r\n");
             HC04_RecordCommandAck(cmd, size, 0U, "invalid-wheel-speed-format");
+        }
+    } else if ((size == 2U) && (cmd[0] == 'S') && (cmd[1] == 'L')) {
+        transmit_slam_diagnostics();
+        HC04_RecordCommandAck(cmd, size, 1U, "slam-diagnostics");
+    } else if ((size >= 2U) && (cmd[0] == 'S') && (cmd[1] == 'G')) {
+        if (size == 2U) {
+            uart_printf("SLAM angle sign=%c use %s\r\n",
+                        (ScanPreprocess_GetAngleSign() < 0) ? '-' : '+',
+                        (ScanPreprocess_GetAngleSign() < 0) ? "pose-scan_angle" : "pose+scan_angle");
+            HC04_RecordCommandAck(cmd, size, 1U, "slam-angle-sign-show");
+        } else if ((size == 3U) && ((cmd[2] == '+') || (cmd[2] == '-'))) {
+            ScanPreprocess_SetAngleSign((cmd[2] == '-') ? -1 : 1);
+            LocalizationTask_Reset();
+            MappingTask_ResetGrid();
+            NavigationTask_Reset();
+            uart_printf("SLAM angle sign set=%c; localization and grid reset\r\n", cmd[2]);
+            HC04_RecordCommandAck(cmd, size, 1U, "slam-angle-sign-set");
+        } else {
+            transmit("Invalid SG format. Use SG, SG+ or SG-\r\n");
+            HC04_RecordCommandAck(cmd, size, 0U, "invalid-sg-format");
         }
     } else if ((size >= 2U) && (cmd[0] == CMD_SPEED)) {
         float int_part = 0.0f;

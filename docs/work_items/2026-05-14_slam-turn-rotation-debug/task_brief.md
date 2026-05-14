@@ -3,7 +3,7 @@
 ## 状态
 
 - 日期：2026-05-14
-- 状态：`planned`
+- 状态：`desktop_verified`
 - 任务类型：SLAM 建图调优准备 / 文档状态整理
 - 当前分支：`rollback/before-deadzone-debug`
 
@@ -61,17 +61,43 @@
 
 现在不建议立刻扩大导航状态机。因为导航依赖地图和 `EST`，如果转向后地图会旋转/重影，路径规划会基于不稳定地图做决策。
 
+## 本轮固件改动
+
+本轮已把最可疑的污染路径收紧：
+
+- 新增 `SL` 串口命令，输出 SLAM 专用诊断：
+  - ICP mode / accepted / rejected / odom-only 计数
+  - reference/current points
+  - inliers / `fit_mm`
+  - `pred/corr` 位姿
+  - ICP `delta_x / delta_y / delta_theta`
+  - mapping gate reason
+  - turning / recovery 状态
+  - map written endpoints 和 skip 计数
+- `G` 的 `MAP loc` 输出补充 ICP `delta_theta`。
+- `G` 的 `MAP gate` 输出补充 recovery 状态和 recovery skip 计数。
+- 新增 `MAPPING_SKIP_REASON_RECOVERY`。
+- 相对转向结束后进入 turn recovery：
+  - 转向结束后先等待约 `800 ms`。
+  - recovery 期间，如果没有可靠 ICP accepted，不允许写图。
+  - recovery 期间，不更新下一帧 ICP 的 reference scan。
+  - 只有满足 `ICP accepted + inliers >= 18 + fit_mm <= 60 mm + |delta_theta| <= 10 deg` 后，才退出 recovery 并恢复写图/参考更新。
+
+这个改动的目的不是证明 SLAM 已经修好，而是先阻断“转向后坏扫描污染地图和后续参考帧”的路径，同时让后续 AI agent 能根据日志判断下一步。
+
 ## 推荐调试方向
 
 第一步先拿样本，不急于改算法：
 
-- 记录转向前、转向中、转向后的 `P/G/O/X4`。
+- 记录转向前、转向中、转向后的 `P/G/O/SL/X4`。
 - 重点看：
   - `LOC mode`
   - `accept/reject/odom`
   - `inliers`
   - `fit_mm`
   - `MAP gate`
+  - `SLAM gate`
+  - ICP `delta=(dx,dy,dth)`
   - `dth`
   - `pose=(x,y,theta)`
   - `ODOM th`
@@ -80,7 +106,7 @@
 
 第二步再按数据决定代码改动：
 
-- 如果转向后 `LOC reject` 或 `odom-only` 仍在写图：先让建图在转向后必须等到一次可靠 ICP accepted 后再恢复写图。
+- 如果转向后 `LOC reject` 或 `odom-only` 仍在写图：说明 recovery gate 仍有缺口，应继续收紧恢复条件。
 - 如果 `LOC accepted` 但 `corr.theta` 仍明显错误：加强 yaw 匹配诊断，记录 ICP `delta_theta`，必要时加入小角度搜索或更严格的角度接受门限。
 - 如果 `dth` 很小但图仍旋转：检查 LiDAR 角度方向、安装零位、世界坐标投影公式。
 - 如果 `MAP gate` 很少跳过转向后扫描：延长 settle 窗口或增加“turn recovery”状态，而不是只依赖 200 ms 固定延迟。

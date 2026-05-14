@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "../Inc/localization_task.h"
+#include "../Inc/control_logic.h"
 #include "../Inc/scan_preprocess.h"
 #include "system.h"
 
@@ -23,6 +24,11 @@
 #define LOCALIZATION_MAP_MAX_ODOM_DELTA_THETA_DEG 4.0f
 #define LOCALIZATION_MAP_MIN_USABLE_POINTS      24U
 #define LOCALIZATION_MAP_SETTLE_MS              200U
+#define LOCALIZATION_TURN_RECOVERY_SETTLE_MS    800U
+#define LOCALIZATION_RECOVERY_MAX_FITNESS_M     0.06f
+#define LOCALIZATION_RECOVERY_MIN_INLIERS       18U
+#define LOCALIZATION_RECOVERY_MAX_THETA_DEG     10.0f
+#define LOCALIZATION_RECOVERY_MIN_ABS_THETA_DEG 0.05f
 #define LOCALIZATION_DEG_TO_RAD                 0.01745329251994329577f
 #define LOCALIZATION_RAD_TO_DEG                 57.2957795130823208768f
 
@@ -55,7 +61,9 @@ static SlamPose2D_t g_lastScanOdomPose;
 static uint8_t g_estimatedPoseInitialized = 0U;
 static uint8_t g_lastScanOdomPoseValid = 0U;
 static RelativeMoveState g_lastMoveState = RELATIVE_MOVE_IDLE;
+static uint8_t g_lastMappingTurnDetected = 0U;
 static uint32_t g_mapSettleUntilMs = 0U;
+static uint8_t g_turnRecoveryActive = 0U;
 static LocalizationPoint_t g_sourcePoints[LOCALIZATION_MAX_SAMPLE_POINTS];
 static LocalizationPoint_t g_workingPoints[LOCALIZATION_MAX_SAMPLE_POINTS];
 static LocalizationPoint_t g_corrSource[LOCALIZATION_MAX_SAMPLE_POINTS];
@@ -228,6 +236,37 @@ static uint8_t localization_control_fusion_enabled(void)
     return (g_relative_move_state == RELATIVE_MOVE_TURNING) ? 1U : 0U;
 }
 
+static uint8_t localization_recovery_match_is_trusted(const LidarScanMsg_t *scan_msg,
+                                                      const LocalizationIcpResult_t *result)
+{
+    if ((scan_msg == NULL) || (result == NULL)) {
+        return 0U;
+    }
+
+    if (scan_msg->localization_mode != LOCALIZATION_MODE_ICP_ACCEPTED) {
+        return 0U;
+    }
+
+    if (scan_msg->localization_inliers < LOCALIZATION_RECOVERY_MIN_INLIERS) {
+        return 0U;
+    }
+
+    if (scan_msg->localization_fitness_m > LOCALIZATION_RECOVERY_MAX_FITNESS_M) {
+        return 0U;
+    }
+
+    if (fabsf(result->delta_theta_deg) > LOCALIZATION_RECOVERY_MAX_THETA_DEG) {
+        return 0U;
+    }
+
+    if ((fabsf(result->delta_theta_deg) < LOCALIZATION_RECOVERY_MIN_ABS_THETA_DEG) &&
+        (scan_msg->odom_delta_theta_deg > LOCALIZATION_MAP_MAX_ODOM_DELTA_THETA_DEG)) {
+        return 0U;
+    }
+
+    return 1U;
+}
+
 static uint16_t localization_build_world_points(const LidarScanMsg_t *scan_msg,
                                                 const SlamPose2D_t *pose,
                                                 LocalizationPoint_t *out_points)
@@ -275,7 +314,9 @@ static uint16_t localization_build_world_points(const LidarScanMsg_t *scan_msg,
         }
 
         distance_m = scan_buffer->points[idx].distance_mm * 0.001f;
-        angle_rad = (pose->theta_deg + scan_buffer->points[idx].angle_deg) * LOCALIZATION_DEG_TO_RAD;
+        angle_rad = ScanPreprocess_BeamWorldAngleDeg(pose->theta_deg,
+                                                     scan_buffer->points[idx].angle_deg) *
+                    LOCALIZATION_DEG_TO_RAD;
         out_points[selected_index].x_m = pose->x_m + distance_m * cosf(angle_rad);
         out_points[selected_index].y_m = pose->y_m + distance_m * sinf(angle_rad);
 
@@ -492,7 +533,8 @@ static void localization_store_reference(const LidarScanMsg_t *scan_msg, const S
     localization_unlock();
 }
 
-static void localization_update_mapping_gate(LidarScanMsg_t *scan_msg)
+static void localization_update_mapping_gate(LidarScanMsg_t *scan_msg,
+                                             const LocalizationIcpResult_t *result)
 {
     float odom_delta_x_m = 0.0f;
     float odom_delta_y_m = 0.0f;
@@ -507,7 +549,12 @@ static void localization_update_mapping_gate(LidarScanMsg_t *scan_msg)
         return;
     }
 
-    turning_detected = (g_relative_move_state == RELATIVE_MOVE_TURNING) ? 1U : 0U;
+    turning_detected = ControlLogic_ShouldPauseMappingForTurn(scan_msg->pose_snapshot.theta_deg,
+                                                              g_pid_angle.setpoint,
+                                                              base_car_speed,
+                                                              g_left_speed,
+                                                              g_right_speed,
+                                                              (uint8_t)g_relative_move_state);
     now_ms = HAL_GetTick();
 
     if (g_lastScanOdomPoseValid != 0U) {
@@ -519,18 +566,24 @@ static void localization_update_mapping_gate(LidarScanMsg_t *scan_msg)
                                                                  g_lastScanOdomPose.theta_deg));
     }
 
-    if ((g_lastMoveState == RELATIVE_MOVE_TURNING) && (turning_detected == 0U)) {
-        g_mapSettleUntilMs = now_ms + LOCALIZATION_MAP_SETTLE_MS;
+    if ((g_lastMappingTurnDetected != 0U) && (turning_detected == 0U)) {
+        g_mapSettleUntilMs = now_ms + LOCALIZATION_TURN_RECOVERY_SETTLE_MS;
+        g_turnRecoveryActive = 1U;
     }
 
     if ((turning_detected == 0U) && ((int32_t)(g_mapSettleUntilMs - now_ms) > 0)) {
         settle_active = 1U;
     }
 
+    scan_msg->odom_delta_theta_deg = odom_delta_theta_deg;
+    scan_msg->odom_delta_translation_m = odom_delta_translation_m;
     if (turning_detected != 0U) {
         skip_reason = MAPPING_SKIP_REASON_TURNING;
     } else if (settle_active != 0U) {
         skip_reason = MAPPING_SKIP_REASON_SETTLE;
+    } else if ((g_turnRecoveryActive != 0U) &&
+               (localization_recovery_match_is_trusted(scan_msg, result) == 0U)) {
+        skip_reason = MAPPING_SKIP_REASON_RECOVERY;
     } else if ((odom_delta_translation_m > LOCALIZATION_MAP_MAX_ODOM_DELTA_XY_M) ||
                (odom_delta_theta_deg > LOCALIZATION_MAP_MAX_ODOM_DELTA_THETA_DEG) ||
                (scan_msg->quality.usable_point_count < LOCALIZATION_MAP_MIN_USABLE_POINTS) ||
@@ -540,13 +593,24 @@ static void localization_update_mapping_gate(LidarScanMsg_t *scan_msg)
         skip_reason = MAPPING_SKIP_REASON_QUALITY;
     }
 
+    if ((skip_reason == MAPPING_SKIP_REASON_NONE) &&
+        (g_turnRecoveryActive != 0U) &&
+        (localization_recovery_match_is_trusted(scan_msg, result) != 0U)) {
+        g_turnRecoveryActive = 0U;
+    }
+
     scan_msg->turning_detected = turning_detected;
-    scan_msg->odom_delta_theta_deg = odom_delta_theta_deg;
-    scan_msg->odom_delta_translation_m = odom_delta_translation_m;
     scan_msg->map_skip_reason = (uint8_t)skip_reason;
     scan_msg->map_update_allowed = (skip_reason == MAPPING_SKIP_REASON_NONE) ? 1U : 0U;
 
+    if (skip_reason == MAPPING_SKIP_REASON_RECOVERY) {
+        localization_lock();
+        g_localizationStats.skipped_recovery_count++;
+        localization_unlock();
+    }
+
     g_lastMoveState = g_relative_move_state;
+    g_lastMappingTurnDetected = turning_detected;
     g_lastScanOdomPose = scan_msg->pose_snapshot;
     g_lastScanOdomPoseValid = 1U;
 }
@@ -650,6 +714,12 @@ static void localization_update_stats(const LidarScanMsg_t *scan_msg,
     g_localizationStats.current_control_pose = g_controlPose;
     g_localizationStats.last_inliers = scan_msg->localization_inliers;
     g_localizationStats.last_fitness_m = scan_msg->localization_fitness_m;
+    g_localizationStats.last_odom_delta_theta_deg = scan_msg->odom_delta_theta_deg;
+    g_localizationStats.last_odom_delta_translation_m = scan_msg->odom_delta_translation_m;
+    g_localizationStats.last_map_update_allowed = scan_msg->map_update_allowed;
+    g_localizationStats.last_map_skip_reason = scan_msg->map_skip_reason;
+    g_localizationStats.last_turning_detected = scan_msg->turning_detected;
+    g_localizationStats.turn_recovery_active = g_turnRecoveryActive;
     g_localizationStats.last_mode = (LocalizationMode_t)scan_msg->localization_mode;
     g_localizationStats.last_correction_delta.x_m = result->delta_x_m;
     g_localizationStats.last_correction_delta.y_m = result->delta_y_m;
@@ -726,8 +796,10 @@ void StartLocalizationTask(void *argument)
         g_lastOdomPose = scan_msg.pose_snapshot;
         localization_unlock();
 
-        localization_update_mapping_gate(&scan_msg);
-        localization_store_reference(&scan_msg, &scan_msg.corrected_pose);
+        localization_update_mapping_gate(&scan_msg, &icp_result);
+        if (scan_msg.map_update_allowed != 0U) {
+            localization_store_reference(&scan_msg, &scan_msg.corrected_pose);
+        }
         localization_update_stats(&scan_msg, &icp_result);
 
         if (g_localizedScanQueue != NULL) {
@@ -752,7 +824,9 @@ void LocalizationTask_Reset(void)
     g_estimatedPoseInitialized = 0U;
     g_lastScanOdomPoseValid = 0U;
     g_lastMoveState = RELATIVE_MOVE_IDLE;
+    g_lastMappingTurnDetected = 0U;
     g_mapSettleUntilMs = 0U;
+    g_turnRecoveryActive = 0U;
     localization_unlock();
 }
 

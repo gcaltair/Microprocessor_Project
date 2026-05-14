@@ -182,6 +182,7 @@
   - `MOTORDBG`：PID PWM、加死区后的实际 PWM、左右电机方向
   - `ENCDBG`：编码器脉冲增量、原始轮速、滤波轮速和 odometry 缩放后轮速
 - `P`：定位状态摘要
+- `SL`：SLAM 专用诊断，输出 ICP delta、turn recovery、mapping gate 和写图/skip 计数
 
 ### 5.2.1 PID 调参
 
@@ -284,7 +285,9 @@
 - 转向后地图结构会出现旋转/重影，说明转向后的 scan 没有稳定锁定到已有地图坐标系。
 - 当前 `MappingTask` 使用 `corrected_pose` 写图；如果 `LocalizationTask` 在转向后 ICP rejected、odom-only，或 accepted 但 yaw 修正质量不足，仍可能把 scan 以错误姿态写入地图。
 - 当前已有 turning pause 和 `200 ms` settle gate，但它不能证明恢复写图时 pose 已经重新匹配。
-- 下一轮应优先记录 `P / G / O / X4`，看 `LOC mode / inliers / fit_mm / MAP gate / ODOM th / EST th / POSE pred/corr`，再决定是增强 gate、增加 yaw 诊断，还是检查 LiDAR 角度约定。
+- 当前已加入第一版 turn recovery：相对转向结束后等待约 `800 ms`，之后必须看到可靠 ICP accepted 才恢复写图；暂停写图期间也暂停更新 ICP reference scan。
+- 当前调试阶段优先获得 SLAM 行为样本，暂不为新增诊断继续压缩 RAM；最近构建 RAM 占用为 `99.13%`，后续 SLAM 行为稳定后需要专门收口。
+- 下一轮应优先记录 `P / G / O / SL / X4`，看 `LOC mode / inliers / fit_mm / ICP delta / MAP gate / SLAM gate / ODOM th / EST th / POSE pred/corr`，再决定是增强 yaw 匹配，还是检查 LiDAR 角度约定。
 
 ### 6.3 内存风险
 
@@ -306,8 +309,8 @@
 - 执行 `docs/work_items/2026-05-14_slam-turn-rotation-debug/hardware_test_plan.md`
 - 确认转向后 ICP rejected/odom-only 是否仍写图
 - 确认 ICP accepted 时 yaw 修正是否可信
-- 必要时增加 `delta_theta`、turn recovery、mapping resume reason 等串口诊断
-- 必要时让转向后建图必须等待一次可靠 ICP accepted 后再恢复
+- 使用 `SL` 命令确认 `delta_theta`、turn recovery、mapping gate reason
+- 如果 recovery 长时间无法退出，再改 yaw 匹配或参考策略
 
 ### Priority 2：收口 Phase 4A
 

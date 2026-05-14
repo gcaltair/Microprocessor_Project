@@ -213,6 +213,8 @@ static void mapping_task_update_stats(const LidarScanMsg_t *scan_msg,
         g_mappingStats.skipped_settle_count++;
     } else if (skip_reason == MAPPING_SKIP_REASON_QUALITY) {
         g_mappingStats.skipped_quality_count++;
+    } else if (skip_reason == MAPPING_SKIP_REASON_RECOVERY) {
+        g_mappingStats.skipped_recovery_count++;
     }
 
     if (robot_cell != NULL) {
@@ -276,7 +278,9 @@ static void mapping_task_update_grid_from_scan(const LidarScanMsg_t *scan_msg)
         }
 
         distance_m = scan_buffer->points[idx].distance_mm * 0.001f;
-        beam_angle_rad = (scan_msg->corrected_pose.theta_deg + scan_buffer->points[idx].angle_deg) * DEG_TO_RAD;
+        beam_angle_rad = ScanPreprocess_BeamWorldAngleDeg(scan_msg->corrected_pose.theta_deg,
+                                                          scan_buffer->points[idx].angle_deg) *
+                         DEG_TO_RAD;
         world_x_m = scan_msg->corrected_pose.x_m + distance_m * cosf(beam_angle_rad);
         world_y_m = scan_msg->corrected_pose.y_m + distance_m * sinf(beam_angle_rad);
 

@@ -15,6 +15,13 @@ typedef struct {
     uint16_t last_current_points;
     uint16_t last_inliers;
     float last_fitness_m;
+    float last_odom_delta_theta_deg;
+    float last_odom_delta_translation_m;
+    uint8_t last_map_update_allowed;
+    uint8_t last_map_skip_reason;
+    uint8_t last_turning_detected;
+    uint8_t turn_recovery_active;
+    uint32_t skipped_recovery_count;
     LocalizationMode_t last_mode;
     SlamPose2D_t last_predicted_pose;
     SlamPose2D_t last_corrected_pose;

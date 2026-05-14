@@ -8,7 +8,7 @@ const ScanPreprocessConfig_t g_scanPreprocessConfig = {
     .min_quality = 8U,
 };
 
-static int8_t g_scanAngleSign = 1;
+static int8_t g_scanAngleSign = -1;
 
 uint8_t ScanPreprocess_IsPointUsable(const LidarPoint_t *point)
 {

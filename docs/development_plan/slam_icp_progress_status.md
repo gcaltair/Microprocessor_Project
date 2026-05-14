@@ -294,6 +294,7 @@
 - 相对转向结束后进入 turn recovery，先等待约 `800 ms`，之后必须等到可靠 ICP accepted 才恢复写图。
 - turning / settle / recovery / quality gate 阻止写图时，不再更新下一帧 ICP reference scan，避免坏扫描污染匹配基准。
 - 固件构建已通过，当前 RAM 占用 `99.13%`；本阶段以 SLAM 调试优先，RAM 收口后置。
+- 2026-05-14 A/B 硬件测试确认 `pose - scan_angle` 明显优于 `pose + scan_angle`：`SG+` 在 `A90` 后进入 recovery 且 inliers 掉到 0，`SG-` 在 `A90/A-90` 后保持 active，ICP 基本持续 accepted。固件默认已改为 `pose - scan_angle`。
 
 下一步应执行 `R0 -> Z -> M -> 静止建图 -> A90 -> P/G/O/SL/X4 -> A-90 -> P/G/O/SL/X4` 的硬件记录，确认 `LOC mode / inliers / fit_mm / ICP delta / MAP gate / SLAM gate / ODOM th / EST th / POSE pred/corr` 与地图旋转之间的对应关系。
 

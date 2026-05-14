@@ -1,0 +1,180 @@
+{"type": "text", "raw": "SStopped (PID)"}
+{"type": "text", "raw": "NStopping lidar..."}
+{"type": "text", "raw": "Lidar Stopped"}
+{"type": "text", "raw": "SG+SLAM angle sign set=+; localization and grid reset"}
+{"type": "text", "raw": "R0Odometry, localization, and navigation state reset"}
+{"type": "text", "raw": "MLidar Started (mapping mode)"}
+{"type": "text", "raw": "SGSLAM angle sign=+ use pose+scan_angle"}
+{"type": "text", "raw": "SLSLAM cfg angle=+"}
+{"type": "text", "raw": "SLAM loc init=1 updates=68 mode=1 accept=49 reject=16 odom=3 pts=57/57 inliers=26 fit_mm=6.5"}
+{"type": "text", "raw": "SLAM pose pred=(0.000,0.000,0.00) corr=(-0.003,-0.002,-0.02) delta=(-3.4,-1.5,-0.02)"}
+{"type": "text", "raw": "SLAM gate allowed=1 reason=active turning=0 recovery=0 odom_dxy_mm=0.0 odom_dth=0.00"}
+{"type": "text", "raw": "SLAM map updates=68 written=114 gate=active rec=0 skip=(0,0,0,0) pose=(-0.003,-0.002,-0.02)"}
+{"type": "text", "raw": "GMAP init=1 inside=1 updates=79 seq=79 usable=459 written=115 cell=47,47 pose=(-0.013,-0.003,-2.01)"}
+{"type": "text", "raw": "MAP loc mode=1 inliers=55 fit_mm=33.0"}
+{"type": "text", "raw": "MAP gate=active dxy_mm=0.0 dth=0.00 skip turn=0 settle=0 quality=0 recovery=0"}
+{"type": "text", "raw": "MAP nav state=IDLE goal=(-1,-1) step=0/0"}
+{"type": "text", "raw": "PRTOS ctrl=5158 overrun=0 cmd=9 drop=0 dma=109 dma_drop=0 scan=89 tx=0 busy=0 err=0 wait=0"}
+{"type": "text", "raw": "LIDAR active=1 binary_tx=0"}
+{"type": "text", "raw": "HEAP free=16208 min=16208"}
+{"type": "text", "raw": "STACK freeB dft=2528 ctrl=1144 lidar=1112 loc=996 map=1520 comm=688 safe=384"}
+{"type": "text", "raw": "SCAN raw=458 usable=458 rej_range=0 rej_quality=0 min_mm=358 max_mm=2378"}
+{"type": "text", "raw": "LOC init=1 updates=89 accept=65 reject=20 odom=4 mode=1 pts=58/58 inliers=58 fit_mm=26.3 slow_mm=(0.0,0.0) slow_deg=0.00"}
+{"type": "text", "raw": "NAV state=IDLE goal=(-1,-1) step=0/0 dist=0.00 plans=0 done=0 fail=0"}
+{"type": "text", "raw": "X4MAP ASCII ds=4 size=24x24 legend: # occupied, . free, space unknown, R robot"}
+{"type": "text", "raw": "|      #....R...........#|"}
+{"type": "text", "raw": "MAP dump done"}
+{"type": "text", "raw": "A90Relative turn 90.00 degrees"}
+{"type": "text", "raw": "SGSLAM angle sign=+ use pose+scan_angle"}
+{"type": "text", "raw": "SLSLAM cfg angle=+"}
+{"type": "text", "raw": "SLAM loc init=1 updates=263 mode=2 accept=131 reject=128 odom=4 pts=25/58 inliers=0 fit_mm=0.0"}
+{"type": "text", "raw": "SLAM pose pred=(0.000,-0.003,90.28) corr=(0.000,-0.003,90.28) delta=(0.0,0.0,0.00)"}
+{"type": "text", "raw": "SLAM gate allowed=0 reason=paused(recovery) turning=0 recovery=1 odom_dxy_mm=0.0 odom_dth=0.00"}
+{"type": "text", "raw": "SLAM map updates=263 written=0 gate=paused(recovery) rec=1 skip=(18,8,0,66) pose=(0.000,-0.003,90.28)"}
+{"type": "text", "raw": "GMAP init=1 inside=1 updates=273 seq=273 usable=451 written=0 cell=48,47 pose=(0.000,-0.003,90.28)"}
+{"type": "text", "raw": "MAP loc mode=2 inliers=0 fit_mm=0.0"}
+{"type": "text", "raw": "MAP gate=paused(recovery) dxy_mm=0.0 dth=0.00 skip turn=18 settle=8 quality=0 recovery=76"}
+{"type": "text", "raw": "MAP nav state=IDLE goal=(-1,-1) step=0/0"}
+{"type": "text", "raw": "PRTOS ctrl=7112 overrun=0 cmd=15 drop=0 dma=351 dma_drop=0 scan=283 tx=0 busy=0 err=0 wait=0"}
+{"type": "text", "raw": "LIDAR active=1 binary_tx=0"}
+{"type": "text", "raw": "HEAP free=16208 min=16208"}
+{"type": "text", "raw": "STACK freeB dft=2464 ctrl=1144 lidar=1112 loc=996 map=1528 comm=680 safe=384"}
+{"type": "text", "raw": "SCAN raw=456 usable=456 rej_range=0 rej_quality=0 min_mm=358 max_mm=2373"}
+{"type": "text", "raw": "LOC init=1 updates=282 accept=131 reject=147 odom=4 mode=2 pts=25/56 inliers=0 fit_mm=0.0 slow_mm=(0.0,0.0) slow_deg=0.00"}
+{"type": "text", "raw": "NAV state=IDLE goal=(-1,-1) step=0/0 dist=0.00 plans=0 done=0 fail=0"}
+{"type": "text", "raw": "X4MAP ASCII ds=4 size=24x24 legend: # occupied, . free, space unknown, R robot"}
+{"type": "text", "raw": "|      #.....R#......#..#|"}
+{"type": "text", "raw": "MAP dump done"}
+{"type": "text", "raw": "SLSLAM cfg angle=+"}
+{"type": "text", "raw": "SLAM loc init=1 updates=302 mode=2 accept=131 reject=167 odom=4 pts=25/59 inliers=0 fit_mm=0.0"}
+{"type": "text", "raw": "SLAM pose pred=(0.000,-0.003,90.28) corr=(0.000,-0.003,90.28) delta=(0.0,0.0,0.00)"}
+{"type": "text", "raw": "SLAM gate allowed=0 reason=paused(recovery) turning=0 recovery=1 odom_dxy_mm=0.0 odom_dth=0.00"}
+{"type": "text", "raw": "SLAM map updates=302 written=0 gate=paused(recovery) rec=1 skip=(18,8,0,105) pose=(0.000,-0.003,90.28)"}
+{"type": "text", "raw": "GMAP init=1 inside=1 updates=313 seq=313 usable=443 written=0 cell=48,47 pose=(0.000,-0.003,90.28)"}
+{"type": "text", "raw": "MAP loc mode=2 inliers=0 fit_mm=0.0"}
+{"type": "text", "raw": "MAP gate=paused(recovery) dxy_mm=0.0 dth=0.00 skip turn=18 settle=8 quality=0 recovery=116"}
+{"type": "text", "raw": "MAP nav state=IDLE goal=(-1,-1) step=0/0"}
+{"type": "text", "raw": "A-90Relative turn -90.00 degrees"}
+{"type": "text", "raw": "SGSLAM angle sign=+ use pose+scan_angle"}
+{"type": "text", "raw": "SLSLAM cfg angle=+"}
+{"type": "text", "raw": "SLAM loc init=1 updates=479 mode=1 accept=165 reject=310 odom=4 pts=58/58 inliers=57 fit_mm=31.6"}
+{"type": "text", "raw": "SLAM pose pred=(0.004,-0.004,-0.37) corr=(0.002,-0.019,-1.14) delta=(-1.7,-15.1,-0.77)"}
+{"type": "text", "raw": "SLAM gate allowed=1 reason=active turning=0 recovery=0 odom_dxy_mm=0.0 odom_dth=0.00"}
+{"type": "text", "raw": "SLAM map updates=479 written=116 gate=active rec=0 skip=(35,17,0,217) pose=(0.002,-0.019,-1.14)"}
+{"type": "text", "raw": "GMAP init=1 inside=1 updates=490 seq=490 usable=458 written=115 cell=48,47 pose=(0.005,-0.019,-1.18)"}
+{"type": "text", "raw": "MAP loc mode=1 inliers=55 fit_mm=47.9"}
+{"type": "text", "raw": "MAP gate=active dxy_mm=0.0 dth=0.00 skip turn=35 settle=17 quality=0 recovery=217"}
+{"type": "text", "raw": "MAP nav state=IDLE goal=(-1,-1) step=0/0"}
+{"type": "text", "raw": "PRTOS ctrl=9297 overrun=0 cmd=23 drop=0 dma=620 dma_drop=0 scan=499 tx=0 busy=0 err=0 wait=0"}
+{"type": "text", "raw": "LIDAR active=1 binary_tx=0"}
+{"type": "text", "raw": "HEAP free=16208 min=16208"}
+{"type": "text", "raw": "STACK freeB dft=2464 ctrl=1144 lidar=1088 loc=996 map=1520 comm=680 safe=384"}
+{"type": "text", "raw": "SCAN raw=462 usable=462 rej_range=0 rej_quality=0 min_mm=361 max_mm=2381"}
+{"type": "text", "raw": "LOC init=1 updates=499 accept=181 reject=314 odom=4 mode=1 pts=58/58 inliers=57 fit_mm=38.5 slow_mm=(0.0,0.0) slow_deg=0.00"}
+{"type": "text", "raw": "NAV state=IDLE goal=(-1,-1) step=0/0 dist=0.00 plans=0 done=0 fail=0"}
+{"type": "text", "raw": "X4MAP ASCII ds=4 size=24x24 legend: # occupied, . free, space unknown, R robot"}
+{"type": "text", "raw": "|      #.....R..........#|"}
+{"type": "text", "raw": "MAP dump done"}
+{"type": "text", "raw": "SLSLAM cfg angle=+"}
+{"type": "text", "raw": "SLAM loc init=1 updates=519 mode=1 accept=197 reject=318 odom=4 pts=58/58 inliers=57 fit_mm=43.4"}
+{"type": "text", "raw": "SLAM pose pred=(0.004,-0.004,-0.37) corr=(-0.009,-0.000,-1.20) delta=(-12.8,4.0,-0.82)"}
+{"type": "text", "raw": "SLAM gate allowed=1 reason=active turning=0 recovery=0 odom_dxy_mm=0.0 odom_dth=0.00"}
+{"type": "text", "raw": "SLAM map updates=519 written=116 gate=active rec=0 skip=(35,17,0,217) pose=(-0.009,-0.000,-1.20)"}
+{"type": "text", "raw": "GMAP init=1 inside=1 updates=530 seq=530 usable=467 written=117 cell=47,47 pose=(-0.001,-0.003,-0.35)"}
+{"type": "text", "raw": "MAP loc mode=1 inliers=57 fit_mm=50.2"}
+{"type": "text", "raw": "MAP gate=active dxy_mm=0.0 dth=0.00 skip turn=35 settle=17 quality=0 recovery=217"}
+{"type": "text", "raw": "MAP nav state=IDLE goal=(-1,-1) step=0/0"}
+{"type": "text", "raw": "SStopped (PID)"}
+{"type": "text", "raw": "NStopping lidar..."}
+{"type": "text", "raw": "Lidar Stopped"}
+{"type": "text", "raw": "SG-SLAM angle sign set=-; localization and grid reset"}
+{"type": "text", "raw": "R0Odometry, localization, and navigation state reset"}
+{"type": "text", "raw": "MLidar Started (mapping mode)"}
+{"type": "text", "raw": "SGSLAM angle sign=- use pose-scan_angle"}
+{"type": "text", "raw": "SLSLAM cfg angle=-"}
+{"type": "text", "raw": "SLAM loc init=1 updates=70 mode=1 accept=69 reject=0 odom=1 pts=58/58 inliers=57 fit_mm=32.7"}
+{"type": "text", "raw": "SLAM pose pred=(0.000,0.000,0.00) corr=(0.011,0.016,0.12) delta=(11.1,16.2,0.12)"}
+{"type": "text", "raw": "SLAM gate allowed=1 reason=active turning=0 recovery=0 odom_dxy_mm=0.0 odom_dth=0.00"}
+{"type": "text", "raw": "SLAM map updates=70 written=116 gate=active rec=0 skip=(0,0,0,0) pose=(0.011,0.016,0.12)"}
+{"type": "text", "raw": "GMAP init=1 inside=1 updates=80 seq=80 usable=462 written=116 cell=48,48 pose=(0.016,0.015,0.55)"}
+{"type": "text", "raw": "MAP loc mode=1 inliers=57 fit_mm=22.0"}
+{"type": "text", "raw": "MAP gate=active dxy_mm=0.0 dth=0.00 skip turn=0 settle=0 quality=0 recovery=0"}
+{"type": "text", "raw": "MAP nav state=IDLE goal=(-1,-1) step=0/0"}
+{"type": "text", "raw": "PRTOS ctrl=11758 overrun=0 cmd=35 drop=0 dma=872 dma_drop=0 scan=703 tx=0 busy=0 err=0 wait=0"}
+{"type": "text", "raw": "LIDAR active=1 binary_tx=0"}
+{"type": "text", "raw": "HEAP free=16208 min=16208"}
+{"type": "text", "raw": "STACK freeB dft=2464 ctrl=1144 lidar=1088 loc=996 map=1520 comm=664 safe=384"}
+{"type": "text", "raw": "SCAN raw=458 usable=458 rej_range=0 rej_quality=0 min_mm=363 max_mm=2379"}
+{"type": "text", "raw": "LOC init=1 updates=90 accept=89 reject=0 odom=1 mode=1 pts=58/58 inliers=58 fit_mm=2.3 slow_mm=(0.0,0.0) slow_deg=0.00"}
+{"type": "text", "raw": "NAV state=IDLE goal=(-1,-1) step=0/0 dist=0.00 plans=0 done=0 fail=0"}
+{"type": "text", "raw": "X4MAP ASCII ds=4 size=24x24 legend: # occupied, . free, space unknown, R robot"}
+{"type": "text", "raw": "|      #.....R#.........#|"}
+{"type": "text", "raw": "MAP dump done"}
+{"type": "text", "raw": "A90Relative turn 90.00 degrees"}
+{"type": "text", "raw": "SGSLAM angle sign=- use pose-scan_angle"}
+{"type": "text", "raw": "SLSLAM cfg angle=-"}
+{"type": "text", "raw": "SLAM loc init=1 updates=392 mode=1 accept=389 reject=2 odom=1 pts=57/57 inliers=56 fit_mm=40.7"}
+{"type": "text", "raw": "SLAM pose pred=(-0.006,-0.002,90.39) corr=(-0.038,0.009,88.85) delta=(-32.1,11.2,-1.54)"}
+{"type": "text", "raw": "SLAM gate allowed=1 reason=active turning=0 recovery=0 odom_dxy_mm=0.0 odom_dth=0.00"}
+{"type": "text", "raw": "SLAM map updates=392 written=113 gate=active rec=0 skip=(19,8,0,0) pose=(-0.038,0.009,88.85)"}
+{"type": "text", "raw": "GMAP init=1 inside=1 updates=402 seq=402 usable=453 written=114 cell=47,48 pose=(-0.018,0.009,90.29)"}
+{"type": "text", "raw": "MAP loc mode=1 inliers=54 fit_mm=50.5"}
+{"type": "text", "raw": "MAP gate=active dxy_mm=0.0 dth=0.00 skip turn=19 settle=8 quality=0 recovery=0"}
+{"type": "text", "raw": "MAP nav state=IDLE goal=(-1,-1) step=0/0"}
+{"type": "text", "raw": "PRTOS ctrl=15006 overrun=0 cmd=41 drop=0 dma=1273 dma_drop=0 scan=1025 tx=0 busy=0 err=0 wait=0"}
+{"type": "text", "raw": "LIDAR active=1 binary_tx=0"}
+{"type": "text", "raw": "HEAP free=16208 min=16208"}
+{"type": "text", "raw": "STACK freeB dft=2464 ctrl=1144 lidar=1072 loc=996 map=1520 comm=664 safe=384"}
+{"type": "text", "raw": "SCAN raw=457 usable=457 rej_range=0 rej_quality=0 min_mm=365 max_mm=2384"}
+{"type": "text", "raw": "LOC init=1 updates=412 accept=409 reject=2 odom=1 mode=1 pts=58/58 inliers=57 fit_mm=55.2 slow_mm=(0.0,0.0) slow_deg=0.00"}
+{"type": "text", "raw": "NAV state=IDLE goal=(-1,-1) step=0/0 dist=0.00 plans=0 done=0 fail=0"}
+{"type": "text", "raw": "X4MAP ASCII ds=4 size=24x24 legend: # occupied, . free, space unknown, R robot"}
+{"type": "text", "raw": "|     ##.....R..........#|"}
+{"type": "text", "raw": "MAP dump done"}
+{"type": "text", "raw": "SLSLAM cfg angle=-"}
+{"type": "text", "raw": "SLAM loc init=1 updates=432 mode=1 accept=429 reject=2 odom=1 pts=57/57 inliers=55 fit_mm=46.6"}
+{"type": "text", "raw": "SLAM pose pred=(-0.006,-0.002,90.39) corr=(-0.011,0.023,89.59) delta=(-5.4,25.2,-0.80)"}
+{"type": "text", "raw": "SLAM gate allowed=1 reason=active turning=0 recovery=0 odom_dxy_mm=0.0 odom_dth=0.00"}
+{"type": "text", "raw": "SLAM map updates=432 written=113 gate=active rec=0 skip=(19,8,0,0) pose=(-0.011,0.023,89.59)"}
+{"type": "text", "raw": "GMAP init=1 inside=1 updates=442 seq=442 usable=451 written=113 cell=47,48 pose=(-0.012,0.039,92.05)"}
+{"type": "text", "raw": "MAP loc mode=1 inliers=55 fit_mm=72.2"}
+{"type": "text", "raw": "MAP gate=active dxy_mm=0.0 dth=0.00 skip turn=19 settle=8 quality=0 recovery=0"}
+{"type": "text", "raw": "MAP nav state=IDLE goal=(-1,-1) step=0/0"}
+{"type": "text", "raw": "A-90Relative turn -90.00 degrees"}
+{"type": "text", "raw": "SGSLAM angle sign=- use pose-scan_angle"}
+{"type": "text", "raw": "SLSLAM cfg angle=-"}
+{"type": "text", "raw": "SLAM loc init=1 updates=930 mode=1 accept=926 reject=3 odom=1 pts=58/58 inliers=57 fit_mm=51.7"}
+{"type": "text", "raw": "SLAM pose pred=(-0.003,0.001,-0.29) corr=(-0.023,-0.018,1.14) delta=(-20.5,-18.4,1.43)"}
+{"type": "text", "raw": "SLAM gate allowed=1 reason=active turning=0 recovery=0 odom_dxy_mm=0.0 odom_dth=0.00"}
+{"type": "text", "raw": "SLAM map updates=930 written=116 gate=active rec=0 skip=(39,16,0,0) pose=(-0.023,-0.018,1.14)"}
+{"type": "text", "raw": "GMAP init=1 inside=1 updates=940 seq=940 usable=460 written=115 cell=47,48 pose=(-0.025,0.011,1.66)"}
+{"type": "text", "raw": "MAP loc mode=1 inliers=55 fit_mm=73.0"}
+{"type": "text", "raw": "MAP gate=active dxy_mm=0.0 dth=0.00 skip turn=39 settle=16 quality=0 recovery=0"}
+{"type": "text", "raw": "MAP nav state=IDLE goal=(-1,-1) step=0/0"}
+{"type": "text", "raw": "PRTOS ctrl=20433 overrun=0 cmd=58 drop=0 dma=1943 dma_drop=0 scan=1564 tx=0 busy=0 err=0 wait=0"}
+{"type": "text", "raw": "LIDAR active=1 binary_tx=0"}
+{"type": "text", "raw": "HEAP free=16208 min=16208"}
+{"type": "text", "raw": "STACK freeB dft=2464 ctrl=1144 lidar=1072 loc=996 map=1520 comm=656 safe=384"}
+{"type": "text", "raw": "SCAN raw=461 usable=461 rej_range=0 rej_quality=0 min_mm=369 max_mm=2394"}
+{"type": "text", "raw": "LOC init=1 updates=951 accept=947 reject=3 odom=1 mode=1 pts=58/58 inliers=58 fit_mm=21.9 slow_mm=(0.0,0.0) slow_deg=0.00"}
+{"type": "text", "raw": "NAV state=IDLE goal=(-1,-1) step=0/0 dist=0.00 plans=0 done=0 fail=0"}
+{"type": "text", "raw": "X4MAP ASCII ds=4 size=24x24 legend: # occupied, . free, space unknown, R robot"}
+{"type": "text", "raw": "|      #....R.#.........#|"}
+{"type": "text", "raw": "MAP dump done"}
+{"type": "text", "raw": "SLSLAM cfg angle=-"}
+{"type": "text", "raw": "SLAM loc init=1 updates=971 mode=1 accept=967 reject=3 odom=1 pts=58/58 inliers=57 fit_mm=15.5"}
+{"type": "text", "raw": "SLAM pose pred=(-0.003,0.001,-0.29) corr=(-0.034,0.010,0.14) delta=(-31.5,9.1,0.43)"}
+{"type": "text", "raw": "SLAM gate allowed=1 reason=active turning=0 recovery=0 odom_dxy_mm=0.0 odom_dth=0.00"}
+{"type": "text", "raw": "SLAM map updates=971 written=116 gate=active rec=0 skip=(39,16,0,0) pose=(-0.034,0.010,0.14)"}
+{"type": "text", "raw": "GMAP init=1 inside=1 updates=980 seq=980 usable=460 written=115 cell=47,48 pose=(-0.035,0.011,-0.69)"}
+{"type": "text", "raw": "MAP loc mode=1 inliers=58 fit_mm=54.9"}
+{"type": "text", "raw": "MAP gate=active dxy_mm=0.0 dth=0.00 skip turn=39 settle=16 quality=0 recovery=0"}
+{"type": "text", "raw": "MAP nav state=IDLE goal=(-1,-1) step=0/0"}
+{"type": "text", "raw": "PRTOS ctrl=20837 overrun=0 cmd=62 drop=0 dma=1993 dma_drop=0 scan=1604 tx=0 busy=0 err=0 wait=0"}
+{"type": "text", "raw": "LIDAR active=1 binary_tx=0"}
+{"type": "text", "raw": "HEAP free=16208 min=16208"}
+{"type": "text", "raw": "STACK freeB dft=2464 ctrl=1144 lidar=1072 loc=996 map=1520 comm=664 safe=384"}
+{"type": "text", "raw": "SCAN raw=461 usable=461 rej_range=0 rej_quality=0 min_mm=370 max_mm=2391"}
+{"type": "text", "raw": "LOC init=1 updates=991 accept=987 reject=3 odom=1 mode=1 pts=58/58 inliers=57 fit_mm=15.3 slow_mm=(0.0,0.0) slow_deg=0.00"}
+{"type": "text", "raw": "NAV state=IDLE goal=(-1,-1) step=0/0 dist=0.00 plans=0 done=0 fail=0"}
+{"type": "text", "raw": "SStopped (PID)"}

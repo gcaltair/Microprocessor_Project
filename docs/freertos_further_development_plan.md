@@ -286,6 +286,7 @@
 - 当前 `MappingTask` 使用 `corrected_pose` 写图；如果 `LocalizationTask` 在转向后 ICP rejected、odom-only，或 accepted 但 yaw 修正质量不足，仍可能把 scan 以错误姿态写入地图。
 - 当前已有 turning pause 和 `200 ms` settle gate，但它不能证明恢复写图时 pose 已经重新匹配。
 - 当前已加入第一版 turn recovery：相对转向结束后等待约 `800 ms`，之后必须看到可靠 ICP accepted 才恢复写图；暂停写图期间也暂停更新 ICP reference scan。
+- 2026-05-14 硬件 A/B 测试确认 LiDAR 角度符号应为 `pose - scan_angle`；`SG-` 在 `A90/A-90` 后保持 active，`SG+` 会进入 recovery。
 - 当前调试阶段优先获得 SLAM 行为样本，暂不为新增诊断继续压缩 RAM；最近构建 RAM 占用为 `99.13%`，后续 SLAM 行为稳定后需要专门收口。
 - 下一轮应优先记录 `P / G / O / SL / X4`，看 `LOC mode / inliers / fit_mm / ICP delta / MAP gate / SLAM gate / ODOM th / EST th / POSE pred/corr`，再决定是增强 yaw 匹配，还是检查 LiDAR 角度约定。
 

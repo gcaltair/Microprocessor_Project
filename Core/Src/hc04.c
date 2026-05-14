@@ -296,6 +296,13 @@ static void transmit_odometry_snapshot(void)
     float last_move_progress_distance_m = 0.0f;
     ControlDebugSnapshot_t last_move_control_snapshot;
     ControlDebugSnapshot_t last_turn_control_snapshot;
+    PidLoopDebugSnapshot_t pid_debug_left_speed;
+    PidLoopDebugSnapshot_t pid_debug_right_speed;
+    PidLoopDebugSnapshot_t pid_debug_angle;
+    PidLoopDebugSnapshot_t pid_debug_position;
+    ControlLimitDebugSnapshot_t limit_debug_snapshot;
+    MotorDebugSnapshot_t motor_debug_snapshot;
+    EncoderDebugSnapshot_t encoder_debug_snapshot;
     ControlMode mode;
     RelativeMoveState move_state;
     int16_t left_counter_raw;
@@ -323,6 +330,7 @@ static void transmit_odometry_snapshot(void)
                               &right_distance_m,
                               &left_counter_raw,
                               &right_counter_raw);
+    Encoder_GetDebugSnapshot(&encoder_debug_snapshot);
     current_base_speed = base_car_speed;
     angle_setpoint = g_pid_angle.setpoint;
     move_target_dx_m = g_target_x;
@@ -343,6 +351,12 @@ static void transmit_odometry_snapshot(void)
                                                                        &last_move_progress_distance_m);
     has_last_move_control_snapshot = Control_GetLastRelativeMoveControlSnapshot(&last_move_control_snapshot);
     has_last_turn_control_snapshot = Control_GetLastTurnControlSnapshot(&last_turn_control_snapshot);
+    Control_GetPidDebugSnapshots(&pid_debug_left_speed,
+                                 &pid_debug_right_speed,
+                                 &pid_debug_angle,
+                                 &pid_debug_position);
+    Control_GetLimitDebugSnapshot(&limit_debug_snapshot);
+    Control_GetMotorDebugSnapshot(&motor_debug_snapshot);
 
     if (g_pidMutex != NULL) {
         (void)osMutexRelease(g_pidMutex);
@@ -379,6 +393,66 @@ static void transmit_odometry_snapshot(void)
                 control_right_speed_setpoint_mps,
                 pwm_output_left,
                 pwm_output_right);
+    uart_printf("PIDDBG L sp=%.3f cur=%.3f err=%.3f p=%.1f i=%.1f d=%.1f out=%.1f int=%.4f sat=%u\r\n",
+                pid_debug_left_speed.setpoint,
+                pid_debug_left_speed.current,
+                pid_debug_left_speed.error,
+                pid_debug_left_speed.p_out,
+                pid_debug_left_speed.i_out,
+                pid_debug_left_speed.d_out,
+                pid_debug_left_speed.output,
+                pid_debug_left_speed.integral,
+                (unsigned int)pid_debug_left_speed.saturated);
+    uart_printf("PIDDBG R sp=%.3f cur=%.3f err=%.3f p=%.1f i=%.1f d=%.1f out=%.1f int=%.4f sat=%u\r\n",
+                pid_debug_right_speed.setpoint,
+                pid_debug_right_speed.current,
+                pid_debug_right_speed.error,
+                pid_debug_right_speed.p_out,
+                pid_debug_right_speed.i_out,
+                pid_debug_right_speed.d_out,
+                pid_debug_right_speed.output,
+                pid_debug_right_speed.integral,
+                (unsigned int)pid_debug_right_speed.saturated);
+    uart_printf("PIDDBG A sp=%.2f cur=%.2f err=%.2f p=%.3f i=%.3f d=%.3f out=%.3f int=%.4f sat=%u\r\n",
+                pid_debug_angle.setpoint,
+                pid_debug_angle.current,
+                pid_debug_angle.error,
+                pid_debug_angle.p_out,
+                pid_debug_angle.i_out,
+                pid_debug_angle.d_out,
+                pid_debug_angle.output,
+                pid_debug_angle.integral,
+                (unsigned int)pid_debug_angle.saturated);
+    uart_printf("PIDDBG P sp=%.3f cur=%.3f err=%.3f p=%.3f i=%.3f d=%.3f out=%.3f int=%.4f sat=%u\r\n",
+                pid_debug_position.setpoint,
+                pid_debug_position.current,
+                pid_debug_position.error,
+                pid_debug_position.p_out,
+                pid_debug_position.i_out,
+                pid_debug_position.d_out,
+                pid_debug_position.output,
+                pid_debug_position.integral,
+                (unsigned int)pid_debug_position.saturated);
+    uart_printf("LIMDBG pos_raw=%.3f pos_lim=%.3f term=%.3f psat=%u tlim=%u min=%u turn_raw=%.3f turn=%.3f turn_lim=%.3f tsat=%u active=%u\r\n",
+                limit_debug_snapshot.position_raw_base_speed_mps,
+                limit_debug_snapshot.position_limited_base_speed_mps,
+                limit_debug_snapshot.position_terminal_limit_mps,
+                (unsigned int)limit_debug_snapshot.position_output_limited,
+                (unsigned int)limit_debug_snapshot.position_terminal_limited,
+                (unsigned int)limit_debug_snapshot.position_min_speed_applied,
+                limit_debug_snapshot.turn_raw_output_mps,
+                limit_debug_snapshot.turn_limited_output_mps,
+                limit_debug_snapshot.turn_limit_mps,
+                (unsigned int)limit_debug_snapshot.angle_output_limited,
+                (unsigned int)limit_debug_snapshot.angle_control_active);
+    uart_printf("MOTORDBG pid=(%d,%d) app=(%d,%d) dir=(%u,%u) dead=%d\r\n",
+                motor_debug_snapshot.pid_pwm_left,
+                motor_debug_snapshot.pid_pwm_right,
+                motor_debug_snapshot.applied_pwm_left,
+                motor_debug_snapshot.applied_pwm_right,
+                (unsigned int)motor_debug_snapshot.direction_left,
+                (unsigned int)motor_debug_snapshot.direction_right,
+                MOTOR_DEAD_ZONE);
     uart_printf("ENC  dl=%.3f dr=%.3f cntL=%d cntR=%d cal=(%.3f,%.3f,%.3f,%.3f)\r\n",
                 left_distance_m,
                 right_distance_m,
@@ -388,6 +462,17 @@ static void transmit_odometry_snapshot(void)
                 g_encoder_left_reverse_scale,
                 g_encoder_right_forward_scale,
                 g_encoder_right_reverse_scale);
+    uart_printf("ENCDBG dcnt=(%d,%d) cnt=(%d,%d) raw=(%.3f,%.3f) filt=(%.3f,%.3f) odom=(%.3f,%.3f)\r\n",
+                encoder_debug_snapshot.left_pulse_delta,
+                encoder_debug_snapshot.right_pulse_delta,
+                encoder_debug_snapshot.left_counter_raw,
+                encoder_debug_snapshot.right_counter_raw,
+                encoder_debug_snapshot.raw_left_speed_mps,
+                encoder_debug_snapshot.raw_right_speed_mps,
+                encoder_debug_snapshot.filtered_left_speed_mps,
+                encoder_debug_snapshot.filtered_right_speed_mps,
+                encoder_debug_snapshot.odom_left_speed_mps,
+                encoder_debug_snapshot.odom_right_speed_mps);
     uart_printf("LMOVE valid=%u cmd=%.3f progress=%.3f dl=%.3f dr=%.3f\r\n",
                 (unsigned int)has_last_move_snapshot,
                 last_move_command_distance_m,

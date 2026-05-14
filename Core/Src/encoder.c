@@ -26,6 +26,7 @@ static int16_t last_left_count = 0;
 static int16_t last_right_count = 0;
 static float g_left_distance_total_m = 0.0f;
 static float g_right_distance_total_m = 0.0f;
+static EncoderDebugSnapshot_t s_encoder_debug;
 
 static float encoder_apply_odometry_scale(float wheel_speed, float forward_scale, float reverse_scale)
 {
@@ -83,6 +84,17 @@ void encoder_update_speed(void)
     g_dr_acc += odom_right_speed * delta_t;
     g_left_distance_total_m += odom_left_speed * delta_t;
     g_right_distance_total_m += odom_right_speed * delta_t;
+
+    s_encoder_debug.left_pulse_delta = left_pulse_delta;
+    s_encoder_debug.right_pulse_delta = right_pulse_delta;
+    s_encoder_debug.left_counter_raw = current_left_count;
+    s_encoder_debug.right_counter_raw = current_right_count;
+    s_encoder_debug.raw_left_speed_mps = raw_left_speed;
+    s_encoder_debug.raw_right_speed_mps = raw_right_speed;
+    s_encoder_debug.filtered_left_speed_mps = g_left_speed;
+    s_encoder_debug.filtered_right_speed_mps = g_right_speed;
+    s_encoder_debug.odom_left_speed_mps = odom_left_speed;
+    s_encoder_debug.odom_right_speed_mps = odom_right_speed;
 }
 
 void encoder_Reset(void)
@@ -97,6 +109,16 @@ void encoder_Reset(void)
     g_dr_acc = 0.0f;
     g_left_distance_total_m = 0.0f;
     g_right_distance_total_m = 0.0f;
+    s_encoder_debug.left_pulse_delta = 0;
+    s_encoder_debug.right_pulse_delta = 0;
+    s_encoder_debug.left_counter_raw = 0;
+    s_encoder_debug.right_counter_raw = 0;
+    s_encoder_debug.raw_left_speed_mps = 0.0f;
+    s_encoder_debug.raw_right_speed_mps = 0.0f;
+    s_encoder_debug.filtered_left_speed_mps = 0.0f;
+    s_encoder_debug.filtered_right_speed_mps = 0.0f;
+    s_encoder_debug.odom_left_speed_mps = 0.0f;
+    s_encoder_debug.odom_right_speed_mps = 0.0f;
 }
 
 void Odometry_ResetPose(void)
@@ -217,4 +239,13 @@ uint8_t Encoder_SetCalibration(float left_forward, float left_reverse, float rig
     g_encoder_right_forward_scale = right_forward;
     g_encoder_right_reverse_scale = right_reverse;
     return 1U;
+}
+
+void Encoder_GetDebugSnapshot(EncoderDebugSnapshot_t *snapshot)
+{
+    if (snapshot == NULL) {
+        return;
+    }
+
+    *snapshot = s_encoder_debug;
 }

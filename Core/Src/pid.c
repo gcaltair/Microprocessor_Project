@@ -51,6 +51,12 @@ static float s_last_move_command_distance_m = 0.0f;
 static float s_last_move_progress_distance_m = 0.0f;
 static ControlDebugSnapshot_t s_last_move_control_snapshot;
 static ControlDebugSnapshot_t s_last_turn_control_snapshot;
+static PidLoopDebugSnapshot_t s_pid_debug_left_speed;
+static PidLoopDebugSnapshot_t s_pid_debug_right_speed;
+static PidLoopDebugSnapshot_t s_pid_debug_angle;
+static PidLoopDebugSnapshot_t s_pid_debug_position;
+static ControlLimitDebugSnapshot_t s_limit_debug;
+static MotorDebugSnapshot_t s_motor_debug;
 static uint8_t s_last_move_snapshot_valid = 0U;
 static uint8_t s_last_turn_snapshot_valid = 0U;
 static uint8_t s_angle_control_active = 0U;
@@ -68,13 +74,51 @@ static float pid_normalize_angle_deg(float angle_deg)
     return angle_deg;
 }
 
+static void pid_store_loop_debug(PID_Controller *pid,
+                                 float current,
+                                 float error,
+                                 float p_out,
+                                 float i_out,
+                                 float d_out,
+                                 float output,
+                                 uint8_t saturated)
+{
+    PidLoopDebugSnapshot_t *snapshot = NULL;
+
+    if (pid == (PID_Controller *)&g_pid_speed_left) {
+        snapshot = &s_pid_debug_left_speed;
+    } else if (pid == (PID_Controller *)&g_pid_speed_right) {
+        snapshot = &s_pid_debug_right_speed;
+    } else if (pid == (PID_Controller *)&g_pid_angle) {
+        snapshot = &s_pid_debug_angle;
+    } else if (pid == (PID_Controller *)&g_pid_position) {
+        snapshot = &s_pid_debug_position;
+    }
+
+    if (snapshot == NULL) {
+        return;
+    }
+
+    snapshot->setpoint = pid->setpoint;
+    snapshot->current = current;
+    snapshot->error = error;
+    snapshot->p_out = p_out;
+    snapshot->i_out = i_out;
+    snapshot->d_out = d_out;
+    snapshot->output = output;
+    snapshot->integral = pid->integral;
+    snapshot->saturated = saturated;
+}
+
 static float pid_calculate_from_error(PID_Controller *pid, float error, float dt)
 {
     float p_out;
     float i_out;
     float d_out;
     float output_float;
+    float unclamped_output;
     float derivative;
+    uint8_t saturated = 0U;
 
     if (dt <= 0.00001f) {
         return 0.0f;
@@ -92,15 +136,19 @@ static float pid_calculate_from_error(PID_Controller *pid, float error, float dt
     i_out = pid->Ki * pid->integral;
     derivative = (error - pid->last_error) / dt;
     d_out = pid->Kd * derivative;
-    output_float = p_out + i_out + d_out;
+    unclamped_output = p_out + i_out + d_out;
+    output_float = unclamped_output;
 
     if (output_float > pid->output_max) {
         output_float = pid->output_max;
+        saturated = 1U;
     } else if (output_float < pid->output_min) {
         output_float = pid->output_min;
+        saturated = 1U;
     }
 
     pid->last_error = error;
+    pid_store_loop_debug(pid, pid->setpoint - error, error, p_out, i_out, d_out, output_float, saturated);
 
     return output_float;
 }
@@ -289,7 +337,9 @@ float PID_Calculate(PID_Controller *pid, float current_value, float dt)
     float i_out;
     float d_out;
     float output_float;
+    float unclamped_output;
     float derivative;
+    uint8_t saturated = 0U;
 
     if (dt <= 0.00001f) {
         return 0.0f;
@@ -312,15 +362,19 @@ float PID_Calculate(PID_Controller *pid, float current_value, float dt)
     i_out = pid->Ki * pid->integral;
     derivative = (error - pid->last_error) / dt;
     d_out = pid->Kd * derivative;
-    output_float = p_out + i_out + d_out;
+    unclamped_output = p_out + i_out + d_out;
+    output_float = unclamped_output;
 
     if (output_float > pid->output_max) {
         output_float = pid->output_max;
+        saturated = 1U;
     } else if (output_float < pid->output_min) {
         output_float = pid->output_min;
+        saturated = 1U;
     }
 
     pid->last_error = error;
+    pid_store_loop_debug(pid, current_value, error, p_out, i_out, d_out, output_float, saturated);
 
     return output_float;
 }
@@ -329,34 +383,67 @@ void Speed_Control_Loop(float dt)
 {
     int raw_pwm_left = (int)PID_Calculate((PID_Controller *)&g_pid_speed_left, g_left_speed, dt);
     int raw_pwm_right = (int)PID_Calculate((PID_Controller *)&g_pid_speed_right, g_right_speed, dt);
+    int applied_pwm_left = 0;
+    int applied_pwm_right = 0;
+    uint8_t direction_left = MOTOR_STOP;
+    uint8_t direction_right = MOTOR_STOP;
 
     pwm_output_left = raw_pwm_left;
     pwm_output_right = raw_pwm_right;
 
     if (pwm_output_left > 0) {
-        Motor_Control(MOTOR_LEFT, MOTOR_FORWARD, (uint16_t)(pwm_output_left + MOTOR_DEAD_ZONE));
+        direction_left = MOTOR_FORWARD;
+        applied_pwm_left = pwm_output_left + MOTOR_DEAD_ZONE;
+        if (applied_pwm_left > 10000) {
+            applied_pwm_left = 10000;
+        }
+        Motor_Control(MOTOR_LEFT, direction_left, (uint16_t)applied_pwm_left);
     } else if (pwm_output_left < 0) {
-        Motor_Control(MOTOR_LEFT, MOTOR_BACKWARD, (uint16_t)(-pwm_output_left + MOTOR_DEAD_ZONE));
+        direction_left = MOTOR_BACKWARD;
+        applied_pwm_left = -pwm_output_left + MOTOR_DEAD_ZONE;
+        if (applied_pwm_left > 10000) {
+            applied_pwm_left = 10000;
+        }
+        Motor_Control(MOTOR_LEFT, direction_left, (uint16_t)applied_pwm_left);
     } else {
         Motor_Control(MOTOR_LEFT, MOTOR_STOP, 0);
     }
 
     if (pwm_output_right > 0) {
-        Motor_Control(MOTOR_RIGHT, MOTOR_FORWARD, (uint16_t)(pwm_output_right + MOTOR_DEAD_ZONE));
+        direction_right = MOTOR_FORWARD;
+        applied_pwm_right = pwm_output_right + MOTOR_DEAD_ZONE;
+        if (applied_pwm_right > 10000) {
+            applied_pwm_right = 10000;
+        }
+        Motor_Control(MOTOR_RIGHT, direction_right, (uint16_t)applied_pwm_right);
     } else if (pwm_output_right < 0) {
-        Motor_Control(MOTOR_RIGHT, MOTOR_BACKWARD, (uint16_t)(-pwm_output_right + MOTOR_DEAD_ZONE));
+        direction_right = MOTOR_BACKWARD;
+        applied_pwm_right = -pwm_output_right + MOTOR_DEAD_ZONE;
+        if (applied_pwm_right > 10000) {
+            applied_pwm_right = 10000;
+        }
+        Motor_Control(MOTOR_RIGHT, direction_right, (uint16_t)applied_pwm_right);
     } else {
         Motor_Control(MOTOR_RIGHT, MOTOR_STOP, 0);
     }
+
+    s_motor_debug.pid_pwm_left = pwm_output_left;
+    s_motor_debug.pid_pwm_right = pwm_output_right;
+    s_motor_debug.applied_pwm_left = applied_pwm_left;
+    s_motor_debug.applied_pwm_right = applied_pwm_right;
+    s_motor_debug.direction_left = direction_left;
+    s_motor_debug.direction_right = direction_right;
 }
 
 void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt)
 {
     float turn_output = 0.0f;
+    float raw_turn_output = 0.0f;
     float error = pid_normalize_angle_deg(g_pid_angle.setpoint - angle_current);
     float turn_limit = (fabsf(base_speed) > 0.001f) ? TURN_OUTPUT_LIMIT_MOVING : TURN_OUTPUT_LIMIT_INPLACE;
     float abs_base_speed = fabsf(base_speed);
     float abs_error = fabsf(error);
+    uint8_t turn_limited = 0U;
 
     if (abs_base_speed > 0.001f) {
         float moving_limit = abs_base_speed * TURN_OUTPUT_MOVING_BASE_RATIO;
@@ -374,11 +461,22 @@ void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt
     }
 
     if (s_angle_control_active != 0U) {
-        turn_output = pid_calculate_from_error((PID_Controller *)&g_pid_angle, error, dt);
-        turn_output = pid_clamp_float(turn_output, -turn_limit, turn_limit);
+        raw_turn_output = pid_calculate_from_error((PID_Controller *)&g_pid_angle, error, dt);
+        turn_output = pid_clamp_float(raw_turn_output, -turn_limit, turn_limit);
+        if (turn_output != raw_turn_output) {
+            turn_limited = 1U;
+        }
     } else {
         g_pid_angle.integral = 0.0f;
         g_pid_angle.last_error = 0.0f;
+        pid_store_loop_debug((PID_Controller *)&g_pid_angle,
+                             angle_current,
+                             error,
+                             0.0f,
+                             0.0f,
+                             0.0f,
+                             0.0f,
+                             0U);
     }
 
     g_pid_speed_left.setpoint = base_speed - turn_output;
@@ -387,6 +485,11 @@ void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt
     g_control_turn_output_mps = turn_output;
     g_control_left_speed_setpoint_mps = g_pid_speed_left.setpoint;
     g_control_right_speed_setpoint_mps = g_pid_speed_right.setpoint;
+    s_limit_debug.turn_raw_output_mps = raw_turn_output;
+    s_limit_debug.turn_limited_output_mps = turn_output;
+    s_limit_debug.turn_limit_mps = turn_limit;
+    s_limit_debug.angle_output_limited = turn_limited;
+    s_limit_debug.angle_control_active = s_angle_control_active;
 
     Speed_Control_Loop(dt);
     if ((abs_base_speed <= 0.001f) && (fabsf(turn_output) > 0.0005f)) {
@@ -700,6 +803,12 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
         case RELATIVE_MOVE_IDLE:
             base_car_speed = 0.0f;
             g_control_position_error_m = 0.0f;
+            s_limit_debug.position_raw_base_speed_mps = 0.0f;
+            s_limit_debug.position_limited_base_speed_mps = 0.0f;
+            s_limit_debug.position_terminal_limit_mps = 0.0f;
+            s_limit_debug.position_output_limited = 0U;
+            s_limit_debug.position_terminal_limited = 0U;
+            s_limit_debug.position_min_speed_applied = 0U;
             break;
 
         case RELATIVE_MOVE_TURNING:
@@ -709,6 +818,12 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
             base_car_speed = 0.0f;
             angle_error = pid_normalize_angle_deg(g_pid_angle.setpoint - current_angle_deg);
             g_control_position_error_m = s_target_distance;
+            s_limit_debug.position_raw_base_speed_mps = 0.0f;
+            s_limit_debug.position_limited_base_speed_mps = 0.0f;
+            s_limit_debug.position_terminal_limit_mps = 0.0f;
+            s_limit_debug.position_output_limited = 0U;
+            s_limit_debug.position_terminal_limited = 0U;
+            s_limit_debug.position_min_speed_applied = 0U;
 
             if (fabsf(angle_error) < ANGLE_TOLERANCE_FOR_MOVING) {
                 s_initial_x = current_x_m;
@@ -733,6 +848,11 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
             float dy_traveled = current_y_m - s_initial_y;
             float distance_progress = (dx_traveled * s_drive_axis_x + dy_traveled * s_drive_axis_y) * s_drive_direction;
             float distance_error;
+            float raw_base_speed;
+            float terminal_speed_limit = 0.0f;
+            uint8_t output_limited = 0U;
+            uint8_t terminal_limited = 0U;
+            uint8_t min_speed_applied = 0U;
 
             if (distance_progress < 0.0f) {
                 distance_progress = 0.0f;
@@ -776,24 +896,38 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
             }
 
             g_pid_position.setpoint = 0.0f;
-            base_car_speed = s_drive_direction * PID_Calculate((PID_Controller *)&g_pid_position, -distance_error, dt);
+            raw_base_speed = s_drive_direction * PID_Calculate((PID_Controller *)&g_pid_position, -distance_error, dt);
+            base_car_speed = raw_base_speed;
 
             if (base_car_speed > MAX_BASE_SPEED) {
                 base_car_speed = MAX_BASE_SPEED;
+                output_limited = 1U;
             } else if (base_car_speed < -MAX_BASE_SPEED) {
                 base_car_speed = -MAX_BASE_SPEED;
+                output_limited = 1U;
             }
 
             if (distance_error <= POSITION_SLOWDOWN_DISTANCE_M) {
-                float terminal_speed_limit = pid_terminal_speed_limit_from_distance(distance_error);
+                terminal_speed_limit = pid_terminal_speed_limit_from_distance(distance_error);
+                if (fabsf(base_car_speed) > terminal_speed_limit) {
+                    terminal_limited = 1U;
+                }
                 base_car_speed = pid_apply_magnitude_limit(base_car_speed, terminal_speed_limit);
             } else {
                 if ((base_car_speed > 0.0f) && (base_car_speed < MIN_BASE_SPEED)) {
                     base_car_speed = MIN_BASE_SPEED;
+                    min_speed_applied = 1U;
                 } else if ((base_car_speed < 0.0f) && (base_car_speed > -MIN_BASE_SPEED)) {
                     base_car_speed = -MIN_BASE_SPEED;
+                    min_speed_applied = 1U;
                 }
             }
+            s_limit_debug.position_raw_base_speed_mps = raw_base_speed;
+            s_limit_debug.position_limited_base_speed_mps = base_car_speed;
+            s_limit_debug.position_terminal_limit_mps = terminal_speed_limit;
+            s_limit_debug.position_output_limited = output_limited;
+            s_limit_debug.position_terminal_limited = terminal_limited;
+            s_limit_debug.position_min_speed_applied = min_speed_applied;
             last_driving_position_error_m = distance_error;
             capture_driving_control = 1U;
             break;
@@ -852,4 +986,44 @@ uint8_t Control_GetLastTurnControlSnapshot(ControlDebugSnapshot_t *snapshot)
 
     *snapshot = s_last_turn_control_snapshot;
     return 1U;
+}
+
+void Control_GetPidDebugSnapshots(PidLoopDebugSnapshot_t *left_speed,
+                                  PidLoopDebugSnapshot_t *right_speed,
+                                  PidLoopDebugSnapshot_t *angle,
+                                  PidLoopDebugSnapshot_t *position)
+{
+    if (left_speed != NULL) {
+        *left_speed = s_pid_debug_left_speed;
+    }
+
+    if (right_speed != NULL) {
+        *right_speed = s_pid_debug_right_speed;
+    }
+
+    if (angle != NULL) {
+        *angle = s_pid_debug_angle;
+    }
+
+    if (position != NULL) {
+        *position = s_pid_debug_position;
+    }
+}
+
+void Control_GetLimitDebugSnapshot(ControlLimitDebugSnapshot_t *snapshot)
+{
+    if (snapshot == NULL) {
+        return;
+    }
+
+    *snapshot = s_limit_debug;
+}
+
+void Control_GetMotorDebugSnapshot(MotorDebugSnapshot_t *snapshot)
+{
+    if (snapshot == NULL) {
+        return;
+    }
+
+    *snapshot = s_motor_debug;
 }

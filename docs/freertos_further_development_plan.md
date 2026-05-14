@@ -170,6 +170,11 @@
 - `O` 同时包含 `MOVE cmd/target/progress/remain` 相对位移诊断信息，并保留最近一次动作结果直到下一次命令或复位
 - `O` 同时包含 `LMOVE valid/cmd/progress/dl/dr`，直接显示最近一次完成的相对位移段轮程
 - `O` 同时包含 `CTRLDBG / LCTRL / TCTRL`，用于 PID 调参和抖动复盘
+- `O` 新增 `PIDDBG / LIMDBG / MOTORDBG / ENCDBG`，用于速度环、角度环、位置环联合调参：
+  - `PIDDBG`：各 PID 环的 setpoint、current、error、P/I/D 分量、输出、积分量和输出饱和状态
+  - `LIMDBG`：位置环 base speed 原始值/限幅值、终端限速、角度 turn 原始值/限幅值和死区激活状态
+  - `MOTORDBG`：PID PWM、加死区后的实际 PWM、左右电机方向
+  - `ENCDBG`：编码器脉冲增量、原始轮速、滤波轮速和 odometry 缩放后轮速
 - `P`：定位状态摘要
 
 ### 5.2.1 PID 调参

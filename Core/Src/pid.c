@@ -9,7 +9,7 @@
 #define ANGLE_CONTROL_DEADBAND_ENTER_DEG  1.0f
 #define ANGLE_CONTROL_DEADBAND_EXIT_DEG   2.0f
 #define TURN_OUTPUT_LIMIT_MOVING    0.10f
-#define TURN_OUTPUT_LIMIT_INPLACE   0.08f
+#define TURN_OUTPUT_LIMIT_INPLACE   0.12f
 #define TURN_OUTPUT_MOVING_BASE_RATIO     0.80f
 #define POSITION_SLOWDOWN_DISTANCE_M      0.15f
 #define POSITION_TERMINAL_MAX_SPEED_MPS   0.08f
@@ -208,6 +208,16 @@ static void pid_set_drive_axis_from_heading_deg(float heading_deg)
 
     s_drive_axis_x = cosf(heading_rad);
     s_drive_axis_y = sinf(heading_rad);
+}
+
+static void pid_clear_position_limit_debug(void)
+{
+    s_limit_debug.position_raw_base_speed_mps = 0.0f;
+    s_limit_debug.position_limited_base_speed_mps = 0.0f;
+    s_limit_debug.position_terminal_limit_mps = 0.0f;
+    s_limit_debug.position_output_limited = 0U;
+    s_limit_debug.position_terminal_limited = 0U;
+    s_limit_debug.position_min_speed_applied = 0U;
 }
 
 static void pid_fill_control_snapshot(ControlDebugSnapshot_t *snapshot, float position_error_m)
@@ -587,6 +597,7 @@ void Control_SetManualCommand(float command_base_speed, float angle_setpoint)
     s_last_move_snapshot_valid = 0U;
     s_last_turn_snapshot_valid = 0U;
     s_angle_control_active = 0U;
+    pid_clear_position_limit_debug();
 
     unlock_pid_and_control();
 }
@@ -610,6 +621,7 @@ void Control_SetManualDrive(float command_base_speed)
     s_last_move_snapshot_valid = 0U;
     s_last_turn_snapshot_valid = 0U;
     s_angle_control_active = 0U;
+    pid_clear_position_limit_debug();
 
     unlock_pid_control_and_odom();
 }
@@ -634,6 +646,7 @@ void Control_SetRelativeTurn(float delta_angle)
     s_last_move_snapshot_valid = 0U;
     s_last_turn_snapshot_valid = 0U;
     s_angle_control_active = 0U;
+    pid_clear_position_limit_debug();
 
     unlock_pid_control_and_odom();
 }
@@ -688,6 +701,7 @@ uint8_t Control_SetWheelSpeedTest(float left_speed_mps, float right_speed_mps)
     s_last_move_snapshot_valid = 0U;
     s_last_turn_snapshot_valid = 0U;
     s_angle_control_active = 0U;
+    pid_clear_position_limit_debug();
 
     unlock_pid_and_control();
 
@@ -726,6 +740,7 @@ void Control_StopCommand(void)
     s_last_move_snapshot_valid = 0U;
     s_last_turn_snapshot_valid = 0U;
     s_angle_control_active = 0U;
+    pid_clear_position_limit_debug();
 
     unlock_pid_control_and_odom();
 }
@@ -803,12 +818,7 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
         case RELATIVE_MOVE_IDLE:
             base_car_speed = 0.0f;
             g_control_position_error_m = 0.0f;
-            s_limit_debug.position_raw_base_speed_mps = 0.0f;
-            s_limit_debug.position_limited_base_speed_mps = 0.0f;
-            s_limit_debug.position_terminal_limit_mps = 0.0f;
-            s_limit_debug.position_output_limited = 0U;
-            s_limit_debug.position_terminal_limited = 0U;
-            s_limit_debug.position_min_speed_applied = 0U;
+            pid_clear_position_limit_debug();
             break;
 
         case RELATIVE_MOVE_TURNING:
@@ -818,12 +828,7 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
             base_car_speed = 0.0f;
             angle_error = pid_normalize_angle_deg(g_pid_angle.setpoint - current_angle_deg);
             g_control_position_error_m = s_target_distance;
-            s_limit_debug.position_raw_base_speed_mps = 0.0f;
-            s_limit_debug.position_limited_base_speed_mps = 0.0f;
-            s_limit_debug.position_terminal_limit_mps = 0.0f;
-            s_limit_debug.position_output_limited = 0U;
-            s_limit_debug.position_terminal_limited = 0U;
-            s_limit_debug.position_min_speed_applied = 0U;
+            pid_clear_position_limit_debug();
 
             if (fabsf(angle_error) < ANGLE_TOLERANCE_FOR_MOVING) {
                 s_initial_x = current_x_m;

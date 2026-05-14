@@ -3,7 +3,7 @@
 ## 文档状态
 
 - 版本：`v1.2`
-- 更新日期：`2026-05-12`
+- 更新日期：`2026-05-14`
 - 适用范围：当前 STM32F446 + FreeRTOS + LiDAR SLAM 固件
 
 ---
@@ -21,6 +21,12 @@
 - 占据栅格建图
 - 实时 ASCII 地图输出
 - 已知目标格点导航初版
+
+最新状态补充：
+
+- 控制三环已经形成可进入迷宫建图/导航联调的基线。
+- 当前第一优先级是 SLAM 转向后的地图姿态一致性问题：实测中转向后地图会出现随车体姿态旋转/重影，参考图见 `docs/archive/references/problem_of_slam.png`。
+- 在该问题收口前，导航继续保持最小可用验证，不扩大到完整探索或回程。
 
 当前主任务链路：
 
@@ -273,6 +279,13 @@
 - odometry 尺度误差
 - scan matching 仅为轻量实现
 
+2026-05-14 新增重点问题：
+
+- 转向后地图结构会出现旋转/重影，说明转向后的 scan 没有稳定锁定到已有地图坐标系。
+- 当前 `MappingTask` 使用 `corrected_pose` 写图；如果 `LocalizationTask` 在转向后 ICP rejected、odom-only，或 accepted 但 yaw 修正质量不足，仍可能把 scan 以错误姿态写入地图。
+- 当前已有 turning pause 和 `200 ms` settle gate，但它不能证明恢复写图时 pose 已经重新匹配。
+- 下一轮应优先记录 `P / G / O / X4`，看 `LOC mode / inliers / fit_mm / MAP gate / ODOM th / EST th / POSE pred/corr`，再决定是增强 gate、增加 yaw 诊断，还是检查 LiDAR 角度约定。
+
 ### 6.3 内存风险
 
 当前资源占用大致为：
@@ -286,7 +299,17 @@
 
 ## 7. 后续开发优先级
 
-### Priority 1：收口 Phase 4A
+### Priority 1：收口 SLAM 转向后地图姿态一致性
+
+下一步优先把建图做成“转向后不污染旧地图”的最小闭环：
+
+- 执行 `docs/work_items/2026-05-14_slam-turn-rotation-debug/hardware_test_plan.md`
+- 确认转向后 ICP rejected/odom-only 是否仍写图
+- 确认 ICP accepted 时 yaw 修正是否可信
+- 必要时增加 `delta_theta`、turn recovery、mapping resume reason 等串口诊断
+- 必要时让转向后建图必须等待一次可靠 ICP accepted 后再恢复
+
+### Priority 2：收口 Phase 4A
 
 下一步优先把基础导航做成“可重复验证”的最小闭环：
 
@@ -296,7 +319,7 @@
 - 重规划入口
 - 更清晰的导航调试信息
 
-### Priority 2：收口 Phase 3B
+### Priority 3：收口 Phase 3B
 
 继续推进但保持保守：
 
@@ -306,7 +329,7 @@
 - 优先完成“单段隔离”的 `R0 -> P{x},{y} -> O -> D... -> K...` 人工标定闭环，并把结果写入任务记录
 - 优先复测 `R0 -> P1,0 -> O`、`R0 -> P-1,0 -> O`、`R0 -> A90 -> O`、`R0 -> A-90 -> O`，确认终点与转向抖动是否下降
 
-### Priority 3：资源优化
+### Priority 4：资源优化
 
 重点检查：
 
@@ -316,7 +339,7 @@
 
 目标是为后续 frontier / return-to-start 释放内存余量。
 
-### Priority 4：进入完整导航状态机
+### Priority 5：进入完整导航状态机
 
 在基础导航稳定后，再进入：
 
@@ -330,22 +353,24 @@
 
 推荐按以下顺序推进：
 
-1. 稳定当前基础导航
-2. 补导航路径显示
-3. 加失败恢复和重规划
-4. 做 RAM 收口
-5. 再考虑 frontier
-6. 最后做回程状态机
+1. 先诊断并收口 SLAM 转向后地图旋转/重影问题
+2. 稳定当前基础导航
+3. 补导航路径显示
+4. 加失败恢复和重规划
+5. 做 RAM 收口
+6. 再考虑 frontier
+7. 最后做回程状态机
 
 ---
 
 ## 9. 当前阶段判断
 
-当前系统已经具备“继续做导航”的条件，但前提是：
+当前系统已经具备“继续做导航”的控制基础，但前提是：
 
 - 导航必须按“容错系统”来设计
 - 不把 dead reckoning 当作高精度真值
 - 允许分段执行、重定位、再规划
+- 先确认转向后的建图不会把错误姿态扫描写进地图
 
 因此后续计划不需要推翻，但需要继续坚持：
 

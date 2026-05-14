@@ -4,7 +4,7 @@ This is the current planning entrypoint for agents.
 
 ## Current Phase
 
-Status date: 2026-05-12.
+Status date: 2026-05-14.
 
 The project is in a runnable integration phase:
 
@@ -17,7 +17,7 @@ The project is in a runnable integration phase:
 
 Current system goal:
 
-> Keep control stable, keep maps usable, validate odometry scale conservatively, make known-target navigation robust, then enter full exploration and return-to-start work.
+> Keep the current control baseline stable, make SLAM map orientation consistent after turns, then resume known-target navigation stabilization before full exploration and return-to-start work.
 
 ## Authoritative Files
 
@@ -42,7 +42,26 @@ If a task changes current scope, priorities, or status, update `README.md` and `
 
 ## Active Priorities
 
-### Priority 1: Phase 4A navigation stabilization
+### Priority 1: SLAM turn-to-map orientation consistency
+
+Tasks that fit this priority:
+
+- Diagnose the current issue where the map appears to rotate or duplicate after robot turns.
+- Capture `P / G / O / X4` samples before and after `A90`, `A-90`, and smaller turns.
+- Decide whether the root cause is ICP reject/odom-only writes, weak yaw correction, premature mapping gate recovery, or LiDAR angle convention.
+- Add conservative diagnostics before changing the matching algorithm.
+- Keep mapping updates paused after turns until pose quality is trustworthy.
+
+Suggested files:
+
+- `Core/Inc/localization_task.h`
+- `Core/Src/localization_task.c`
+- `Core/Inc/mapping_task.h`
+- `Core/Src/mapping_task.c`
+- `Core/Src/hc04.c`
+- `docs/work_items/2026-05-14_slam-turn-rotation-debug/`
+
+### Priority 2: Phase 4A navigation stabilization
 
 Tasks that fit this priority:
 
@@ -60,7 +79,7 @@ Suggested files:
 - `Core/Src/mapping_task.c`
 - `Core/Src/hc04.c`
 
-### Priority 2: Phase 3B conservative fusion
+### Priority 3: Phase 3B conservative fusion
 
 Tasks that fit this priority:
 
@@ -77,7 +96,7 @@ Suggested files:
 - `Core/Src/control_logic.c`
 - `Core/Src/hc04.c`
 
-### Priority 3: resource cleanup
+### Priority 4: resource cleanup
 
 Tasks that fit this priority:
 

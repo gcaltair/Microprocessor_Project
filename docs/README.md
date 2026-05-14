@@ -32,6 +32,7 @@ This directory contains the current engineering plan, AI-agent workflow document
 ### Task records
 
 - `work_items/README.md`: where filled templates and task-specific verification artifacts should live
+- `work_items/2026-05-14_slam-turn-rotation-debug/`: current SLAM turn-after-map-rotation diagnosis and hardware test plan
 
 ### Background and lower-priority context
 
@@ -48,6 +49,7 @@ This directory contains the current engineering plan, AI-agent workflow document
 
 ### External references
 
+- `archive/references/problem_of_slam.png`: current reference screenshot for the SLAM map rotation/ghosting issue after turns
 - `EBU6475_EoM_Brief_2026_v1.pdf`: course brief and benchmark context
 - `RPLIDAR 360度激光扫描测距雷达-通讯接口协议与应用手册.pdf`: LiDAR protocol reference
 

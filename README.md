@@ -19,12 +19,13 @@ Start here when using an agent:
 
 ## Current Status
 
-As of 2026-04-25, the project is beyond the initial FreeRTOS migration. The firmware has a running task architecture, LiDAR parsing, occupancy-grid mapping, lightweight localization correction, ASCII map output, and an initial known-target grid navigation path.
+As of 2026-05-14, the project is beyond the initial FreeRTOS migration. The firmware has a running task architecture, LiDAR parsing, occupancy-grid mapping, lightweight localization correction, ASCII map output, an initial known-target grid navigation path, and a stable enough PID control baseline for maze mapping/navigation tests.
 
 The active work is:
 
-- Phase 3B: conservative control-usable fusion, without feeding LiDAR correction directly into PID.
-- Phase 4A: stabilize known-target grid navigation before full exploration.
+- SLAM mapping: diagnose and fix the issue where the map rotates or ghosts after robot turns.
+- Phase 3B: keep control-usable fusion conservative, without feeding LiDAR correction directly into PID.
+- Phase 4A: stabilize known-target grid navigation after map orientation is reliable.
 - Resource cleanup: RAM is close to the limit, so new buffers and path caches must be justified.
 
 ## Directory Map

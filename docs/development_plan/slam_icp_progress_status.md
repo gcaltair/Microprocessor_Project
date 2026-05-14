@@ -2,7 +2,7 @@
 
 ## 1. 当前结论
 
-截至 2026-05-12，项目已经从“仅有 FreeRTOS 控制骨架”推进到“可运行的建图链路 + 初版已知目标导航”阶段。
+截至 2026-05-14，项目已经从“仅有 FreeRTOS 控制骨架”推进到“可运行的建图链路 + 初版已知目标导航”阶段。控制三环已经形成可用于迷宫建图/导航联调的基线，当前第一优先级切换为 SLAM 转向后的地图姿态一致性问题。
 
 当前最准确的状态是：
 
@@ -13,7 +13,7 @@
 
 一句话概括：
 
-**系统已经具备稳定控制、LiDAR 建图、轻量定位修正、实时地图输出，以及面向已知目标格点的基础导航能力；但运动尺度、建图精度和导航健壮性仍不足以视为完整自主导航系统。最新一轮里程计调试已经通过 `LMOVE / CAL diag` 获得可回写的左右轮正反向标定建议，下一步是应用新系数并复测。**
+**系统已经具备稳定控制、LiDAR 建图、轻量定位修正、实时地图输出，以及面向已知目标格点的基础导航能力；但转向后的 SLAM 姿态一致性仍不足以支撑稳定导航。当前不继续追求小于 `0.025 m` 的单段控制误差，下一步优先诊断“转向后地图也跟着转/重影”的 ICP 与建图 gate 问题。**
 
 ---
 
@@ -257,12 +257,36 @@
 - 运动时地图结构能出来
 - 墙体仍可能偏厚
 - 地图尺度和运动尺度受 odometry 影响较大
+- 最新实测图显示，转向后地图结构会出现随车体姿态旋转的重影，参考图归档在 `docs/archive/references/problem_of_slam.png`
 
 因此当前更适合的目标不是“厘米级精确回原点”，而是：
 
 - 地图整体不崩
 - 机器人在图中位置基本可信
 - 能支撑基础导航和后续重规划
+
+### 5.3 SLAM 转向后地图旋转问题
+
+当前新暴露的核心问题是：
+
+**机器人转向后，地图中的墙体/轮廓会像跟着车体姿态一起旋转，说明转向后的 scan 没有可靠对齐到已有地图坐标系。**
+
+代码静态检查后的初步判断：
+
+- `MappingTask` 使用 `corrected_pose` 把 LiDAR 点写入占据栅格。
+- `LocalizationTask` 只有轻量连续帧 ICP，不是全局 map matching。
+- 当前已经会在相对转向期间暂停建图，并在转向结束后等待约 `200 ms`。
+- 但如果转向后 ICP rejected 或处于 odometry-only，只要 mapping gate 认为 scan 质量合格，仍可能继续写图。
+- 如果 ICP accepted 但 yaw 修正质量不足，`corrected_pose.theta_deg` 仍可能把新扫描以错误姿态写入地图。
+- 如果 LiDAR 角度方向或安装零位存在系统性偏差，也会在转向后放大成整片地图旋转。
+
+当前任务记录：
+
+- `docs/work_items/2026-05-14_slam-turn-rotation-debug/task_brief.md`
+- `docs/work_items/2026-05-14_slam-turn-rotation-debug/hardware_test_plan.md`
+- `docs/work_items/2026-05-14_slam-turn-rotation-debug/verification_report.md`
+
+下一步不应直接大改算法，而应先执行 `R0 -> Z -> M -> 静止建图 -> A90 -> P/G/O/X4 -> A-90 -> P/G/O/X4` 的硬件记录，确认 `LOC mode / inliers / fit_mm / MAP gate / ODOM th / EST th / POSE pred/corr` 与地图旋转之间的对应关系。
 
 ---
 
@@ -307,7 +331,18 @@
 
 ### Priority 1
 
-收口 `Phase 3B`，但保持保守策略：
+收口 SLAM 转向后的姿态一致性问题：
+
+- 暂停扩大导航状态机，先确认地图不会在转向后旋转/重影
+- 执行 `docs/work_items/2026-05-14_slam-turn-rotation-debug/hardware_test_plan.md`
+- 重点判断 ICP rejected/odom-only 时是否仍写图
+- 重点判断 ICP accepted 时 `corr.theta` 是否真实把 scan 拉回已有地图
+- 必要时增加 ICP `delta_theta`、建图恢复原因、turn recovery 状态等串口诊断
+- 若确认转向后第一批 scan 污染地图，优先增加“转向后必须等待可靠 ICP accepted 才恢复写图”的保守 gate
+
+### Priority 2
+
+维持 `Phase 3B` 控制融合保守策略：
 
 - 控制继续以稳定为优先
 - 不把 LiDAR 修正硬接入 PID
@@ -315,7 +350,7 @@
 - 在长距离导航验证前，先完成至少一轮前进/后退量距标定，并记录更新后的 `K...` 系数
 - 继续完成 `P1,0 / P-1,0 / A90 / A-90` 抖动复测，优先观察 `CTRLDBG`，再决定是否继续调低角度 Kp、转向限幅或电机死区补偿
 
-### Priority 2
+### Priority 3
 
 继续推进 `Phase 4A` 最小导航闭环：
 
@@ -324,7 +359,7 @@
 - 失败重规划
 - 更清晰的导航状态输出
 
-### Priority 3
+### Priority 4
 
 做一轮资源收口：
 
@@ -332,7 +367,7 @@
 - 评估路径规划器内存占用
 - 为后续 frontier / return-to-start 留出空间
 
-### Priority 4
+### Priority 5
 
 在 `Phase 4A` 稳定后，再进入：
 

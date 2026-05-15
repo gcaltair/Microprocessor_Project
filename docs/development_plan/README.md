@@ -4,7 +4,7 @@ This is the current planning entrypoint for agents.
 
 ## Current Phase
 
-Status date: 2026-05-14.
+Status date: 2026-05-15.
 
 The project is in a runnable integration phase:
 
@@ -19,14 +19,21 @@ Current system goal:
 
 > Keep the current control baseline stable, make SLAM map orientation consistent after turns, then resume known-target navigation stabilization before full exploration and return-to-start work.
 
+2026-05-15 update:
+
+- The LiDAR angle convention fix (`pose - scan_angle`) and turn-recovery mapping gate have reduced the original turn-after-map-rotation issue to a residual map-quality problem.
+- The current SLAM/ICP analysis entry is `slam_icp_current_analysis.md`.
+- The next implementation priority is Phase 4A known-target navigation stabilization and navigation-friendly map quality checks.
+
 ## Authoritative Files
 
 Read in this order:
 
 1. `slam_icp_progress_status.md` for actual current status and risks.
-2. `../freertos_further_development_plan.md` for current FreeRTOS task architecture and command list.
-3. `slam_mapping_debug_note.md` before touching mapping mutexes, ASCII map output, or ray tracing.
-4. `../archive/development_history/slam_icp_ai_agent_plan.md` and `../archive/development_history/slam_icp_development_plan.md` for historical phase intent.
+2. `slam_icp_current_analysis.md` for current SLAM/ICP problems, navigation impact, and improvement sequence.
+3. `../freertos_further_development_plan.md` for current FreeRTOS task architecture and command list.
+4. `slam_mapping_debug_note.md` before touching mapping mutexes, ASCII map output, or ray tracing.
+5. `../archive/development_history/slam_icp_ai_agent_plan.md` and `../archive/development_history/slam_icp_development_plan.md` for historical phase intent.
 
 ## Document Update Contract
 
@@ -34,6 +41,7 @@ Use this directory for active phase tracking, not for long-term historical narra
 
 - `README.md`: active phase, priorities, and where to look next
 - `slam_icp_progress_status.md`: latest dated project snapshot and risks
+- `slam_icp_current_analysis.md`: current SLAM/ICP problem analysis and next improvement sequence
 - `../archive/development_history/slam_icp_ai_agent_plan.md`: historical task decomposition
 - `../archive/development_history/slam_icp_development_plan.md`: historical phase breakdown
 - `slam_mapping_debug_note.md`: focused debug history
@@ -42,15 +50,35 @@ If a task changes current scope, priorities, or status, update `README.md` and `
 
 ## Active Priorities
 
-### Priority 1: SLAM turn-to-map orientation consistency
+### Priority 1: Phase 4A navigation stabilization
 
 Tasks that fit this priority:
 
-- Diagnose the current issue where the map appears to rotate or duplicate after robot turns.
-- Capture `P / G / O / X4` samples before and after `A90`, `A-90`, and smaller turns.
-- Decide whether the root cause is ICP reject/odom-only writes, weak yaw correction, premature mapping gate recovery, or LiDAR angle convention.
-- Add conservative diagnostics before changing the matching algorithm.
+- Improve `Jx,y`, `J`, and `C` navigation status visibility.
+- Add or refine path visualization in ASCII map output.
+- Improve arrival tolerance and failure states.
+- Add conservative replan behavior when a segment fails.
+- Check whether residual map ghosting blocks planned paths after inflation.
+- Keep path buffers bounded and memory usage visible.
+
+Suggested files:
+
+- `Core/Inc/mapping_task.h`
+- `Core/Src/mapping_task.c`
+- `Core/Inc/navigation_task.h`
+- `Core/Src/navigation_task.c`
+- `Core/Src/hc04.c`
+- `docs/development_plan/slam_icp_current_analysis.md`
+
+### Priority 2: SLAM/ICP map quality for navigation
+
+Tasks that fit this priority:
+
+- Measure whether residual ghosting is within `1 ~ 2` cells and does not close corridors.
 - Keep mapping updates paused after turns until pose quality is trustworthy.
+- Improve navigation-friendly OGM cleanup before heavy ICP rewrites.
+- Add geometry-quality diagnostics for low-observability ICP scenes.
+- Consider small keyframe/reference improvements only after Phase 4A tests show map quality is the limiter.
 
 Suggested files:
 
@@ -60,24 +88,7 @@ Suggested files:
 - `Core/Src/mapping_task.c`
 - `Core/Src/hc04.c`
 - `docs/work_items/2026-05-14_slam-turn-rotation-debug/`
-
-### Priority 2: Phase 4A navigation stabilization
-
-Tasks that fit this priority:
-
-- Improve `Jx,y`, `J`, and `C` navigation status visibility.
-- Add or refine path visualization in ASCII map output.
-- Improve arrival tolerance and failure states.
-- Add conservative replan behavior when a segment fails.
-- Keep path buffers bounded and memory usage visible.
-
-Suggested files:
-
-- `Core/Inc/navigation_task.h`
-- `Core/Src/navigation_task.c`
-- `Core/Inc/mapping_task.h`
-- `Core/Src/mapping_task.c`
-- `Core/Src/hc04.c`
+- `docs/work_items/2026-05-15_slam-icp-current-analysis/`
 
 ### Priority 3: Phase 3B conservative fusion
 
@@ -121,7 +132,7 @@ Do not start these unless the user explicitly asks or Phase 4A is verified stabl
 - Exit detection.
 - Return-to-start state machine.
 - Large map expansion.
-- Heavy ICP, EKF, graph optimization, or global loop closure.
+- Heavy ICP, full EKF, graph optimization, or global loop closure.
 
 ## Verification Gates
 

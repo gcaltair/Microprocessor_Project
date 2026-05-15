@@ -2,8 +2,8 @@
 
 ## 文档状态
 
-- 版本：`v1.2`
-- 更新日期：`2026-05-14`
+- 版本：`v1.3`
+- 更新日期：`2026-05-15`
 - 适用范围：当前 STM32F446 + FreeRTOS + LiDAR SLAM 固件
 
 ---
@@ -25,8 +25,9 @@
 最新状态补充：
 
 - 控制三环已经形成可进入迷宫建图/导航联调的基线。
-- 当前第一优先级是 SLAM 转向后的地图姿态一致性问题：实测中转向后地图会出现随车体姿态旋转/重影，参考图见 `docs/archive/references/problem_of_slam.png`。
-- 在该问题收口前，导航继续保持最小可用验证，不扩大到完整探索或回程。
+- SLAM 转向后的地图姿态一致性问题已通过 LiDAR 角度符号修正和 turn recovery gate 明显收口，当前详细分析见 `docs/development_plan/slam_icp_current_analysis.md`。
+- 当前第一优先级转为 Phase 4A 已知目标导航稳定化，并验证轻微地图重影是否会影响路径规划。
+- 在 Phase 4A 稳定前，导航继续保持最小可用验证，不扩大到完整探索或回程。
 
 当前主任务链路：
 
@@ -303,17 +304,7 @@
 
 ## 7. 后续开发优先级
 
-### Priority 1：收口 SLAM 转向后地图姿态一致性
-
-下一步优先把建图做成“转向后不污染旧地图”的最小闭环：
-
-- 执行 `docs/work_items/2026-05-14_slam-turn-rotation-debug/hardware_test_plan.md`
-- 确认转向后 ICP rejected/odom-only 是否仍写图
-- 确认 ICP accepted 时 yaw 修正是否可信
-- 使用 `SL` 命令确认 `delta_theta`、turn recovery、mapping gate reason
-- 如果 recovery 长时间无法退出，再改 yaw 匹配或参考策略
-
-### Priority 2：收口 Phase 4A
+### Priority 1：收口 Phase 4A 已知目标导航
 
 下一步优先把基础导航做成“可重复验证”的最小闭环：
 
@@ -322,6 +313,16 @@
 - 失败状态输出
 - 重规划入口
 - 更清晰的导航调试信息
+- 验证轻微地图重影是否会关闭通道或造成规划失败
+
+### Priority 2：继续监控 SLAM/ICP 地图质量
+
+下一步优先把建图保持在“导航可用”的范围内：
+
+- 继续使用 `SL` 命令确认 `delta_theta`、turn recovery、mapping gate reason
+- 如果 recovery 长时间无法退出，再改 yaw 匹配或参考策略
+- 优先做导航友好的 OGM 清理，避免孤立虚假障碍影响路径规划
+- 不急于引入完整 EKF、重型 ICP 或全局 loop closure
 
 ### Priority 3：收口 Phase 3B
 

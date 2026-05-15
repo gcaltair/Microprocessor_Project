@@ -8,6 +8,7 @@
 /host_app/.pytest_cache/
 /host_app/.venv/
 /host_app/.deps/
+/.codex_deps/
 __pycache__/
 *.py[cod]
 /cmake-build-release/

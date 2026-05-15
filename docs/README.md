@@ -8,6 +8,7 @@ This directory contains the current engineering plan, AI-agent workflow document
 - `agent_workflow/standard_process.md`: standard task execution and embedded verification process.
 - `development_plan/README.md`: current phase, active priorities, and plan navigation.
 - `development_plan/slam_icp_progress_status.md`: latest dated status snapshot.
+- `development_plan/slam_icp_current_analysis.md`: current SLAM/ICP issue analysis and next improvement sequence.
 - `freertos_further_development_plan.md`: current RTOS-based integration plan and command surface.
 
 ## Document Categories
@@ -18,6 +19,7 @@ This directory contains the current engineering plan, AI-agent workflow document
 - `agent_workflow/standard_process.md`
 - `development_plan/README.md`
 - `development_plan/slam_icp_progress_status.md`
+- `development_plan/slam_icp_current_analysis.md`
 - `freertos_further_development_plan.md`
 
 ### Standard templates
@@ -33,6 +35,7 @@ This directory contains the current engineering plan, AI-agent workflow document
 
 - `work_items/README.md`: where filled templates and task-specific verification artifacts should live
 - `work_items/2026-05-14_slam-turn-rotation-debug/`: current SLAM turn-after-map-rotation diagnosis and hardware test plan
+- `work_items/2026-05-15_slam-icp-current-analysis/`: current SLAM/ICP analysis and documentation handoff
 
 ### Background and lower-priority context
 
@@ -61,5 +64,6 @@ When files disagree, prefer documents in this order:
 2. `agent_workflow/README.md`
 3. `development_plan/README.md`
 4. `development_plan/slam_icp_progress_status.md`
-5. `freertos_further_development_plan.md`
-6. historical notes and background files
+5. `development_plan/slam_icp_current_analysis.md`
+6. `freertos_further_development_plan.md`
+7. historical notes and background files

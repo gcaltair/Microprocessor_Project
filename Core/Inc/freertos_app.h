@@ -4,11 +4,9 @@
 #include <stdint.h>
 
 #include "cmsis_os.h"
-#include "mapping_task.h"
 #include "scan_preprocess.h"
 #include "slam_types.h"
 
-#define CMD_MSG_BUFFER_SIZE      100U
 #define LIDAR_SCAN_BUFFER_COUNT  4U
 #define LIDAR_DMA_BLOCK_QUEUE_LENGTH  16U
 
@@ -17,21 +15,6 @@ typedef enum {
     LOCALIZATION_MODE_ICP_ACCEPTED = 1,
     LOCALIZATION_MODE_ICP_REJECTED = 2
 } LocalizationMode_t;
-
-typedef enum {
-    TELEMETRY_FRAME_ACK_V2 = 1,
-    TELEMETRY_FRAME_ERR_V2 = 2,
-    TELEMETRY_FRAME_STATUS_V2 = 16,
-    TELEMETRY_FRAME_MAP_META_V2 = 17,
-    TELEMETRY_FRAME_MAP_DATA_V2 = 18,
-    TELEMETRY_FRAME_PATH_V2 = 19,
-    TELEMETRY_FRAME_SCAN_V2 = 20
-} TelemetryFrameType_t;
-
-typedef struct {
-    uint16_t len;
-    uint8_t data[CMD_MSG_BUFFER_SIZE];
-} CmdMsg_t;
 
 typedef struct {
     uint16_t offset;
@@ -59,24 +42,18 @@ typedef struct {
 typedef struct {
     uint32_t control_cycles;
     uint32_t control_tick_overruns;
-    uint32_t cmd_rx_count;
-    uint32_t cmd_drop_count;
     uint32_t lidar_dma_block_count;
     uint32_t lidar_dma_drop_count;
     uint32_t lidar_dma_stale_block_count;
     uint32_t lidar_dma_max_block_lag;
     uint32_t lidar_scan_complete_count;
     uint32_t lidar_parser_resync_count;
-    uint32_t lidar_tx_count;
-    uint32_t lidar_tx_busy_count;
-    uint32_t lidar_tx_error_count;
     uint16_t last_scan_raw_point_count;
     uint16_t last_scan_usable_point_count;
     uint16_t last_scan_rejected_range_count;
     uint16_t last_scan_rejected_quality_count;
     uint16_t last_scan_min_distance_mm;
     uint16_t last_scan_max_distance_mm;
-    uint32_t bt_tx_wait_count;
     uint32_t free_heap_bytes;
     uint32_t min_ever_free_heap_bytes;
     uint32_t default_task_stack_free_bytes;
@@ -84,7 +61,6 @@ typedef struct {
     uint32_t lidar_task_stack_free_bytes;
     uint32_t localization_task_stack_free_bytes;
     uint32_t mapping_task_stack_free_bytes;
-    uint32_t comm_task_stack_free_bytes;
     uint32_t safety_task_stack_free_bytes;
 } FreertosRuntimeStats_t;
 
@@ -97,9 +73,7 @@ extern osSemaphoreId_t g_controlTickSem;
 extern osMessageQueueId_t g_lidarBlockQueue;
 extern osMessageQueueId_t g_lidarResultQueue;
 extern osMessageQueueId_t g_localizedScanQueue;
-extern osMessageQueueId_t g_lidarTxQueue;
 extern osMessageQueueId_t g_lidarFreeQueue;
-extern osMessageQueueId_t g_cmdQueue;
 
 extern osMutexId_t g_odomMutex;
 extern osMutexId_t g_localizationMutex;
@@ -114,20 +88,11 @@ void StartControlTask(void *argument);
 void StartLiDARParseTask(void *argument);
 void StartLocalizationTask(void *argument);
 void StartMappingTask(void *argument);
-void StartCommTask(void *argument);
 void StartSafetyTask(void *argument);
 
 osStatus_t Freertos_NotifyControlTickFromISR(void);
-osStatus_t Freertos_SubmitCommandFromISR(const uint8_t *data, uint16_t len);
 osStatus_t Freertos_SubmitLidarBlockFromISR(uint16_t offset, uint16_t length);
 void Freertos_ResetLidarPipeline(void);
 void Freertos_GetRuntimeStatsSnapshot(FreertosRuntimeStats_t *stats);
-void Freertos_RecordBluetoothTxWait(void);
-void Freertos_SetLidarBinaryTxEnabled(uint8_t enabled);
-uint8_t Freertos_GetLidarBinaryTxEnabled(void);
-void Freertos_SetTelemetryStreamingEnabled(uint8_t enabled);
-uint8_t Freertos_GetTelemetryStreamingEnabled(void);
-void Freertos_SetTelemetryScanStreamingEnabled(uint8_t enabled);
-uint8_t Freertos_GetTelemetryScanStreamingEnabled(void);
 
 #endif /* FREERTOS_APP_H */

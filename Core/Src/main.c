@@ -64,7 +64,6 @@ void MX_FREERTOS_Init(void);
 void system_init(void)
 {
   Motor_Init();
-  hc04_init();
   encoder_init();
   MPU6500_Init();
   RPLIDAR_Init();

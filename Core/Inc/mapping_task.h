@@ -56,11 +56,8 @@ uint8_t MappingTask_CopyGridRows(uint16_t row_offset,
                                  int8_t *cells_buffer,
                                  uint16_t buffer_len);
 uint8_t MappingTask_WorldToCell(float x_m, float y_m, SlamGridCoord_t *cell);
-uint8_t MappingTask_CellToWorld(const SlamGridCoord_t *cell, SlamWaypoint2D_t *waypoint);
-uint8_t MappingTask_PlanPath(const SlamGridCoord_t *start,
-                             const SlamGridCoord_t *goal,
-                             SlamGridCoord_t *path,
-                             uint16_t max_path_length,
-                             uint16_t *path_length);
+uint8_t MappingTask_IsCellInside(int16_t cell_x, int16_t cell_y);
+uint8_t MappingTask_IsCellKnownFree(int16_t cell_x, int16_t cell_y);
+uint8_t MappingTask_IsCellUnknown(int16_t cell_x, int16_t cell_y);
 
 #endif /* MAPPING_TASK_H */

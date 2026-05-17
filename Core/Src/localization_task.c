@@ -3,6 +3,7 @@
 
 #include "../Inc/localization_task.h"
 #include "../Inc/control_logic.h"
+#include "../Inc/mapping_task.h"
 #include "../Inc/scan_preprocess.h"
 #include "system.h"
 

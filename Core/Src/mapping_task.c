@@ -13,141 +13,43 @@
 #define MAPPING_POINT_STRIDE            4U
 #define MAPPING_FREE_CELL_THRESHOLD     (-3)
 #define MAPPING_OCCUPIED_CELL_THRESHOLD 10
-#define MAPPING_PATH_INFLATION_RADIUS   1
-#define MAPPING_PATH_STEP_REPEAT_LIMIT  3
 #define DEG_TO_RAD                      0.01745329251994329577f
 
 static OccupancyGrid_t g_mappingGrid;
 static MappingTaskStats_t g_mappingStats;
-static uint16_t g_mappingPlanQueue[OGM_MAX_CELL_COUNT];
-static int8_t g_mappingParentDir[OGM_MAX_CELL_COUNT];
+
+typedef enum {
+    MAPPING_CELL_OCCUPIED = 0,
+    MAPPING_CELL_FREE = 1,
+    MAPPING_CELL_UNKNOWN = 2
+} MappingCellState_t;
 
 static uint8_t mapping_task_normalize_downsample(uint8_t downsample)
 {
     return (downsample == 0U) ? 1U : downsample;
 }
 
-static uint16_t mapping_task_linear_index(int16_t cell_x, int16_t cell_y)
-{
-    return (uint16_t)((uint16_t)cell_y * g_mappingGrid.spec.width_cells + (uint16_t)cell_x);
-}
-
-static void mapping_task_index_to_cell(uint16_t linear_index, SlamGridCoord_t *cell)
-{
-    if (cell == NULL) {
-        return;
-    }
-
-    cell->x = (int16_t)(linear_index % g_mappingGrid.spec.width_cells);
-    cell->y = (int16_t)(linear_index / g_mappingGrid.spec.width_cells);
-}
-
-static uint8_t mapping_task_cell_is_navigable(int16_t cell_x, int16_t cell_y)
+static MappingCellState_t mapping_task_get_cell_state(int16_t cell_x, int16_t cell_y)
 {
     int8_t center_value = 0;
-    int16_t offset_y;
 
     if (OccupancyGrid_IsInside(&g_mappingGrid, cell_x, cell_y) == 0U) {
-        return 0U;
+        return MAPPING_CELL_OCCUPIED;
     }
 
     if (OccupancyGrid_GetCell(&g_mappingGrid, cell_x, cell_y, &center_value) == 0U) {
-        return 0U;
+        return MAPPING_CELL_OCCUPIED;
     }
 
-    if (center_value > MAPPING_FREE_CELL_THRESHOLD) {
-        return 0U;
+    if (center_value >= MAPPING_OCCUPIED_CELL_THRESHOLD) {
+        return MAPPING_CELL_OCCUPIED;
     }
 
-    for (offset_y = -MAPPING_PATH_INFLATION_RADIUS; offset_y <= MAPPING_PATH_INFLATION_RADIUS; ++offset_y) {
-        int16_t offset_x;
-
-        for (offset_x = -MAPPING_PATH_INFLATION_RADIUS; offset_x <= MAPPING_PATH_INFLATION_RADIUS; ++offset_x) {
-            int8_t neighbor_value = 0;
-
-            if (OccupancyGrid_IsInside(&g_mappingGrid, cell_x + offset_x, cell_y + offset_y) == 0U) {
-                return 0U;
-            }
-
-            if (OccupancyGrid_GetCell(&g_mappingGrid,
-                                      cell_x + offset_x,
-                                      cell_y + offset_y,
-                                      &neighbor_value) == 0U) {
-                return 0U;
-            }
-
-            if (neighbor_value >= MAPPING_OCCUPIED_CELL_THRESHOLD) {
-                return 0U;
-            }
-        }
+    if (center_value <= MAPPING_FREE_CELL_THRESHOLD) {
+        return MAPPING_CELL_FREE;
     }
 
-    return 1U;
-}
-
-static uint8_t mapping_task_reconstruct_path(uint16_t start_index,
-                                             uint16_t goal_index,
-                                             SlamGridCoord_t *path,
-                                             uint16_t max_path_length,
-                                             uint16_t *path_length)
-{
-    static const int8_t s_parent_dx[8] = {-1, 1, 0, 0, -1, -1, 1, 1};
-    static const int8_t s_parent_dy[8] = {0, 0, -1, 1, -1, 1, -1, 1};
-    SlamGridCoord_t current_cell;
-    SlamGridCoord_t previous_cell;
-    uint16_t current_index = goal_index;
-    uint16_t count = 0U;
-    int8_t previous_dir = -128;
-    uint8_t repeated_steps = 0U;
-
-    if ((path == NULL) || (path_length == NULL) || (max_path_length == 0U)) {
-        return 0U;
-    }
-
-    while (current_index != start_index) {
-        int8_t parent_dir = g_mappingParentDir[current_index];
-
-        if (parent_dir < 0) {
-            break;
-        }
-
-        mapping_task_index_to_cell(current_index, &current_cell);
-        if ((count == 0U) ||
-            (parent_dir != previous_dir) ||
-            (repeated_steps >= MAPPING_PATH_STEP_REPEAT_LIMIT)) {
-            if (count >= max_path_length) {
-                return 0U;
-            }
-
-            path[count++] = current_cell;
-            repeated_steps = 0U;
-        }
-
-        previous_dir = parent_dir;
-        repeated_steps++;
-        previous_cell = current_cell;
-        previous_cell.x = (int16_t)(previous_cell.x + s_parent_dx[parent_dir]);
-        previous_cell.y = (int16_t)(previous_cell.y + s_parent_dy[parent_dir]);
-        current_index = mapping_task_linear_index(previous_cell.x, previous_cell.y);
-    }
-
-    if ((count == 0U) && (start_index == goal_index)) {
-        *path_length = 0U;
-        return 1U;
-    }
-
-    if (count == 0U) {
-        return 0U;
-    }
-
-    for (uint16_t left = 0U, right = (uint16_t)(count - 1U); left < right; ++left, --right) {
-        SlamGridCoord_t temp = path[left];
-        path[left] = path[right];
-        path[right] = temp;
-    }
-
-    *path_length = count;
-    return 1U;
+    return MAPPING_CELL_UNKNOWN;
 }
 
 static void mapping_task_ensure_grid_initialized(void)
@@ -309,6 +211,8 @@ void StartMappingTask(void *argument)
     mapping_task_ensure_grid_initialized();
 
     for (;;) {
+        uint8_t free_idx;
+
         if (osMessageQueueGet(g_localizedScanQueue, &scan_msg, NULL, osWaitForever) != osOK) {
             continue;
         }
@@ -316,18 +220,9 @@ void StartMappingTask(void *argument)
         mapping_task_ensure_grid_initialized();
         mapping_task_update_grid_from_scan(&scan_msg);
 
-        if ((Freertos_GetLidarBinaryTxEnabled() == 0U) &&
-            (Freertos_GetTelemetryScanStreamingEnabled() == 0U)) {
-            uint8_t free_idx = scan_msg.scan_index;
-            g_lidarScanBuf[free_idx].point_count = 0U;
-            (void)osMessageQueuePut(g_lidarFreeQueue, &free_idx, 0U, osWaitForever);
-        } else if (g_lidarTxQueue != NULL) {
-            (void)osMessageQueuePut(g_lidarTxQueue, &scan_msg, 0U, osWaitForever);
-        } else {
-            uint8_t free_idx = scan_msg.scan_index;
-            g_lidarScanBuf[free_idx].point_count = 0U;
-            (void)osMessageQueuePut(g_lidarFreeQueue, &free_idx, 0U, osWaitForever);
-        }
+        free_idx = scan_msg.scan_index;
+        g_lidarScanBuf[free_idx].point_count = 0U;
+        (void)osMessageQueuePut(g_lidarFreeQueue, &free_idx, 0U, osWaitForever);
 
         osDelay(1U);
     }
@@ -538,100 +433,32 @@ uint8_t MappingTask_WorldToCell(float x_m, float y_m, SlamGridCoord_t *cell)
     return result;
 }
 
-uint8_t MappingTask_CellToWorld(const SlamGridCoord_t *cell, SlamWaypoint2D_t *waypoint)
+uint8_t MappingTask_IsCellInside(int16_t cell_x, int16_t cell_y)
 {
-    if ((cell == NULL) || (waypoint == NULL)) {
-        return 0U;
-    }
+    uint8_t result;
 
     mapping_task_lock_grid();
-    if (OccupancyGrid_IsInside(&g_mappingGrid, cell->x, cell->y) == 0U) {
-        mapping_task_unlock_grid();
-        return 0U;
-    }
-
-    waypoint->x_m = g_mappingGrid.spec.origin_x_m +
-                    ((float)cell->x + 0.5f) * g_mappingGrid.spec.resolution_m_per_cell;
-    waypoint->y_m = g_mappingGrid.spec.origin_y_m +
-                    ((float)cell->y + 0.5f) * g_mappingGrid.spec.resolution_m_per_cell;
+    result = OccupancyGrid_IsInside(&g_mappingGrid, cell_x, cell_y);
     mapping_task_unlock_grid();
-    return 1U;
+    return result;
 }
 
-uint8_t MappingTask_PlanPath(const SlamGridCoord_t *start,
-                             const SlamGridCoord_t *goal,
-                             SlamGridCoord_t *path,
-                             uint16_t max_path_length,
-                             uint16_t *path_length)
+uint8_t MappingTask_IsCellKnownFree(int16_t cell_x, int16_t cell_y)
 {
-    static const int8_t s_neighbor_dx[8] = {-1, 1, 0, 0, -1, -1, 1, 1};
-    static const int8_t s_neighbor_dy[8] = {0, 0, -1, 1, -1, 1, -1, 1};
-    static const int8_t s_reverse_dir[8] = {1, 0, 3, 2, 7, 6, 5, 4};
-    uint16_t queue_head = 0U;
-    uint16_t queue_tail = 0U;
-    uint16_t start_index;
-    uint16_t goal_index;
-    uint8_t found = 0U;
-
-    if ((start == NULL) || (goal == NULL) || (path == NULL) || (path_length == NULL) || (max_path_length == 0U)) {
-        return 0U;
-    }
+    uint8_t result;
 
     mapping_task_lock_grid();
-
-    if ((OccupancyGrid_IsInside(&g_mappingGrid, start->x, start->y) == 0U) ||
-        (OccupancyGrid_IsInside(&g_mappingGrid, goal->x, goal->y) == 0U) ||
-        (mapping_task_cell_is_navigable(start->x, start->y) == 0U) ||
-        (mapping_task_cell_is_navigable(goal->x, goal->y) == 0U)) {
-        mapping_task_unlock_grid();
-        return 0U;
-    }
-
-    (void)memset(g_mappingParentDir, -128, sizeof(g_mappingParentDir));
-
-    start_index = mapping_task_linear_index(start->x, start->y);
-    goal_index = mapping_task_linear_index(goal->x, goal->y);
-    g_mappingParentDir[start_index] = -1;
-    g_mappingPlanQueue[queue_tail++] = start_index;
-
-    while (queue_head < queue_tail) {
-        uint16_t current_index = g_mappingPlanQueue[queue_head++];
-        SlamGridCoord_t current_cell;
-
-        if (current_index == goal_index) {
-            found = 1U;
-            break;
-        }
-
-        mapping_task_index_to_cell(current_index, &current_cell);
-        for (uint8_t neighbor_idx = 0U; neighbor_idx < 8U; ++neighbor_idx) {
-            int16_t next_x = (int16_t)(current_cell.x + s_neighbor_dx[neighbor_idx]);
-            int16_t next_y = (int16_t)(current_cell.y + s_neighbor_dy[neighbor_idx]);
-            uint16_t next_index;
-
-            if (mapping_task_cell_is_navigable(next_x, next_y) == 0U) {
-                continue;
-            }
-
-            next_index = mapping_task_linear_index(next_x, next_y);
-            if (g_mappingParentDir[next_index] != -128) {
-                continue;
-            }
-
-            g_mappingParentDir[next_index] = s_reverse_dir[neighbor_idx];
-            if (queue_tail >= OGM_MAX_CELL_COUNT) {
-                break;
-            }
-            g_mappingPlanQueue[queue_tail++] = next_index;
-        }
-    }
-
-    if (found == 0U) {
-        mapping_task_unlock_grid();
-        return 0U;
-    }
-
-    found = mapping_task_reconstruct_path(start_index, goal_index, path, max_path_length, path_length);
+    result = (mapping_task_get_cell_state(cell_x, cell_y) == MAPPING_CELL_FREE) ? 1U : 0U;
     mapping_task_unlock_grid();
-    return found;
+    return result;
+}
+
+uint8_t MappingTask_IsCellUnknown(int16_t cell_x, int16_t cell_y)
+{
+    uint8_t result;
+
+    mapping_task_lock_grid();
+    result = (mapping_task_get_cell_state(cell_x, cell_y) == MAPPING_CELL_UNKNOWN) ? 1U : 0U;
+    mapping_task_unlock_grid();
+    return result;
 }

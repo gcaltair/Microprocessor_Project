@@ -89,6 +89,7 @@ void StartLiDARParseTask(void *argument);
 void StartLocalizationTask(void *argument);
 void StartMappingTask(void *argument);
 void StartSafetyTask(void *argument);
+void StartTelemetryTask(void *argument);
 
 osStatus_t Freertos_NotifyControlTickFromISR(void);
 osStatus_t Freertos_SubmitLidarBlockFromISR(uint16_t offset, uint16_t length);

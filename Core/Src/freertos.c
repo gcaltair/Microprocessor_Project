@@ -32,6 +32,7 @@
 #include "mapping_task.h"
 #include "scan_preprocess.h"
 #include "system.h"
+#include "telemetry.h"
 #include "tim.h"
 /* USER CODE END Includes */
 
@@ -81,6 +82,7 @@ osThreadId_t lidarParseTaskHandle;
 osThreadId_t localizationTaskHandle;
 osThreadId_t mappingTaskHandle;
 osThreadId_t safetyTaskHandle;
+osThreadId_t telemetryTaskHandle;
 
 const osThreadAttr_t controlTask_attributes = {
   .name = "controlTask",
@@ -110,6 +112,12 @@ const osThreadAttr_t safetyTask_attributes = {
   .name = "safetyTask",
   .stack_size = 512,
   .priority = (osPriority_t) osPriorityAboveNormal,
+};
+
+const osThreadAttr_t telemetryTask_attributes = {
+  .name = "telemetryTask",
+  .stack_size = 768,
+  .priority = (osPriority_t) osPriorityLow,
 };
 
 const osMutexAttr_t odomMutex_attributes = {
@@ -190,6 +198,7 @@ void MX_FREERTOS_Init(void) {
   localizationTaskHandle = osThreadNew(StartLocalizationTask, NULL, &localizationTask_attributes);
   mappingTaskHandle = osThreadNew(StartMappingTask, NULL, &mappingTask_attributes);
   safetyTaskHandle = osThreadNew(StartSafetyTask, NULL, &safetyTask_attributes);
+  telemetryTaskHandle = osThreadNew(StartTelemetryTask, NULL, &telemetryTask_attributes);
 
   if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK) {
     Error_Handler();
@@ -204,6 +213,15 @@ void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
   (void)argument;
+
+  /*
+   * Start the lidar stream after the RTOS objects and worker threads exist.
+   * RPLIDAR_StartRaw() resets the lidar pipeline and arms USART6 DMA, so
+   * calling it here avoids starting the stream before the FreeRTOS queues
+   * used by the parser/localization/mapping pipeline are ready.
+   */
+  osDelay(50U);
+  RPLIDAR_StartRaw();
 
   for (;;) {
     osDelay(1000U);

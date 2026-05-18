@@ -59,6 +59,8 @@ add_executable(${CMAKE_PROJECT_NAME}
         Core/Inc/mapping_task.h
         Core/Src/control_logic.c
         Core/Inc/control_logic.h
+        Core/Src/telemetry.c
+        Core/Inc/telemetry.h
 )
 
 # Add STM32CubeMX generated sources

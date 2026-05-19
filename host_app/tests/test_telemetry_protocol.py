@@ -57,7 +57,6 @@ def test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise() -> Non
             struct.pack("<I", 3),
             struct.pack("<I", 4),
             struct.pack("<I", 5),
-            struct.pack("<I", 6),
             cells,
         ]
     )

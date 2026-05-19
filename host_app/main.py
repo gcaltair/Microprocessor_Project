@@ -21,13 +21,10 @@ SKIP_REASON_LABELS = {
     1: "turning",
     2: "settle",
     3: "quality",
-    4: "recovery",
 }
 
 LOCALIZATION_MODE_LABELS = {
     0: "odometry",
-    1: "icp_accepted",
-    2: "icp_rejected",
 }
 
 
@@ -281,7 +278,6 @@ class MainWindow(QtWidgets.QWidget):
                     f"skip_turning_count      : {frame.skipped_turning_count}",
                     f"skip_settle_count       : {frame.skipped_settle_count}",
                     f"skip_quality_count      : {frame.skipped_quality_count}",
-                    f"skip_recovery_count     : {frame.skipped_recovery_count}",
                     "",
                     "Legend:",
                     "dark   = occupied",

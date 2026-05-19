@@ -38,7 +38,7 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         robot_inside_grid=1,
         map_update_active=1,
         last_skip_reason=0,
-        last_localization_mode=1,
+        last_localization_mode=0,
         robot_cell_x=1,
         robot_cell_y=1,
         localization_fitness_m=0.01,
@@ -50,7 +50,6 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         skipped_turning_count=0,
         skipped_settle_count=0,
         skipped_quality_count=0,
-        skipped_recovery_count=0,
         cells=np.array(
             [[0, 10, -10, 0], [0, 0, 0, 0], [0, 0, 20, 0], [-15, 0, 0, 0]],
             dtype=np.int8,
@@ -73,7 +72,7 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         robot_inside_grid=1,
         map_update_active=1,
         last_skip_reason=3,
-        last_localization_mode=2,
+        last_localization_mode=0,
         robot_cell_x=2,
         robot_cell_y=3,
         localization_fitness_m=0.02,
@@ -85,7 +84,6 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         skipped_turning_count=1,
         skipped_settle_count=2,
         skipped_quality_count=3,
-        skipped_recovery_count=4,
         cells=np.array(
             [[0, 0, 0, 0], [0, 20, 0, 0], [0, 0, -15, 0], [0, 0, 0, 0]],
             dtype=np.int8,
@@ -101,7 +99,7 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
     assert "frame=1 update=10 scan=50" in first_text
     assert "frame=2 update=11 scan=51" in second_text
     assert "skip_reason             : quality" in stats_text
-    assert "localization_mode       : icp_rejected" in stats_text
+    assert "localization_mode       : odometry" in stats_text
     assert window.map_view._pixmap is not None
 
     window.close()

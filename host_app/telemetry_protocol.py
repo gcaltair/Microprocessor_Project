@@ -45,7 +45,6 @@ class MapFrame:
     skipped_turning_count: int
     skipped_settle_count: int
     skipped_quality_count: int
-    skipped_recovery_count: int
     cells: np.ndarray
 
 
@@ -141,7 +140,6 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     skipped_turning_count = take("<I")
     skipped_settle_count = take("<I")
     skipped_quality_count = take("<I")
-    skipped_recovery_count = take("<I")
 
     cell_count = width * height
     cells = np.frombuffer(payload, dtype=np.int8, count=cell_count, offset=offset).copy()
@@ -176,6 +174,5 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         skipped_turning_count=skipped_turning_count,
         skipped_settle_count=skipped_settle_count,
         skipped_quality_count=skipped_quality_count,
-        skipped_recovery_count=skipped_recovery_count,
         cells=cells,
     )

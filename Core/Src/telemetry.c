@@ -15,7 +15,7 @@
 #define TELEMETRY_TASK_PERIOD_MS         250U
 #define TELEMETRY_KEEPALIVE_MS           1000U
 #define TELEMETRY_UART_TIMEOUT_MS        250U
-#define TELEMETRY_FIXED_PAYLOAD_SIZE     83U
+#define TELEMETRY_FIXED_PAYLOAD_SIZE     79U
 #define TELEMETRY_MAX_FRAME_SIZE         (TELEMETRY_FRAME_HEADER_SIZE + \
                                           TELEMETRY_FIXED_PAYLOAD_SIZE + \
                                           OGM_MAX_CELL_COUNT + \
@@ -156,7 +156,6 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     telemetry_write_u32(&offset, stats.skipped_turning_count);
     telemetry_write_u32(&offset, stats.skipped_settle_count);
     telemetry_write_u32(&offset, stats.skipped_quality_count);
-    telemetry_write_u32(&offset, stats.skipped_recovery_count);
     (void)memcpy(&g_telemetryFrameBuffer[offset], g_telemetryCellBuffer, cell_count);
     offset = (uint16_t)(offset + cell_count);
 

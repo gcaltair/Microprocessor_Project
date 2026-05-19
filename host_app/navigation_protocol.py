@@ -7,3 +7,11 @@ def build_set_goal_command(x_m: float, y_m: float) -> bytes:
 
 def build_clear_goal_command() -> bytes:
     return b"NAVC\n"
+
+
+def build_debug_command_line(command: str) -> bytes:
+    line = command.strip()
+    if not line:
+        raise ValueError("debug command is empty")
+
+    return f"{line}\n".encode("ascii")

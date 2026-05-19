@@ -127,6 +127,8 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
     assert "nav_status              : busy" in stats_text
     assert window.send_goal_button.text() == "Send Goal"
     assert window.clear_goal_button.text() == "Clear Goal"
+    assert window.send_debug_command_button.text() == "Send Debug"
+    assert window.debug_command_edit.text() == "P1,0"
     assert window.map_view._pixmap is not None
 
     window.close()

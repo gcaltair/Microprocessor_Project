@@ -10,10 +10,10 @@
 #define OGM_MAX_CELL_COUNT              (OGM_MAX_WIDTH_CELLS * OGM_MAX_HEIGHT_CELLS)
 
 #define OGM_UNKNOWN_LOG_ODDS            0
-#define OGM_FREE_LOG_ODDS_DELTA         (-3)
-#define OGM_OCCUPIED_LOG_ODDS_DELTA     12
-#define OGM_MIN_LOG_ODDS                (-100)
-#define OGM_MAX_LOG_ODDS                100
+#define OGM_FREE_LOG_ODDS_DELTA         (-1)
+#define OGM_OCCUPIED_LOG_ODDS_DELTA     4
+#define OGM_MIN_LOG_ODDS                (-20)
+#define OGM_MAX_LOG_ODDS                20
 
 typedef struct {
     SlamOccupancyGridSpec_t spec;

@@ -6,7 +6,7 @@
 #define SPEED_ERROR_DEADBAND             0.01f
 #define ANGLE_CONTROL_DEADBAND           1.0f
 #define MOTOR_DEAD_ZONE                  686
-#define POSITION_REACHED_THRESHOLD       0.025f
+#define POSITION_REACHED_THRESHOLD       0.01f
 #define MAX_BASE_SPEED                   0.22f
 #define MIN_BASE_SPEED                   0.04f
 #define SPEED_TEST_MAX_SETPOINT_MPS      0.12f

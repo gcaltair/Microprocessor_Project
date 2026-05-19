@@ -8,11 +8,11 @@
 #define MAPPING_GRID_WIDTH_CELLS        96U
 #define MAPPING_GRID_HEIGHT_CELLS       96U
 #define MAPPING_GRID_RESOLUTION_M       0.05f
-#define MAPPING_GRID_ORIGIN_X_M         (-2.4f)
-#define MAPPING_GRID_ORIGIN_Y_M         (-2.4f)
+#define MAPPING_GRID_ORIGIN_X_M         (-0.5f)
+#define MAPPING_GRID_ORIGIN_Y_M         (-0.5f)
 #define MAPPING_POINT_STRIDE            4U
 #define MAPPING_FREE_CELL_THRESHOLD     (-3)
-#define MAPPING_OCCUPIED_CELL_THRESHOLD 10
+#define MAPPING_OCCUPIED_CELL_THRESHOLD 5
 #define DEG_TO_RAD                      0.01745329251994329577f
 
 /* 固件端实际维护的占据栅格地图，后续通过遥测发送给上位机。 */

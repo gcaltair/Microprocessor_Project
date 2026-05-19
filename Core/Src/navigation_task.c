@@ -25,10 +25,11 @@
 #define NAVIGATION_PARENT_START            0xFEU
 #define NAVIGATION_FLAG_OPEN               0x01U
 #define NAVIGATION_FLAG_CLOSED             0x02U
-#define NAVIGATION_INFLATE_RADIUS_CELLS    1
-#define NAVIGATION_REACH_DISTANCE_M        0.03f
-#define NAVIGATION_MIN_SEGMENT_M           0.025f
+#define NAVIGATION_INFLATE_RADIUS_CELLS    3
+#define NAVIGATION_REACH_DISTANCE_M        0.1f
+#define NAVIGATION_MIN_SEGMENT_M           0.1f
 #define NAVIGATION_FREE_CELL_THRESHOLD     (-3)
+#define NAVIGATION_OCCUPIED_CELL_THRESHOLD (5)
 #define NAVIGATION_COMMAND_MAX_LEN         64U
 
 typedef struct {
@@ -71,6 +72,13 @@ static uint16_t g_navigationSmoothPathLen = 0U;
 static void navigation_lock(void);
 static void navigation_unlock(void);
 
+/*
+ * 解析导航串口命令中的目标坐标参数。
+ *
+ * 输入格式要求为两个用空白字符或逗号分隔的浮点数，例如 "1.20 -0.35" 或 "1.20,-0.35"。
+ * 解析成功时把结果写入 x_m 和 y_m，单位保持为导航模块统一使用的米；
+ * 任一指针为空、缺少第一个数或缺少第二个数时都返回失败。
+ */
 static uint8_t navigation_parse_float_pair(const char *text, float *x_m, float *y_m)
 {
     char *end_ptr;
@@ -89,6 +97,16 @@ static uint8_t navigation_parse_float_pair(const char *text, float *x_m, float *
     }
 
     second_start = end_ptr;
+    while ((*second_start == ' ') || (*second_start == '\t')) {
+        second_start++;
+    }
+    if (*second_start == ',') {
+        second_start++;
+    }
+    while ((*second_start == ' ') || (*second_start == '\t')) {
+        second_start++;
+    }
+
     parsed_y = strtof(second_start, &end_ptr);
     if (end_ptr == second_start) {
         return 0U;
@@ -99,6 +117,15 @@ static uint8_t navigation_parse_float_pair(const char *text, float *x_m, float *
     return 1U;
 }
 
+/*
+ * 在线程上下文中处理串口中断已经拼好的导航命令。
+ *
+ * 中断服务函数只负责接收字节并保存完整命令行，本函数在导航任务中取出
+ * 待处理命令，避免在中断里调用较重的解析和目标设置逻辑。当前支持：
+ *   NAV x y : 设置世界坐标目标点，单位为米；
+ *   NAVC    : 清除当前导航目标。
+ *   Pdx,dy  : 绕过 A*，直接向基础位置环下发相对位移，单位为米。
+ */
 static void navigation_process_pending_command(void)
 {
     char command[NAVIGATION_COMMAND_MAX_LEN];
@@ -126,9 +153,28 @@ static void navigation_process_pending_command(void)
         }
     } else if ((command[0] == 'N') && (command[1] == 'A') && (command[2] == 'V') && (command[3] == 'C')) {
         NavigationTask_ClearGoal();
+    } else if ((command[0] == 'P') || (command[0] == 'p')) {
+        float dx_m;
+        float dy_m;
+
+        if (navigation_parse_float_pair(&command[1], &dx_m, &dy_m) != 0U) {
+            /*
+             * 调试命令直接使用基础位置环。先清导航目标，避免导航任务下一周期
+             * 继续规划并覆盖这次手动下发的相对位移。
+             */
+            NavigationTask_ClearGoal();
+            Start_Relative_Move(dx_m, dy_m);
+        }
     }
 }
 
+/*
+ * 获取导航模块互斥锁。
+ *
+ * 互斥锁保护导航目标、统计信息以及命令缓冲状态，防止串口命令、其他任务
+ * 与导航任务同时读写这些共享数据。若系统初始化阶段互斥锁尚未创建，则
+ * 直接跳过，便于早期调用保持可用。
+ */
 static void navigation_lock(void)
 {
     /* 保护导航目标和统计结构，避免上位机/其他线程设置目标时与导航线程冲突。 */
@@ -137,6 +183,11 @@ static void navigation_lock(void)
     }
 }
 
+/*
+ * 释放导航模块互斥锁。
+ *
+ * 必须与 navigation_lock 成对使用；同样兼容互斥锁尚未创建的早期阶段。
+ */
 static void navigation_unlock(void)
 {
     /* 与 navigation_lock 成对使用。 */
@@ -145,12 +196,24 @@ static void navigation_unlock(void)
     }
 }
 
+/*
+ * 将二维导航栅格坐标转换为一维数组下标。
+ *
+ * A* 的代价、标志位、父节点和 open 表都使用一维数组保存；调用者需保证
+ * x/y 已经在当前导航地图范围内，否则会得到无效下标。
+ */
 static uint16_t navigation_cell_index(uint16_t x, uint16_t y)
 {
     /* 导航内部使用一维数组保存 A* 状态，减少二维数组带来的额外开销。 */
     return (uint16_t)(y * g_navigationWidthCells + x);
 }
 
+/*
+ * 判断导航栅格坐标是否位于当前导航地图内部。
+ *
+ * 该函数只检查下采样后的导航地图边界，不判断对应栅格是否可通行。
+ * 返回 1 表示在范围内，返回 0 表示越界。
+ */
 static uint8_t navigation_is_inside(int16_t x, int16_t y)
 {
     /* 判断导航栅格坐标是否落在当前地图对应的导航范围内。 */
@@ -165,6 +228,13 @@ static uint8_t navigation_is_inside(int16_t x, int16_t y)
     return 1U;
 }
 
+/*
+ * 从建图模块复制一份供路径规划使用的地图快照。
+ *
+ * 规划期间不长期持有建图模块锁，而是先复制元数据和栅格数组，再按
+ * NAVIGATION_GRID_DOWNSAMPLE 把原始地图尺寸折算为导航栅格尺寸。
+ * 若地图无效、尺寸超过静态缓冲区或复制失败，则返回 0。
+ */
 static uint8_t navigation_load_map_snapshot(void)
 {
     uint32_t cell_count;
@@ -197,6 +267,13 @@ static uint8_t navigation_load_map_snapshot(void)
     return 1U;
 }
 
+/*
+ * 将世界坐标转换为导航栅格坐标。
+ *
+ * 先复用 MappingTask_WorldToCell 完成世界坐标到原始建图栅格的转换，
+ * 再按导航下采样比例折算到 A* 使用的低分辨率栅格。转换后的栅格必须
+ * 位于导航地图内部，否则返回失败。
+ */
 static uint8_t navigation_world_to_nav_cell(float x_m, float y_m, NavigationGridPoint_t *cell)
 {
     SlamGridCoord_t map_cell;
@@ -215,6 +292,12 @@ static uint8_t navigation_world_to_nav_cell(float x_m, float y_m, NavigationGrid
     return navigation_is_inside(cell->x, cell->y);
 }
 
+/*
+ * 将导航栅格坐标转换回世界坐标。
+ *
+ * 结果取该导航栅格覆盖的原始建图栅格块中心点，用于生成局部目标点。
+ * 调用者需传入有效 cell 指针，并保证 cell 位于当前地图范围内。
+ */
 static NavigationWorldPoint_t navigation_nav_cell_to_world(const NavigationGridPoint_t *cell)
 {
     NavigationWorldPoint_t point;
@@ -233,12 +316,19 @@ static NavigationWorldPoint_t navigation_nav_cell_to_world(const NavigationGridP
     return point;
 }
 
+/*
+ * 判断原始建图栅格是否可作为可通行空间。
+ *
+ * 地图外部一律视为不可通行，防止路径规划穿出当前地图边界。地图内部
+ * 当前采用“不是明确占据就可通行”的策略：小于占据阈值 5 的值都允许
+ * 通过，因此未知区域也可以被探索路径使用。
+ */
 static uint8_t navigation_map_cell_known_free(int16_t map_x, int16_t map_y)
 {
     uint32_t index;
     int8_t value;
 
-    /* 未知区域和地图外部都不作为可通行区域，避免导航穿过未确认空间。 */
+    /* 越界区域不作为可通行区域 */
     if ((map_x < 0) ||
         (map_y < 0) ||
         ((uint16_t)map_x >= g_navigationMapMeta.width_cells) ||
@@ -248,9 +338,22 @@ static uint8_t navigation_map_cell_known_free(int16_t map_x, int16_t map_y)
 
     index = (uint32_t)(uint16_t)map_y * g_navigationMapMeta.width_cells + (uint32_t)(uint16_t)map_x;
     value = g_navigationMapCells[index];
-    return (value <= NAVIGATION_FREE_CELL_THRESHOLD) ? 1U : 0U;
+
+    /*
+     * 原来的判断是：(value <= NAVIGATION_FREE_CELL_THRESHOLD) ? 1U : 0U;
+     * 也就是只有明确探明为空地（<=-3）才让走，导致未知区域（0）把路堵死。
+     * 现在改为：只要不是明确的墙（占据阈值通常为 5），哪怕是未知的 0，也都允许通行！
+     */
+    return (value < NAVIGATION_OCCUPIED_CELL_THRESHOLD) ? 1U : 0U;
 }
 
+/*
+ * 判断一个下采样后的导航栅格是否可通行。
+ *
+ * 一个导航栅格覆盖 NAVIGATION_GRID_DOWNSAMPLE x NAVIGATION_GRID_DOWNSAMPLE
+ * 个原始建图栅格；只有覆盖范围内所有原始栅格都允许通行时，该导航栅格
+ * 才被视为可通行。这样可以避免下采样后窄障碍被漏掉。
+ */
 static uint8_t navigation_nav_cell_known_free(int16_t nav_x, int16_t nav_y)
 {
     int16_t map_x_start;
@@ -277,6 +380,13 @@ static uint8_t navigation_nav_cell_known_free(int16_t nav_x, int16_t nav_y)
     return 1U;
 }
 
+/*
+ * 判断导航栅格在障碍物膨胀后是否被阻挡。
+ *
+ * 为了给车体尺寸和定位误差留出余量，会检查目标栅格周围
+ * NAVIGATION_INFLATE_RADIUS_CELLS 范围内是否存在不可通行格。起点特殊
+ * 放行，避免车辆当前所在栅格因为贴近障碍或地图边界而无法启动规划。
+ */
 static uint8_t navigation_is_blocked_inflated(int16_t nav_x,
                                               int16_t nav_y,
                                               const NavigationGridPoint_t *start_cell)
@@ -304,6 +414,12 @@ static uint8_t navigation_is_blocked_inflated(int16_t nav_x,
     return 0U;
 }
 
+/*
+ * 计算 A* 搜索使用的启发式代价。
+ *
+ * 当前路径只允许上下左右四邻域移动，因此使用曼哈顿距离乘以直行代价。
+ * 该启发式不会高估四邻域路径代价，适合作为 A* 的 h 值。
+ */
 static uint16_t navigation_heuristic(const NavigationGridPoint_t *cell, const NavigationGridPoint_t *goal)
 {
     uint16_t dx;
@@ -315,6 +431,12 @@ static uint16_t navigation_heuristic(const NavigationGridPoint_t *cell, const Na
     return (uint16_t)((dx + dy) * NAVIGATION_COST_STRAIGHT);
 }
 
+/*
+ * 重置一次 A* 搜索需要的临时状态。
+ *
+ * 将所有节点代价设为无穷大，清空 open/closed 标志和父节点方向，同时
+ * 清空上一轮生成的原始路径与平滑路径长度。
+ */
 static void navigation_astar_reset(uint16_t cell_count)
 {
     uint16_t idx;
@@ -331,6 +453,12 @@ static void navigation_astar_reset(uint16_t cell_count)
     g_navigationSmoothPathLen = 0U;
 }
 
+/*
+ * 把一个节点加入 A* open 表。
+ *
+ * open 表使用线性数组实现，地图尺寸较小时可避免维护堆结构的额外复杂度。
+ * 加入节点时同步设置 OPEN 标志，防止同一节点被重复加入。
+ */
 static void navigation_open_push(uint16_t index)
 {
     /* 线性 open 表足够覆盖 48x48 导航栅格，避免引入堆结构的复杂度。 */
@@ -340,6 +468,12 @@ static void navigation_open_push(uint16_t index)
     }
 }
 
+/*
+ * 从 A* open 表中取出 f=g+h 最小的节点。
+ *
+ * 由于 open 表是线性数组，本函数每次遍历所有候选节点计算 f 值，取出后
+ * 用末尾元素填补空位，并把该节点标记为 CLOSED。
+ */
 static uint16_t navigation_open_pop_best(const NavigationGridPoint_t *goal)
 {
     uint16_t best_open_pos = 0U;
@@ -369,6 +503,13 @@ static uint16_t navigation_open_pop_best(const NavigationGridPoint_t *goal)
     return best_index;
 }
 
+/*
+ * 根据 A* 父节点记录回溯并生成原始折线路径。
+ *
+ * A* 完成后从 goal_index 沿父节点方向回到 start_index，先得到反向路径，
+ * 再正向输出。输出时只保留起点、转折点和终点，去掉同一直线上的中间格，
+ * 降低后续平滑与控制目标的点数。
+ */
 static uint8_t navigation_build_raw_path(uint16_t goal_index, uint16_t start_index)
 {
     NavigationGridPoint_t reversed_path[NAVIGATION_MAX_PATH_POINTS];
@@ -445,6 +586,12 @@ static uint8_t navigation_build_raw_path(uint16_t goal_index, uint16_t start_ind
     return (g_navigationRawPathLen > 0U) ? 1U : 0U;
 }
 
+/*
+ * 在导航栅格地图上执行 A* 路径搜索。
+ *
+ * 输入为起点和终点的导航栅格坐标。函数会先检查边界和终点膨胀碰撞，再
+ * 使用四邻域扩展搜索；搜索成功时填充 g_navigationRawPath，失败时返回 0。
+ */
 static uint8_t navigation_find_path_map(const NavigationGridPoint_t *start_cell,
                                         const NavigationGridPoint_t *goal_cell)
 {
@@ -525,6 +672,12 @@ static uint8_t navigation_find_path_map(const NavigationGridPoint_t *start_cell,
     return 0U;
 }
 
+/*
+ * 检查两个导航栅格点之间的直线路径是否可通行。
+ *
+ * 使用 Bresenham 栅格遍历算法枚举直线经过的所有导航格，并对每个格执行
+ * 障碍物膨胀检查。该函数用于路径平滑，确保删除中间拐点后不会穿过障碍。
+ */
 static uint8_t navigation_line_free(const NavigationGridPoint_t *start_cell,
                                     const NavigationGridPoint_t *end_cell)
 {
@@ -576,6 +729,12 @@ static uint8_t navigation_line_free(const NavigationGridPoint_t *start_cell,
     }
 }
 
+/*
+ * 基于原始折线路径生成更少拐点的平滑路径。
+ *
+ * 从当前原始路径点开始，尽量向后寻找最远且直线可达的点作为下一个点。
+ * 每个保留下来的导航栅格点同时转换为世界坐标，供控制层作为局部目标使用。
+ */
 static uint8_t navigation_build_smooth_path_from_raw_path(void)
 {
     uint16_t raw_index = 0U;
@@ -616,6 +775,12 @@ static uint8_t navigation_build_smooth_path_from_raw_path(void)
     return 1U;
 }
 
+/*
+ * 在已持有导航互斥锁的前提下更新统计快照。
+ *
+ * 该函数集中维护导航状态、路径长度、当前位姿、目标位姿、局部目标和失败
+ * 计数，方便 UI、遥测或调试接口读取一致的 NavigationTaskStats_t 快照。
+ */
 static void navigation_update_stats_locked(NavigationStatus_t status,
                                            const SlamPose2D_t *current_pose,
                                            const SlamPose2D_t *goal_pose,
@@ -651,6 +816,12 @@ static void navigation_update_stats_locked(NavigationStatus_t status,
     }
 }
 
+/*
+ * 设置新的世界坐标导航目标。
+ *
+ * 上位机或其他任务调用该接口后，导航任务会在下一次周期更新中读取目标、
+ * 重新规划路径并下发局部相对位移。该接口只记录目标，不立即执行规划。
+ */
 void NavigationTask_SetGoal(float goal_x_m, float goal_y_m)
 {
     /* 设置终点后，导航线程会在下一次周期更新中自动规划并下发局部目标。 */
@@ -665,6 +836,12 @@ void NavigationTask_SetGoal(float goal_x_m, float goal_y_m)
     navigation_unlock();
 }
 
+/*
+ * 清除当前导航目标和路径统计。
+ *
+ * 清除后 NavigationTask_Update 会回到 IDLE 状态。该函数不直接终止已经下发
+ * 给运动控制层的相对位移，只阻止导航任务继续规划和下发新的局部目标。
+ */
 void NavigationTask_ClearGoal(void)
 {
     /* 清除目标只影响导航线程，不强制停止当前正在执行的相对位移。 */
@@ -679,6 +856,13 @@ void NavigationTask_ClearGoal(void)
     navigation_unlock();
 }
 
+/*
+ * 启动导航命令串口的单字节中断接收。
+ *
+ * UART5 每收到一个字节都会进入接收完成回调，由
+ * NavigationTask_HandleCommandRxCompleteFromIsr 继续拼接命令行并重新挂接
+ * 下一次接收。
+ */
 void NavigationTask_StartCommandRx(void)
 {
     /* UART5 同时用于遥测发送和命令接收；这里挂 1 字节中断接收即可。 */
@@ -687,6 +871,13 @@ void NavigationTask_StartCommandRx(void)
     (void)HAL_UART_Receive_IT(&huart5, &g_navigationCommandRxByte, 1U);
 }
 
+/*
+ * 串口接收完成中断中的导航命令字节处理。
+ *
+ * 本函数只做低开销的行缓冲：遇到换行时把完整命令复制到 pending 缓冲区，
+ * 交给导航任务线程解析；普通字符追加到当前行；超长命令直接丢弃并重新
+ * 开始接收，防止缓冲区溢出。
+ */
 void NavigationTask_HandleCommandRxCompleteFromIsr(void)
 {
     uint8_t byte = g_navigationCommandRxByte;
@@ -712,6 +903,13 @@ void NavigationTask_HandleCommandRxCompleteFromIsr(void)
     (void)HAL_UART_Receive_IT(&huart5, &g_navigationCommandRxByte, 1U);
 }
 
+/*
+ * 执行一次导航状态机更新。
+ *
+ * 更新流程包括：读取目标快照、读取当前定位、判断是否到达、复制地图快照、
+ * 将起终点转换到导航栅格、执行 A* 搜索、平滑路径、选择下一个局部目标，
+ * 并在运动控制空闲时下发相对位移。函数返回本周期的导航状态。
+ */
 NavigationStatus_t NavigationTask_Update(void)
 {
     SlamPose2D_t current_pose;
@@ -806,6 +1004,12 @@ NavigationStatus_t NavigationTask_Update(void)
     return status;
 }
 
+/*
+ * 获取导航统计信息快照。
+ *
+ * 调用者传入非空 stats 指针后，本函数在互斥锁保护下复制当前统计结构。
+ * 返回的是调用瞬间的一致快照，调用者后续读取不需要继续持有导航互斥锁。
+ */
 void NavigationTask_GetStatsSnapshot(NavigationTaskStats_t *stats)
 {
     /* 复制导航统计快照，调用方不需要持有导航互斥锁。 */
@@ -818,6 +1022,12 @@ void NavigationTask_GetStatsSnapshot(NavigationTaskStats_t *stats)
     navigation_unlock();
 }
 
+/*
+ * FreeRTOS 导航任务入口。
+ *
+ * 任务固定周期运行：先处理串口命令，再执行一次导航更新，最后延时到下个
+ * 周期。argument 当前未使用，保留以匹配 FreeRTOS 任务函数签名。
+ */
 void StartNavigationTask(void *argument)
 {
     (void)argument;

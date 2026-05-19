@@ -14,7 +14,7 @@ from telemetry_protocol import (
     MapFrame,
     TelemetryParser,
 )
-from navigation_protocol import build_clear_goal_command, build_set_goal_command
+from navigation_protocol import build_clear_goal_command, build_debug_command_line, build_set_goal_command
 
 
 SKIP_REASON_LABELS = {
@@ -211,6 +211,14 @@ class MainWindow(QtWidgets.QWidget):
         self.nav_telemetry.setWordWrap(True)
         self.nav_telemetry.setStyleSheet("font-family:Consolas, monospace; color:#dce3ea;")
 
+        self.debug_command_edit = QtWidgets.QLineEdit("P1,0")
+        self.debug_command_edit.setPlaceholderText("ASCII command, e.g. P1,0")
+        self.send_debug_command_button = QtWidgets.QPushButton("Send Debug")
+        self.preset_p10_button = QtWidgets.QPushButton("P1,0")
+        self.debug_status = QtWidgets.QLabel("Debug command ready")
+        self.debug_status.setWordWrap(True)
+        self.debug_status.setStyleSheet("color:#9fb3c8;")
+
         self.stats_box = QtWidgets.QPlainTextEdit()
         self.stats_box.setReadOnly(True)
         self.stats_box.setStyleSheet(
@@ -248,6 +256,7 @@ class MainWindow(QtWidgets.QWidget):
         side_panel.addWidget(QtWidgets.QLabel("Latest Frame"))
         side_panel.addWidget(self.frame_info)
         side_panel.addWidget(self._build_navigation_panel())
+        side_panel.addWidget(self._build_debug_panel())
         side_panel.addWidget(QtWidgets.QLabel("Telemetry Details"))
         side_panel.addWidget(self.stats_box, 1)
 
@@ -268,6 +277,9 @@ class MainWindow(QtWidgets.QWidget):
         self.connect_button.clicked.connect(self._toggle_connection)
         self.send_goal_button.clicked.connect(self._send_navigation_goal)
         self.clear_goal_button.clicked.connect(self._clear_navigation_goal)
+        self.send_debug_command_button.clicked.connect(self._send_debug_command)
+        self.preset_p10_button.clicked.connect(lambda: self._set_debug_command("P1,0"))
+        self.debug_command_edit.returnPressed.connect(self._send_debug_command)
         self.map_view.goalPicked.connect(self._set_goal_from_map)
 
     def _build_navigation_panel(self) -> QtWidgets.QGroupBox:
@@ -288,6 +300,25 @@ class MainWindow(QtWidgets.QWidget):
         layout.addWidget(self.nav_status)
         layout.addWidget(self.nav_telemetry)
         layout.addWidget(QtWidgets.QLabel("Tip: click the map to fill goal coordinates."))
+        return group
+
+    def _build_debug_panel(self) -> QtWidgets.QGroupBox:
+        group = QtWidgets.QGroupBox("Debug Command")
+        group.setStyleSheet("QGroupBox{border:1px solid #2f3944; margin-top:8px; padding:8px;}")
+
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.debug_command_edit, 1)
+        row.addWidget(self.send_debug_command_button)
+
+        presets = QtWidgets.QHBoxLayout()
+        presets.addWidget(QtWidgets.QLabel("Preset"))
+        presets.addWidget(self.preset_p10_button)
+        presets.addStretch(1)
+
+        layout = QtWidgets.QVBoxLayout(group)
+        layout.addLayout(row)
+        layout.addLayout(presets)
+        layout.addWidget(self.debug_status)
         return group
 
     def _refresh_ports(self, preferred: str | None) -> None:
@@ -368,6 +399,24 @@ class MainWindow(QtWidgets.QWidget):
             self.map_view.set_goal(None)
             self.nav_status.setText("Goal cleared")
             self.nav_status.setStyleSheet("color:#9fb3c8;")
+
+    def _set_debug_command(self, command: str) -> None:
+        self.debug_command_edit.setText(command)
+        self.debug_command_edit.setFocus()
+
+    def _send_debug_command(self) -> None:
+        command_text = self.debug_command_edit.text()
+        try:
+            command = build_debug_command_line(command_text)
+        except (UnicodeEncodeError, ValueError) as exc:
+            self.debug_status.setText(f"Debug command invalid: {exc}")
+            self.debug_status.setStyleSheet("color:#ff7b72;")
+            return
+
+        if self._write_command(command):
+            sent_text = command.decode("ascii").rstrip("\n")
+            self.debug_status.setText(f"Debug command sent: {sent_text}")
+            self.debug_status.setStyleSheet("color:#7bd389;")
 
     def _set_goal_from_map(self, x_m: float, y_m: float) -> None:
         self.goal_x_spin.setValue(x_m)

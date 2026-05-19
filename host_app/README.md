@@ -13,6 +13,9 @@ It can also send simple navigation commands back to the firmware on the same ser
 - Host-to-firmware navigation commands:
   - `NAV <x_m> <y_m>\n`: set a navigation goal in map/world coordinates, meters
   - `NAVC\n`: clear the current navigation goal
+- The `Debug Command` panel sends one raw ASCII line, with `\n` appended automatically.
+  It includes a `P1,0` preset; firmware interprets `P<dx_m>,<dy_m>` as a direct
+  relative move command for the base position loop, bypassing A* navigation.
 
 ## Run
 

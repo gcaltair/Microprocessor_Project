@@ -21,6 +21,7 @@ typedef struct {
     uint8_t robot_inside_grid;
     uint8_t map_update_active;
     uint8_t last_skip_reason;
+    uint8_t last_scan_match_reject_reason;
     uint32_t update_count;
     uint32_t last_scan_sequence;
     uint16_t last_usable_points;
@@ -34,6 +35,14 @@ typedef struct {
     float last_localization_fitness_m;
     float last_odom_delta_theta_deg;
     float last_odom_delta_translation_m;
+    uint16_t last_scan_match_tested_candidates;
+    uint16_t last_scan_match_used_points;
+    float last_scan_match_best_score;
+    float last_scan_match_second_score;
+    float last_scan_match_score_margin;
+    float last_scan_match_dx_m;
+    float last_scan_match_dy_m;
+    float last_scan_match_dtheta_deg;
     SlamGridCoord_t last_robot_cell;
     SlamPose2D_t last_pose;
 } MappingTaskStats_t;
@@ -65,6 +74,10 @@ uint8_t MappingTask_CopyGridRows(uint16_t row_offset,
                                  uint16_t row_count,
                                  int8_t *cells_buffer,
                                  uint16_t buffer_len);
+/* 批量只读访问地图时使用，调用方必须 Begin/End 成对出现。 */
+uint8_t MappingTask_BeginGridRead(void);
+void MappingTask_EndGridRead(void);
+uint8_t MappingTask_ReadCellDuringGridRead(int16_t cell_x, int16_t cell_y, int8_t *value);
 /* 将世界坐标转换为地图栅格坐标。 */
 uint8_t MappingTask_WorldToCell(float x_m, float y_m, SlamGridCoord_t *cell);
 /* 查询栅格坐标是否在地图范围内。 */

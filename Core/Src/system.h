@@ -25,22 +25,10 @@ extern volatile PID_Controller g_pid_speed_right;
 extern volatile PID_Controller g_pid_position;
 extern volatile PID_Controller g_pid_angle;
 
-extern volatile int pwm_output_left;
-extern volatile int pwm_output_right;
 extern volatile uint32_t overflow_count;
 extern volatile float base_car_speed;
 extern volatile float g_dl_acc;
 extern volatile float g_dr_acc;
-extern volatile float g_target_x;
-extern volatile float g_target_y;
-extern volatile float g_relative_move_target_distance_m;
-extern volatile float g_relative_move_progress_m;
-extern volatile float g_relative_move_remaining_m;
-extern volatile float g_control_angle_error_deg;
-extern volatile float g_control_turn_output_mps;
-extern volatile float g_control_position_error_m;
-extern volatile float g_control_left_speed_setpoint_mps;
-extern volatile float g_control_right_speed_setpoint_mps;
 extern volatile float g_th;
 extern volatile float g_th_continuous;
 

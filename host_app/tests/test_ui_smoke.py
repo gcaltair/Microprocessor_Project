@@ -84,7 +84,7 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         robot_inside_grid=1,
         map_update_active=1,
         last_skip_reason=3,
-        last_localization_mode=0,
+        last_localization_mode=1,
         robot_cell_x=2,
         robot_cell_y=3,
         localization_fitness_m=0.02,
@@ -108,6 +108,15 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         nav_goal_y_m=0.7,
         nav_target_x_m=0.35,
         nav_target_y_m=0.45,
+        scan_match_reject_reason=4,
+        scan_match_tested_candidates=125,
+        scan_match_used_points=44,
+        scan_match_best_score=48.0,
+        scan_match_second_score=45.0,
+        scan_match_score_margin=3.0,
+        scan_match_dx_m=0.02,
+        scan_match_dy_m=-0.02,
+        scan_match_dtheta_deg=1.0,
         cells=np.array(
             [[0, 0, 0, 0], [0, 20, 0, 0], [0, 0, -15, 0], [0, 0, 0, 0]],
             dtype=np.int8,
@@ -123,7 +132,9 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
     assert "frame=1 update=10 scan=50" in first_text
     assert "frame=2 update=11 scan=51" in second_text
     assert "skip_reason             : quality" in stats_text
-    assert "localization_mode       : odometry" in stats_text
+    assert "localization_mode       : scan_match" in stats_text
+    assert "scan_match_reject       : low_margin" in stats_text
+    assert "scan_match_candidates   : 125" in stats_text
     assert "nav_status              : busy" in stats_text
     assert window.send_goal_button.text() == "Send Goal"
     assert window.clear_goal_button.text() == "Clear Goal"

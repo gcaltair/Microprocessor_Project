@@ -7,12 +7,13 @@ from typing import List
 import numpy as np
 
 FRAME_MAGIC = b"\xC3\x3C"
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 FRAME_TYPE_MAP_GRID = 1
 FREE_THRESHOLD = -10
 OCCUPIED_THRESHOLD = 10
 
 _HEADER_STRUCT = struct.Struct("<2sBBHH")
+_SUPPORTED_PROTOCOL_VERSIONS = {1, PROTOCOL_VERSION}
 
 
 @dataclass(slots=True)
@@ -58,6 +59,15 @@ class MapFrame:
     nav_target_x_m: float
     nav_target_y_m: float
     cells: np.ndarray
+    scan_match_reject_reason: int = 0
+    scan_match_tested_candidates: int = 0
+    scan_match_used_points: int = 0
+    scan_match_best_score: float = 0.0
+    scan_match_second_score: float = 0.0
+    scan_match_score_margin: float = 0.0
+    scan_match_dx_m: float = 0.0
+    scan_match_dy_m: float = 0.0
+    scan_match_dtheta_deg: float = 0.0
 
 
 class TelemetryParser:
@@ -96,7 +106,7 @@ class TelemetryParser:
                 del self._buffer[0]
                 continue
 
-            if version == PROTOCOL_VERSION and frame_type == FRAME_TYPE_MAP_GRID:
+            if version in _SUPPORTED_PROTOCOL_VERSIONS and frame_type == FRAME_TYPE_MAP_GRID:
                 frames.append(_parse_map_frame(sequence, frame_bytes[_HEADER_STRUCT.size:-2]))
 
             del self._buffer[:total_len]
@@ -165,8 +175,28 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     nav_goal_y = take("<f")
     nav_target_x = take("<f")
     nav_target_y = take("<f")
-
+    scan_match_reject_reason = 0
+    scan_match_tested_candidates = 0
+    scan_match_used_points = 0
+    scan_match_best_score = 0.0
+    scan_match_second_score = 0.0
+    scan_match_score_margin = 0.0
+    scan_match_dx = 0.0
+    scan_match_dy = 0.0
+    scan_match_dtheta = 0.0
     cell_count = width * height
+    if len(payload) - offset >= cell_count + 30:
+        scan_match_reject_reason = take("<B")
+        _scan_match_reserved = take("<B")
+        scan_match_tested_candidates = take("<H")
+        scan_match_used_points = take("<H")
+        scan_match_best_score = take("<f")
+        scan_match_second_score = take("<f")
+        scan_match_score_margin = take("<f")
+        scan_match_dx = take("<f")
+        scan_match_dy = take("<f")
+        scan_match_dtheta = take("<f")
+
     cells = np.frombuffer(payload, dtype=np.int8, count=cell_count, offset=offset).copy()
     cells = cells.reshape((height, width))
 
@@ -212,4 +242,13 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         nav_target_x_m=nav_target_x,
         nav_target_y_m=nav_target_y,
         cells=cells,
+        scan_match_reject_reason=scan_match_reject_reason,
+        scan_match_tested_candidates=scan_match_tested_candidates,
+        scan_match_used_points=scan_match_used_points,
+        scan_match_best_score=scan_match_best_score,
+        scan_match_second_score=scan_match_second_score,
+        scan_match_score_margin=scan_match_score_margin,
+        scan_match_dx_m=scan_match_dx,
+        scan_match_dy_m=scan_match_dy,
+        scan_match_dtheta_deg=scan_match_dtheta,
     )

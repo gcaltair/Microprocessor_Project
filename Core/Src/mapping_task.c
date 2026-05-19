@@ -110,6 +110,7 @@ static void mapping_task_update_stats(const LidarScanMsg_t *scan_msg,
     g_mappingStats.robot_inside_grid = robot_inside_grid;
     g_mappingStats.map_update_active = (skip_reason == MAPPING_SKIP_REASON_NONE) ? 1U : 0U;
     g_mappingStats.last_skip_reason = (uint8_t)skip_reason;
+    g_mappingStats.last_scan_match_reject_reason = scan_msg->scan_match_reject_reason;
     g_mappingStats.update_count++;
     g_mappingStats.last_scan_sequence = scan_msg->scan_sequence;
     g_mappingStats.last_usable_points = scan_msg->quality.usable_point_count;
@@ -119,6 +120,14 @@ static void mapping_task_update_stats(const LidarScanMsg_t *scan_msg,
     g_mappingStats.last_localization_fitness_m = scan_msg->localization_fitness_m;
     g_mappingStats.last_odom_delta_theta_deg = scan_msg->odom_delta_theta_deg;
     g_mappingStats.last_odom_delta_translation_m = scan_msg->odom_delta_translation_m;
+    g_mappingStats.last_scan_match_tested_candidates = scan_msg->scan_match_tested_candidates;
+    g_mappingStats.last_scan_match_used_points = scan_msg->scan_match_used_points;
+    g_mappingStats.last_scan_match_best_score = scan_msg->scan_match_best_score;
+    g_mappingStats.last_scan_match_second_score = scan_msg->scan_match_second_score;
+    g_mappingStats.last_scan_match_score_margin = scan_msg->scan_match_score_margin;
+    g_mappingStats.last_scan_match_dx_m = scan_msg->scan_match_dx_m;
+    g_mappingStats.last_scan_match_dy_m = scan_msg->scan_match_dy_m;
+    g_mappingStats.last_scan_match_dtheta_deg = scan_msg->scan_match_dtheta_deg;
     g_mappingStats.last_pose = scan_msg->corrected_pose;
 
     if (skip_reason == MAPPING_SKIP_REASON_TURNING) {
@@ -385,6 +394,27 @@ uint8_t MappingTask_CopyGridRows(uint16_t row_offset,
                  cell_count);
     mapping_task_unlock_grid();
     return 1U;
+}
+
+uint8_t MappingTask_BeginGridRead(void)
+{
+    mapping_task_lock_grid();
+    if (g_mappingGrid.initialized == 0U) {
+        mapping_task_unlock_grid();
+        return 0U;
+    }
+
+    return 1U;
+}
+
+void MappingTask_EndGridRead(void)
+{
+    mapping_task_unlock_grid();
+}
+
+uint8_t MappingTask_ReadCellDuringGridRead(int16_t cell_x, int16_t cell_y, int8_t *value)
+{
+    return OccupancyGrid_GetCell(&g_mappingGrid, cell_x, cell_y, value);
 }
 
 uint8_t MappingTask_RenderAsciiRow(uint16_t render_row, uint8_t downsample, char *buffer, uint16_t buffer_size)

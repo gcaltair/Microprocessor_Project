@@ -4,6 +4,7 @@
 #include "../Inc/localization_task.h"
 #include "../Inc/control_logic.h"
 #include "../Inc/mapping_task.h"
+#include "scan_matcher.h"
 #include "system.h"
 
 /* 当两帧雷达之间的里程计跳变过大时，暂停写入地图。 */
@@ -191,14 +192,23 @@ static void localization_update_stats(const LidarScanMsg_t *scan_msg)
     g_localizationStats.last_corrected_pose = scan_msg->corrected_pose;
     g_localizationStats.current_estimated_pose = g_estimatedPose;
     g_localizationStats.current_control_pose = g_controlPose;
-    g_localizationStats.last_inliers = 0U;
-    g_localizationStats.last_fitness_m = 0.0f;
+    g_localizationStats.last_inliers = scan_msg->localization_inliers;
+    g_localizationStats.last_fitness_m = scan_msg->localization_fitness_m;
     g_localizationStats.last_odom_delta_theta_deg = scan_msg->odom_delta_theta_deg;
     g_localizationStats.last_odom_delta_translation_m = scan_msg->odom_delta_translation_m;
     g_localizationStats.last_map_update_allowed = scan_msg->map_update_allowed;
     g_localizationStats.last_map_skip_reason = scan_msg->map_skip_reason;
     g_localizationStats.last_turning_detected = scan_msg->turning_detected;
-    g_localizationStats.last_mode = LOCALIZATION_MODE_ODOMETRY_ONLY;
+    g_localizationStats.last_scan_match_reject_reason = scan_msg->scan_match_reject_reason;
+    g_localizationStats.last_mode = (LocalizationMode_t)scan_msg->localization_mode;
+    g_localizationStats.last_scan_match_tested_candidates = scan_msg->scan_match_tested_candidates;
+    g_localizationStats.last_scan_match_used_points = scan_msg->scan_match_used_points;
+    g_localizationStats.last_scan_match_best_score = scan_msg->scan_match_best_score;
+    g_localizationStats.last_scan_match_second_score = scan_msg->scan_match_second_score;
+    g_localizationStats.last_scan_match_score_margin = scan_msg->scan_match_score_margin;
+    g_localizationStats.last_scan_match_dx_m = scan_msg->scan_match_dx_m;
+    g_localizationStats.last_scan_match_dy_m = scan_msg->scan_match_dy_m;
+    g_localizationStats.last_scan_match_dtheta_deg = scan_msg->scan_match_dtheta_deg;
     localization_unlock();
 }
 
@@ -218,10 +228,32 @@ void StartLocalizationTask(void *argument)
         }
 
         /* 不再进行 ICP/扫描匹配修正，建图直接使用原始里程计位姿。 */
-        scan_msg.corrected_pose = scan_msg.pose_snapshot;
-        scan_msg.localization_mode = LOCALIZATION_MODE_ODOMETRY_ONLY;
-        scan_msg.localization_inliers = 0U;
-        scan_msg.localization_fitness_m = 0.0f;
+        {
+            ScanMatcherResult_t match_result;
+            SlamPose2D_t corrected_pose = scan_msg.pose_snapshot;
+
+            if (ScanMatcher_CorrectPose(&scan_msg, &corrected_pose, &match_result) != 0U) {
+                scan_msg.corrected_pose = corrected_pose;
+                scan_msg.localization_mode = LOCALIZATION_MODE_SCAN_MATCH;
+                scan_msg.localization_inliers = match_result.occupied_hits;
+                scan_msg.localization_fitness_m = match_result.best_score;
+            } else {
+                scan_msg.corrected_pose = scan_msg.pose_snapshot;
+                scan_msg.localization_mode = LOCALIZATION_MODE_ODOMETRY_ONLY;
+                scan_msg.localization_inliers = match_result.occupied_hits;
+                scan_msg.localization_fitness_m = 0.0f;
+            }
+
+            scan_msg.scan_match_reject_reason = match_result.reject_reason;
+            scan_msg.scan_match_tested_candidates = match_result.tested_candidates;
+            scan_msg.scan_match_used_points = match_result.used_points;
+            scan_msg.scan_match_best_score = match_result.best_score;
+            scan_msg.scan_match_second_score = match_result.second_score;
+            scan_msg.scan_match_score_margin = match_result.score_margin;
+            scan_msg.scan_match_dx_m = match_result.correction_dx_m;
+            scan_msg.scan_match_dy_m = match_result.correction_dy_m;
+            scan_msg.scan_match_dtheta_deg = match_result.correction_dtheta_deg;
+        }
         scan_msg.map_update_allowed = 1U;
         scan_msg.turning_detected = 0U;
         scan_msg.map_skip_reason = (uint8_t)MAPPING_SKIP_REASON_NONE;

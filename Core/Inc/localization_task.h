@@ -18,9 +18,18 @@ typedef struct {
     uint8_t last_map_update_allowed;
     uint8_t last_map_skip_reason;
     uint8_t last_turning_detected;
+    uint8_t last_scan_match_reject_reason;
     LocalizationMode_t last_mode;
     SlamPose2D_t last_predicted_pose;
     SlamPose2D_t last_corrected_pose;
+    uint16_t last_scan_match_tested_candidates;
+    uint16_t last_scan_match_used_points;
+    float last_scan_match_best_score;
+    float last_scan_match_second_score;
+    float last_scan_match_score_margin;
+    float last_scan_match_dx_m;
+    float last_scan_match_dy_m;
+    float last_scan_match_dtheta_deg;
     /* 当前最可信的位姿估计，供建图和状态上报使用。 */
     SlamPose2D_t current_estimated_pose;
     /* 去掉扫描匹配修正后，控制位姿与估计位姿保持一致。 */

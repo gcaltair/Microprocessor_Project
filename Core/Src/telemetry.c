@@ -9,14 +9,14 @@
 
 #define TELEMETRY_FRAME_MAGIC_1          0xC3U
 #define TELEMETRY_FRAME_MAGIC_2          0x3CU
-#define TELEMETRY_PROTOCOL_VERSION       1U
+#define TELEMETRY_PROTOCOL_VERSION       2U
 #define TELEMETRY_FRAME_TYPE_MAP_GRID    1U
 #define TELEMETRY_FRAME_HEADER_SIZE      8U
 #define TELEMETRY_FRAME_CRC_SIZE         2U
 #define TELEMETRY_TASK_PERIOD_MS         250U
 #define TELEMETRY_KEEPALIVE_MS           1000U
 #define TELEMETRY_UART_TIMEOUT_MS        250U
-#define TELEMETRY_FIXED_PAYLOAD_SIZE     115U
+#define TELEMETRY_FIXED_PAYLOAD_SIZE     145U
 #define TELEMETRY_MAX_FRAME_SIZE         (TELEMETRY_FRAME_HEADER_SIZE + \
                                           TELEMETRY_FIXED_PAYLOAD_SIZE + \
                                           OGM_MAX_CELL_COUNT + \
@@ -172,6 +172,16 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     telemetry_write_f32(&offset, nav_stats.goal_pose.y_m);
     telemetry_write_f32(&offset, nav_stats.target_pose.x_m);
     telemetry_write_f32(&offset, nav_stats.target_pose.y_m);
+    telemetry_write_u8(&offset, stats.last_scan_match_reject_reason);
+    telemetry_write_u8(&offset, 0U);
+    telemetry_write_u16(&offset, stats.last_scan_match_tested_candidates);
+    telemetry_write_u16(&offset, stats.last_scan_match_used_points);
+    telemetry_write_f32(&offset, stats.last_scan_match_best_score);
+    telemetry_write_f32(&offset, stats.last_scan_match_second_score);
+    telemetry_write_f32(&offset, stats.last_scan_match_score_margin);
+    telemetry_write_f32(&offset, stats.last_scan_match_dx_m);
+    telemetry_write_f32(&offset, stats.last_scan_match_dy_m);
+    telemetry_write_f32(&offset, stats.last_scan_match_dtheta_deg);
     (void)memcpy(&g_telemetryFrameBuffer[offset], g_telemetryCellBuffer, cell_count);
     offset = (uint16_t)(offset + cell_count);
 

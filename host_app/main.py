@@ -26,6 +26,18 @@ SKIP_REASON_LABELS = {
 
 LOCALIZATION_MODE_LABELS = {
     0: "odometry",
+    1: "scan_match",
+}
+
+SCAN_MATCH_REJECT_LABELS = {
+    0: "none",
+    1: "map_not_ready",
+    2: "scan_quality",
+    3: "low_score",
+    4: "low_margin",
+    5: "too_few_hits",
+    6: "large_correction",
+    7: "edge_best",
 }
 
 NAVIGATION_STATUS_LABELS = {
@@ -447,6 +459,10 @@ class MainWindow(QtWidgets.QWidget):
 
         skip_reason = SKIP_REASON_LABELS.get(frame.last_skip_reason, str(frame.last_skip_reason))
         loc_mode = LOCALIZATION_MODE_LABELS.get(frame.last_localization_mode, str(frame.last_localization_mode))
+        scan_match_reject = SCAN_MATCH_REJECT_LABELS.get(
+            frame.scan_match_reject_reason,
+            str(frame.scan_match_reject_reason),
+        )
         nav_status = NAVIGATION_STATUS_LABELS.get(frame.nav_status, str(frame.nav_status))
 
         self.nav_telemetry.setText(
@@ -473,6 +489,11 @@ class MainWindow(QtWidgets.QWidget):
                     f"localization_inliers    : {frame.localization_inliers}",
                     f"localization_mode       : {loc_mode}",
                     f"localization_fitness_m  : {frame.localization_fitness_m:.4f}",
+                    f"scan_match_reject       : {scan_match_reject}",
+                    f"scan_match_candidates   : {frame.scan_match_tested_candidates}",
+                    f"scan_match_points       : {frame.scan_match_used_points}",
+                    f"scan_match_score        : {frame.scan_match_best_score:.1f} / {frame.scan_match_second_score:.1f} / margin {frame.scan_match_score_margin:.1f}",
+                    f"scan_match_delta        : ({frame.scan_match_dx_m:.3f}, {frame.scan_match_dy_m:.3f}, {frame.scan_match_dtheta_deg:.2f} deg)",
                     f"map_update_active       : {frame.map_update_active}",
                     f"skip_reason             : {skip_reason}",
                     f"robot_inside_grid       : {frame.robot_inside_grid}",

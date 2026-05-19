@@ -342,6 +342,11 @@ void StartControlTask(void *argument)
   for (;;) {
     (void)osSemaphoreAcquire(g_controlTickSem, osWaitForever);
 
+    /*
+     * 控制周期入口：
+     * 先更新 IMU、编码器速度和里程计位姿，再根据当前控制模式进入不同控制链路。
+     * 所有分支最终都会驱动速度环或直接更新电机 PWM。
+     */
     MPU_update();
     encoder_update_speed();
 
@@ -362,10 +367,13 @@ void StartControlTask(void *argument)
     }
 
     if (g_control_mode == CONTROL_MODE_SPEED_TEST) {
+      /* 轮速测试：绕过角度环和位置环，直接闭环左右轮速度。 */
       Control_UpdateWheelSpeedTest(dt);
     } else if (g_control_mode == CONTROL_MODE_POSITION) {
+      /* 相对位移：位置状态机先给出 base_car_speed，再串接角度环和速度环。 */
       Update_Relative_Move_PID(dt, &odom_pose);
     } else {
+      /* 普通手动：使用当前 base_car_speed 和角度 setpoint 做角度-速度串级。 */
       Angle_Speed_Cascade_Control(odom_pose.theta_deg, base_car_speed, dt);
     }
 

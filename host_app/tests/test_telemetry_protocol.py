@@ -4,6 +4,8 @@ import struct
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -96,6 +98,88 @@ def test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise() -> Non
     assert int(result.cells[2, 3]) == -16
 
 
+def test_parser_reads_scan_match_diagnostics_from_v2_map_frame() -> None:
+    width = 2
+    height = 2
+    cells = bytes([0, 10, 0xF6, 20])
+
+    payload = b"".join(
+        [
+            struct.pack("<H", width),
+            struct.pack("<H", height),
+            struct.pack("<f", 0.05),
+            struct.pack("<f", -0.5),
+            struct.pack("<f", -0.5),
+            struct.pack("<I", 22),
+            struct.pack("<I", 88),
+            struct.pack("<I", 2345),
+            struct.pack("<H", 90),
+            struct.pack("<H", 24),
+            struct.pack("<H", 16),
+            struct.pack("<B", 1),
+            struct.pack("<B", 1),
+            struct.pack("<B", 1),
+            struct.pack("<B", 0),
+            struct.pack("<B", 1),
+            struct.pack("<h", 3),
+            struct.pack("<h", 4),
+            struct.pack("<f", 42.0),
+            struct.pack("<f", 0.1),
+            struct.pack("<f", 0.02),
+            struct.pack("<f", 0.30),
+            struct.pack("<f", -0.20),
+            struct.pack("<f", 10.0),
+            struct.pack("<I", 0),
+            struct.pack("<I", 0),
+            struct.pack("<I", 0),
+            struct.pack("<B", 0),
+            struct.pack("<B", 0),
+            struct.pack("<B", 0),
+            struct.pack("<B", 0),
+            struct.pack("<I", 0),
+            struct.pack("<I", 0),
+            struct.pack("<H", 0),
+            struct.pack("<H", 0),
+            struct.pack("<f", 0.0),
+            struct.pack("<f", 0.0),
+            struct.pack("<f", 0.0),
+            struct.pack("<f", 0.0),
+            struct.pack("<f", 0.0),
+            struct.pack("<B", 0),
+            struct.pack("<B", 0),
+            struct.pack("<H", 125),
+            struct.pack("<H", 46),
+            struct.pack("<f", 51.0),
+            struct.pack("<f", 43.5),
+            struct.pack("<f", 7.5),
+            struct.pack("<f", 0.02),
+            struct.pack("<f", -0.04),
+            struct.pack("<f", 1.0),
+            cells,
+        ]
+    )
+    header = struct.pack("<2sBBHH", FRAME_MAGIC, 2, 1, 10, len(payload))
+    frame_without_crc = header + payload
+    frame = frame_without_crc + struct.pack("<H", _crc16_ccitt(frame_without_crc))
+
+    parsed = TelemetryParser().feed(frame)
+
+    assert len(parsed) == 1
+    result = parsed[0]
+    assert result.last_localization_mode == 1
+    assert result.scan_match_reject_reason == 0
+    assert result.scan_match_tested_candidates == 125
+    assert result.scan_match_used_points == 46
+    assert result.scan_match_best_score == pytest.approx(51.0)
+    assert result.scan_match_second_score == pytest.approx(43.5)
+    assert result.scan_match_score_margin == pytest.approx(7.5)
+    assert result.scan_match_dx_m == pytest.approx(0.02)
+    assert result.scan_match_dy_m == pytest.approx(-0.04)
+    assert result.scan_match_dtheta_deg == pytest.approx(1.0)
+    assert int(result.cells[1, 0]) == -10
+
+
 if __name__ == "__main__":
     test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise()
+    test_parser_reads_scan_match_diagnostics_from_v2_map_frame()
     print("protocol_smoke_ok")

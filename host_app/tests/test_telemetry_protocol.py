@@ -57,6 +57,19 @@ def test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise() -> Non
             struct.pack("<I", 3),
             struct.pack("<I", 4),
             struct.pack("<I", 5),
+            struct.pack("<B", 1),
+            struct.pack("<B", 1),
+            struct.pack("<B", 4),
+            struct.pack("<B", 0),
+            struct.pack("<I", 6),
+            struct.pack("<I", 7),
+            struct.pack("<H", 8),
+            struct.pack("<H", 9),
+            struct.pack("<f", 0.35),
+            struct.pack("<f", 0.5),
+            struct.pack("<f", -0.25),
+            struct.pack("<f", 0.4),
+            struct.pack("<f", -0.1),
             cells,
         ]
     )
@@ -75,6 +88,9 @@ def test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise() -> Non
     assert result.last_scan_sequence == 77
     assert result.robot_cell_x == 1
     assert result.robot_cell_y == 2
+    assert result.nav_status == 4
+    assert result.nav_raw_path_len == 8
+    assert result.nav_smooth_path_len == 9
     assert int(result.cells[0, 1]) == 12
     assert int(result.cells[1, 2]) == -20
     assert int(result.cells[2, 3]) == -16

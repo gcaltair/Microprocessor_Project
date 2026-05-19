@@ -236,6 +236,7 @@ void StartDefaultTask(void *argument)
    * used by the parser/localization/mapping pipeline are ready.
    */
   osDelay(50U);
+  NavigationTask_StartCommandRx();
   RPLIDAR_StartRaw();
 
   for (;;) {

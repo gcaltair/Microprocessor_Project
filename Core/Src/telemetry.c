@@ -3,6 +3,7 @@
 #include "cmsis_os.h"
 
 #include "../Inc/mapping_task.h"
+#include "../Inc/navigation_task.h"
 #include "../Inc/telemetry.h"
 #include "../Inc/usart.h"
 
@@ -15,7 +16,7 @@
 #define TELEMETRY_TASK_PERIOD_MS         250U
 #define TELEMETRY_KEEPALIVE_MS           1000U
 #define TELEMETRY_UART_TIMEOUT_MS        250U
-#define TELEMETRY_FIXED_PAYLOAD_SIZE     79U
+#define TELEMETRY_FIXED_PAYLOAD_SIZE     115U
 #define TELEMETRY_MAX_FRAME_SIZE         (TELEMETRY_FRAME_HEADER_SIZE + \
                                           TELEMETRY_FIXED_PAYLOAD_SIZE + \
                                           OGM_MAX_CELL_COUNT + \
@@ -92,6 +93,7 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
 {
     MappingGridMeta_t meta;
     MappingTaskStats_t stats;
+    NavigationTaskStats_t nav_stats;
     uint16_t offset = 0U;
     uint16_t payload_offset;
     uint16_t payload_len;
@@ -113,6 +115,7 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     }
 
     MappingTask_GetStatsSnapshot(&stats);
+    NavigationTask_GetStatsSnapshot(&nav_stats);
 
     if ((uint32_t)TELEMETRY_FRAME_HEADER_SIZE +
         TELEMETRY_FIXED_PAYLOAD_SIZE +
@@ -156,6 +159,19 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     telemetry_write_u32(&offset, stats.skipped_turning_count);
     telemetry_write_u32(&offset, stats.skipped_settle_count);
     telemetry_write_u32(&offset, stats.skipped_quality_count);
+    telemetry_write_u8(&offset, nav_stats.goal_valid);
+    telemetry_write_u8(&offset, nav_stats.target_valid);
+    telemetry_write_u8(&offset, (uint8_t)nav_stats.last_status);
+    telemetry_write_u8(&offset, 0U);
+    telemetry_write_u32(&offset, nav_stats.update_count);
+    telemetry_write_u32(&offset, nav_stats.fail_count);
+    telemetry_write_u16(&offset, nav_stats.raw_path_len);
+    telemetry_write_u16(&offset, nav_stats.smooth_path_len);
+    telemetry_write_f32(&offset, nav_stats.distance_to_goal_m);
+    telemetry_write_f32(&offset, nav_stats.goal_pose.x_m);
+    telemetry_write_f32(&offset, nav_stats.goal_pose.y_m);
+    telemetry_write_f32(&offset, nav_stats.target_pose.x_m);
+    telemetry_write_f32(&offset, nav_stats.target_pose.y_m);
     (void)memcpy(&g_telemetryFrameBuffer[offset], g_telemetryCellBuffer, cell_count);
     offset = (uint16_t)(offset + cell_count);
 

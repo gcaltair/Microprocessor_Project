@@ -33,6 +33,10 @@ void StartNavigationTask(void *argument);
 void NavigationTask_SetGoal(float goal_x_m, float goal_y_m);
 /* 清除当前导航目标，同时让导航线程回到空闲状态。 */
 void NavigationTask_ClearGoal(void);
+/* 启动 UART5 导航命令接收，命令格式为 "NAV x y\n" 或 "NAVC\n"。 */
+void NavigationTask_StartCommandRx(void);
+/* UART5 收到 1 字节后的中断回调入口，只做拼行和重新挂接收。 */
+void NavigationTask_HandleCommandRxCompleteFromIsr(void);
 /* 手动触发一次导航更新，返回本次规划和下发结果。 */
 NavigationStatus_t NavigationTask_Update(void);
 /* 获取导航状态快照，主要供遥测或调试代码读取。 */

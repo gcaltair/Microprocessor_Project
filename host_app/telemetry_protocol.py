@@ -45,6 +45,18 @@ class MapFrame:
     skipped_turning_count: int
     skipped_settle_count: int
     skipped_quality_count: int
+    nav_goal_valid: int
+    nav_target_valid: int
+    nav_status: int
+    nav_update_count: int
+    nav_fail_count: int
+    nav_raw_path_len: int
+    nav_smooth_path_len: int
+    nav_distance_to_goal_m: float
+    nav_goal_x_m: float
+    nav_goal_y_m: float
+    nav_target_x_m: float
+    nav_target_y_m: float
     cells: np.ndarray
 
 
@@ -140,6 +152,19 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     skipped_turning_count = take("<I")
     skipped_settle_count = take("<I")
     skipped_quality_count = take("<I")
+    nav_goal_valid = take("<B")
+    nav_target_valid = take("<B")
+    nav_status = take("<B")
+    _nav_reserved = take("<B")
+    nav_update_count = take("<I")
+    nav_fail_count = take("<I")
+    nav_raw_path_len = take("<H")
+    nav_smooth_path_len = take("<H")
+    nav_distance_to_goal = take("<f")
+    nav_goal_x = take("<f")
+    nav_goal_y = take("<f")
+    nav_target_x = take("<f")
+    nav_target_y = take("<f")
 
     cell_count = width * height
     cells = np.frombuffer(payload, dtype=np.int8, count=cell_count, offset=offset).copy()
@@ -174,5 +199,17 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         skipped_turning_count=skipped_turning_count,
         skipped_settle_count=skipped_settle_count,
         skipped_quality_count=skipped_quality_count,
+        nav_goal_valid=nav_goal_valid,
+        nav_target_valid=nav_target_valid,
+        nav_status=nav_status,
+        nav_update_count=nav_update_count,
+        nav_fail_count=nav_fail_count,
+        nav_raw_path_len=nav_raw_path_len,
+        nav_smooth_path_len=nav_smooth_path_len,
+        nav_distance_to_goal_m=nav_distance_to_goal,
+        nav_goal_x_m=nav_goal_x,
+        nav_goal_y_m=nav_goal_y,
+        nav_target_x_m=nav_target_x,
+        nav_target_y_m=nav_target_y,
         cells=cells,
     )

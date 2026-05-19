@@ -50,6 +50,18 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         skipped_turning_count=0,
         skipped_settle_count=0,
         skipped_quality_count=0,
+        nav_goal_valid=1,
+        nav_target_valid=1,
+        nav_status=1,
+        nav_update_count=3,
+        nav_fail_count=0,
+        nav_raw_path_len=4,
+        nav_smooth_path_len=2,
+        nav_distance_to_goal_m=0.5,
+        nav_goal_x_m=0.6,
+        nav_goal_y_m=0.7,
+        nav_target_x_m=0.2,
+        nav_target_y_m=0.3,
         cells=np.array(
             [[0, 10, -10, 0], [0, 0, 0, 0], [0, 0, 20, 0], [-15, 0, 0, 0]],
             dtype=np.int8,
@@ -84,6 +96,18 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         skipped_turning_count=1,
         skipped_settle_count=2,
         skipped_quality_count=3,
+        nav_goal_valid=1,
+        nav_target_valid=1,
+        nav_status=4,
+        nav_update_count=4,
+        nav_fail_count=1,
+        nav_raw_path_len=5,
+        nav_smooth_path_len=3,
+        nav_distance_to_goal_m=0.4,
+        nav_goal_x_m=0.6,
+        nav_goal_y_m=0.7,
+        nav_target_x_m=0.35,
+        nav_target_y_m=0.45,
         cells=np.array(
             [[0, 0, 0, 0], [0, 20, 0, 0], [0, 0, -15, 0], [0, 0, 0, 0]],
             dtype=np.int8,
@@ -100,6 +124,9 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
     assert "frame=2 update=11 scan=51" in second_text
     assert "skip_reason             : quality" in stats_text
     assert "localization_mode       : odometry" in stats_text
+    assert "nav_status              : busy" in stats_text
+    assert window.send_goal_button.text() == "Send Goal"
+    assert window.clear_goal_button.text() == "Clear Goal"
     assert window.map_view._pixmap is not None
 
     window.close()

@@ -3,6 +3,7 @@
 #include "freertos_app.h"
 #include "lidar.h"
 #include "system.h"
+#include "../Inc/navigation_task.h"
 #include "usart.h"
 
 volatile uint8_t lidar_raw_stream_active = 0U;
@@ -315,6 +316,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART6) {
         queue_dma_half_from_isr(LIDAR_DMA_HALF_BUFFER_SIZE);
+    } else if (huart->Instance == UART5) {
+        NavigationTask_HandleCommandRxCompleteFromIsr();
     }
 }
 

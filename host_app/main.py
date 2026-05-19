@@ -14,6 +14,7 @@ from telemetry_protocol import (
     MapFrame,
     TelemetryParser,
 )
+from navigation_protocol import build_clear_goal_command, build_set_goal_command
 
 
 SKIP_REASON_LABELS = {
@@ -27,22 +28,49 @@ LOCALIZATION_MODE_LABELS = {
     0: "odometry",
 }
 
+NAVIGATION_STATUS_LABELS = {
+    0: "idle",
+    1: "ok",
+    2: "reached",
+    3: "failed",
+    4: "busy",
+}
+
 
 class MapView(QtWidgets.QLabel):
+    goalPicked = QtCore.Signal(float, float)
+
     def __init__(self) -> None:
         super().__init__()
         self._pixmap: QtGui.QPixmap | None = None
+        self._last_frame: MapFrame | None = None
+        self._goal: tuple[float, float] | None = None
         self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.setMinimumSize(520, 520)
         self.setStyleSheet("background:#14181d; border:1px solid #2f3944;")
 
     def set_frame(self, frame: MapFrame) -> None:
+        self._last_frame = frame
         self._pixmap = self._build_pixmap(frame)
         self._refresh_pixmap()
+
+    def set_goal(self, goal: tuple[float, float] | None) -> None:
+        self._goal = goal
+        if self._last_frame is not None:
+            self._pixmap = self._build_pixmap(self._last_frame)
+            self._refresh_pixmap()
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
         self._refresh_pixmap()
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if self._last_frame is None:
+            return
+
+        world = self._event_to_world(event.position())
+        if world is not None:
+            self.goalPicked.emit(world[0], world[1])
 
     def _refresh_pixmap(self) -> None:
         if self._pixmap is None:
@@ -83,6 +111,19 @@ class MapView(QtWidgets.QLabel):
         painter = QtGui.QPainter(qimage)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
 
+        if self._goal is not None:
+            goal_x_m, goal_y_m = self._goal
+            goal_cell_x = int((goal_x_m - frame.origin_x_m) / frame.resolution_m_per_cell)
+            goal_cell_y = int((goal_y_m - frame.origin_y_m) / frame.resolution_m_per_cell)
+            goal_y_screen = height - 1 - goal_cell_y
+            if 0 <= goal_cell_x < width and 0 <= goal_y_screen < height:
+                center = QtCore.QPointF(goal_cell_x + 0.5, goal_y_screen + 0.5)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#2f80ed"), 0.8))
+                painter.setBrush(QtGui.QBrush(QtGui.QColor("#2f80ed")))
+                painter.drawEllipse(center, 1.8, 1.8)
+                painter.drawLine(QtCore.QPointF(center.x() - 3.0, center.y()), QtCore.QPointF(center.x() + 3.0, center.y()))
+                painter.drawLine(QtCore.QPointF(center.x(), center.y() - 3.0), QtCore.QPointF(center.x(), center.y() + 3.0))
+
         if frame.robot_inside_grid:
             robot_x = frame.robot_cell_x
             robot_y = height - 1 - frame.robot_cell_y
@@ -102,6 +143,30 @@ class MapView(QtWidgets.QLabel):
 
         painter.end()
         return QtGui.QPixmap.fromImage(qimage)
+
+    def _event_to_world(self, position: QtCore.QPointF) -> tuple[float, float] | None:
+        frame = self._last_frame
+        if frame is None:
+            return None
+
+        label_w = self.width()
+        label_h = self.height()
+        scale = min(label_w / frame.width, label_h / frame.height)
+        image_w = frame.width * scale
+        image_h = frame.height * scale
+        left = (label_w - image_w) * 0.5
+        top = (label_h - image_h) * 0.5
+        image_x = (position.x() - left) / scale
+        image_y = (position.y() - top) / scale
+
+        if image_x < 0 or image_y < 0 or image_x >= frame.width or image_y >= frame.height:
+            return None
+
+        cell_x = int(image_x)
+        cell_y = frame.height - 1 - int(image_y)
+        world_x = frame.origin_x_m + (cell_x + 0.5) * frame.resolution_m_per_cell
+        world_y = frame.origin_y_m + (cell_y + 0.5) * frame.resolution_m_per_cell
+        return world_x, world_y
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -126,6 +191,25 @@ class MainWindow(QtWidgets.QWidget):
         self.frame_info = QtWidgets.QLabel("No telemetry yet")
         self.frame_info.setWordWrap(True)
         self.frame_info.setStyleSheet("font-family:Consolas, monospace; color:#dce3ea;")
+
+        self.goal_x_spin = QtWidgets.QDoubleSpinBox()
+        self.goal_x_spin.setRange(-10.0, 10.0)
+        self.goal_x_spin.setDecimals(3)
+        self.goal_x_spin.setSingleStep(0.05)
+        self.goal_x_spin.setSuffix(" m")
+        self.goal_y_spin = QtWidgets.QDoubleSpinBox()
+        self.goal_y_spin.setRange(-10.0, 10.0)
+        self.goal_y_spin.setDecimals(3)
+        self.goal_y_spin.setSingleStep(0.05)
+        self.goal_y_spin.setSuffix(" m")
+        self.send_goal_button = QtWidgets.QPushButton("Send Goal")
+        self.clear_goal_button = QtWidgets.QPushButton("Clear Goal")
+        self.nav_status = QtWidgets.QLabel("Navigation idle")
+        self.nav_status.setWordWrap(True)
+        self.nav_status.setStyleSheet("color:#9fb3c8;")
+        self.nav_telemetry = QtWidgets.QLabel("Navigation telemetry: no frame")
+        self.nav_telemetry.setWordWrap(True)
+        self.nav_telemetry.setStyleSheet("font-family:Consolas, monospace; color:#dce3ea;")
 
         self.stats_box = QtWidgets.QPlainTextEdit()
         self.stats_box.setReadOnly(True)
@@ -163,6 +247,7 @@ class MainWindow(QtWidgets.QWidget):
         side_panel = QtWidgets.QVBoxLayout()
         side_panel.addWidget(QtWidgets.QLabel("Latest Frame"))
         side_panel.addWidget(self.frame_info)
+        side_panel.addWidget(self._build_navigation_panel())
         side_panel.addWidget(QtWidgets.QLabel("Telemetry Details"))
         side_panel.addWidget(self.stats_box, 1)
 
@@ -181,6 +266,29 @@ class MainWindow(QtWidgets.QWidget):
     def _wire_events(self) -> None:
         self.refresh_button.clicked.connect(lambda: self._refresh_ports(self.port_combo.currentText().strip()))
         self.connect_button.clicked.connect(self._toggle_connection)
+        self.send_goal_button.clicked.connect(self._send_navigation_goal)
+        self.clear_goal_button.clicked.connect(self._clear_navigation_goal)
+        self.map_view.goalPicked.connect(self._set_goal_from_map)
+
+    def _build_navigation_panel(self) -> QtWidgets.QGroupBox:
+        group = QtWidgets.QGroupBox("Navigation")
+        group.setStyleSheet("QGroupBox{border:1px solid #2f3944; margin-top:8px; padding:8px;}")
+
+        form = QtWidgets.QFormLayout()
+        form.addRow("Goal X", self.goal_x_spin)
+        form.addRow("Goal Y", self.goal_y_spin)
+
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.addWidget(self.send_goal_button)
+        buttons.addWidget(self.clear_goal_button)
+
+        layout = QtWidgets.QVBoxLayout(group)
+        layout.addLayout(form)
+        layout.addLayout(buttons)
+        layout.addWidget(self.nav_status)
+        layout.addWidget(self.nav_telemetry)
+        layout.addWidget(QtWidgets.QLabel("Tip: click the map to fill goal coordinates."))
+        return group
 
     def _refresh_ports(self, preferred: str | None) -> None:
         ports = [port.device for port in list_ports.comports()]
@@ -231,6 +339,43 @@ class MainWindow(QtWidgets.QWidget):
         self.status_banner.setText("Disconnected")
         self.status_banner.setStyleSheet("color:#f4d35e; font-weight:600;")
 
+    def _write_command(self, command: bytes) -> bool:
+        if self._serial is None or not self._serial.is_open:
+            self.nav_status.setText("Navigation command not sent: serial is disconnected")
+            self.nav_status.setStyleSheet("color:#ff7b72;")
+            return False
+
+        try:
+            self._serial.write(command)
+        except serial.SerialException as exc:
+            self.nav_status.setText(f"Navigation command failed: {exc}")
+            self.nav_status.setStyleSheet("color:#ff7b72;")
+            self._close_serial()
+            return False
+
+        return True
+
+    def _send_navigation_goal(self) -> None:
+        goal_x = self.goal_x_spin.value()
+        goal_y = self.goal_y_spin.value()
+        if self._write_command(build_set_goal_command(goal_x, goal_y)):
+            self.map_view.set_goal((goal_x, goal_y))
+            self.nav_status.setText(f"Goal sent: x={goal_x:.3f} m, y={goal_y:.3f} m")
+            self.nav_status.setStyleSheet("color:#7bd389;")
+
+    def _clear_navigation_goal(self) -> None:
+        if self._write_command(build_clear_goal_command()):
+            self.map_view.set_goal(None)
+            self.nav_status.setText("Goal cleared")
+            self.nav_status.setStyleSheet("color:#9fb3c8;")
+
+    def _set_goal_from_map(self, x_m: float, y_m: float) -> None:
+        self.goal_x_spin.setValue(x_m)
+        self.goal_y_spin.setValue(y_m)
+        self.map_view.set_goal((x_m, y_m))
+        self.nav_status.setText(f"Goal selected from map: x={x_m:.3f} m, y={y_m:.3f} m")
+        self.nav_status.setStyleSheet("color:#9fb3c8;")
+
     def _poll_serial(self) -> None:
         if self._serial is None:
             return
@@ -253,6 +398,16 @@ class MainWindow(QtWidgets.QWidget):
 
         skip_reason = SKIP_REASON_LABELS.get(frame.last_skip_reason, str(frame.last_skip_reason))
         loc_mode = LOCALIZATION_MODE_LABELS.get(frame.last_localization_mode, str(frame.last_localization_mode))
+        nav_status = NAVIGATION_STATUS_LABELS.get(frame.nav_status, str(frame.nav_status))
+
+        self.nav_telemetry.setText(
+            f"fw_status={nav_status} goal_valid={frame.nav_goal_valid} target_valid={frame.nav_target_valid}\n"
+            f"goal=({frame.nav_goal_x_m:.3f}, {frame.nav_goal_y_m:.3f}) "
+            f"target=({frame.nav_target_x_m:.3f}, {frame.nav_target_y_m:.3f})\n"
+            f"distance={frame.nav_distance_to_goal_m:.3f} m "
+            f"path raw/smooth={frame.nav_raw_path_len}/{frame.nav_smooth_path_len} "
+            f"fail={frame.nav_fail_count}"
+        )
 
         self.frame_info.setText(
             f"frame={frame.sequence} update={frame.update_count} scan={frame.last_scan_sequence}\n"
@@ -278,12 +433,22 @@ class MainWindow(QtWidgets.QWidget):
                     f"skip_turning_count      : {frame.skipped_turning_count}",
                     f"skip_settle_count       : {frame.skipped_settle_count}",
                     f"skip_quality_count      : {frame.skipped_quality_count}",
+                    f"nav_status              : {nav_status}",
+                    f"nav_goal_valid          : {frame.nav_goal_valid}",
+                    f"nav_target_valid        : {frame.nav_target_valid}",
+                    f"nav_update_count        : {frame.nav_update_count}",
+                    f"nav_fail_count          : {frame.nav_fail_count}",
+                    f"nav_path_raw_smooth     : {frame.nav_raw_path_len}/{frame.nav_smooth_path_len}",
+                    f"nav_distance_to_goal_m  : {frame.nav_distance_to_goal_m:.3f}",
+                    f"nav_goal                : ({frame.nav_goal_x_m:.3f}, {frame.nav_goal_y_m:.3f})",
+                    f"nav_target              : ({frame.nav_target_x_m:.3f}, {frame.nav_target_y_m:.3f})",
                     "",
                     "Legend:",
                     "dark   = occupied",
                     "light  = free",
                     "gray   = unknown / weak evidence",
                     "red    = robot pose",
+                    "blue   = navigation goal",
                 ]
             )
         )

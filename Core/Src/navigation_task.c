@@ -9,6 +9,7 @@
 #include "../Inc/mapping_task.h"
 #include "../Inc/navigation_task.h"
 #include "../Inc/occupancy_grid.h"
+#include "../Inc/usart.h"
 #include "pid.h"
 #include "system.h"
 
@@ -28,6 +29,7 @@
 #define NAVIGATION_REACH_DISTANCE_M        0.03f
 #define NAVIGATION_MIN_SEGMENT_M           0.025f
 #define NAVIGATION_FREE_CELL_THRESHOLD     (-3)
+#define NAVIGATION_COMMAND_MAX_LEN         64U
 
 typedef struct {
     int16_t x;
@@ -46,6 +48,11 @@ static const uint8_t g_navigationReverseDir4[4] = {1U, 0U, 3U, 2U};
 static NavigationTaskStats_t g_navigationStats;
 static SlamPose2D_t g_navigationGoal;
 static uint8_t g_navigationGoalValid = 0U;
+static uint8_t g_navigationCommandRxByte = 0U;
+static char g_navigationCommandLine[NAVIGATION_COMMAND_MAX_LEN];
+static char g_navigationPendingCommand[NAVIGATION_COMMAND_MAX_LEN];
+static volatile uint8_t g_navigationCommandIndex = 0U;
+static volatile uint8_t g_navigationCommandPending = 0U;
 static MappingGridMeta_t g_navigationMapMeta;
 static uint16_t g_navigationWidthCells = 0U;
 static uint16_t g_navigationHeightCells = 0U;
@@ -60,6 +67,67 @@ static NavigationGridPoint_t g_navigationSmoothGridPath[NAVIGATION_MAX_PATH_POIN
 static NavigationWorldPoint_t g_navigationSmoothPath[NAVIGATION_MAX_PATH_POINTS];
 static uint16_t g_navigationRawPathLen = 0U;
 static uint16_t g_navigationSmoothPathLen = 0U;
+
+static void navigation_lock(void);
+static void navigation_unlock(void);
+
+static uint8_t navigation_parse_float_pair(const char *text, float *x_m, float *y_m)
+{
+    char *end_ptr;
+    char *second_start;
+    float parsed_x;
+    float parsed_y;
+
+    /* 解析 "x y" 两个浮点数，单位约定为米。 */
+    if ((text == NULL) || (x_m == NULL) || (y_m == NULL)) {
+        return 0U;
+    }
+
+    parsed_x = strtof(text, &end_ptr);
+    if (end_ptr == text) {
+        return 0U;
+    }
+
+    second_start = end_ptr;
+    parsed_y = strtof(second_start, &end_ptr);
+    if (end_ptr == second_start) {
+        return 0U;
+    }
+
+    *x_m = parsed_x;
+    *y_m = parsed_y;
+    return 1U;
+}
+
+static void navigation_process_pending_command(void)
+{
+    char command[NAVIGATION_COMMAND_MAX_LEN];
+    uint8_t has_command = 0U;
+
+    /* 从中断缓冲区取出完整命令行，实际解析放在线程上下文执行。 */
+    navigation_lock();
+    if (g_navigationCommandPending != 0U) {
+        (void)memcpy(command, g_navigationPendingCommand, sizeof(command));
+        g_navigationCommandPending = 0U;
+        has_command = 1U;
+    }
+    navigation_unlock();
+
+    if (has_command == 0U) {
+        return;
+    }
+
+    if ((command[0] == 'N') && (command[1] == 'A') && (command[2] == 'V') && (command[3] == ' ')) {
+        float goal_x_m;
+        float goal_y_m;
+
+        if (navigation_parse_float_pair(&command[4], &goal_x_m, &goal_y_m) != 0U) {
+            NavigationTask_SetGoal(goal_x_m, goal_y_m);
+        }
+    } else if ((command[0] == 'N') && (command[1] == 'A') && (command[2] == 'V') && (command[3] == 'C')) {
+        NavigationTask_ClearGoal();
+    }
+}
 
 static void navigation_lock(void)
 {
@@ -611,6 +679,39 @@ void NavigationTask_ClearGoal(void)
     navigation_unlock();
 }
 
+void NavigationTask_StartCommandRx(void)
+{
+    /* UART5 同时用于遥测发送和命令接收；这里挂 1 字节中断接收即可。 */
+    g_navigationCommandIndex = 0U;
+    g_navigationCommandPending = 0U;
+    (void)HAL_UART_Receive_IT(&huart5, &g_navigationCommandRxByte, 1U);
+}
+
+void NavigationTask_HandleCommandRxCompleteFromIsr(void)
+{
+    uint8_t byte = g_navigationCommandRxByte;
+
+    /* 中断里只拼命令行：NAV x y 或 NAVC。满行/换行后交给导航线程解析。 */
+    if ((byte == '\n') || (byte == '\r')) {
+        if (g_navigationCommandIndex > 0U) {
+            g_navigationCommandLine[g_navigationCommandIndex] = '\0';
+            if (g_navigationCommandPending == 0U) {
+                (void)memcpy(g_navigationPendingCommand,
+                             g_navigationCommandLine,
+                             sizeof(g_navigationPendingCommand));
+                g_navigationCommandPending = 1U;
+            }
+            g_navigationCommandIndex = 0U;
+        }
+    } else if (g_navigationCommandIndex < (NAVIGATION_COMMAND_MAX_LEN - 1U)) {
+        g_navigationCommandLine[g_navigationCommandIndex++] = (char)byte;
+    } else {
+        g_navigationCommandIndex = 0U;
+    }
+
+    (void)HAL_UART_Receive_IT(&huart5, &g_navigationCommandRxByte, 1U);
+}
+
 NavigationStatus_t NavigationTask_Update(void)
 {
     SlamPose2D_t current_pose;
@@ -723,6 +824,7 @@ void StartNavigationTask(void *argument)
 
     /* 固定周期运行导航状态机，对齐参考代码中的 600ms 导航调度节奏。 */
     for (;;) {
+        navigation_process_pending_command();
         (void)NavigationTask_Update();
         osDelay(NAVIGATION_TASK_PERIOD_MS);
     }

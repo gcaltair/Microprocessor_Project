@@ -76,6 +76,7 @@ extern osMessageQueueId_t g_lidarFreeQueue;
 extern osMutexId_t g_odomMutex;
 extern osMutexId_t g_localizationMutex;
 extern osMutexId_t g_gridMutex;
+extern osMutexId_t g_navigationMutex;
 extern osMutexId_t g_pidMutex;
 extern osMutexId_t g_controlMutex;
 
@@ -86,6 +87,7 @@ void StartControlTask(void *argument);
 void StartLiDARParseTask(void *argument);
 void StartLocalizationTask(void *argument);
 void StartMappingTask(void *argument);
+void StartNavigationTask(void *argument);
 void StartSafetyTask(void *argument);
 void StartTelemetryTask(void *argument);
 

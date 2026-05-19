@@ -30,6 +30,7 @@
 #include "freertos_app.h"
 #include "localization_task.h"
 #include "mapping_task.h"
+#include "navigation_task.h"
 #include "scan_preprocess.h"
 #include "system.h"
 #include "telemetry.h"
@@ -59,6 +60,7 @@ osMessageQueueId_t g_lidarFreeQueue = NULL;
 osMutexId_t g_odomMutex = NULL;
 osMutexId_t g_localizationMutex = NULL;
 osMutexId_t g_gridMutex = NULL;
+osMutexId_t g_navigationMutex = NULL;
 osMutexId_t g_pidMutex = NULL;
 osMutexId_t g_controlMutex = NULL;
 
@@ -81,6 +83,7 @@ osThreadId_t controlTaskHandle;
 osThreadId_t lidarParseTaskHandle;
 osThreadId_t localizationTaskHandle;
 osThreadId_t mappingTaskHandle;
+osThreadId_t navigationTaskHandle;
 osThreadId_t safetyTaskHandle;
 osThreadId_t telemetryTaskHandle;
 
@@ -108,6 +111,12 @@ const osThreadAttr_t mappingTask_attributes = {
   .priority = (osPriority_t) osPriorityLow,
 };
 
+const osThreadAttr_t navigationTask_attributes = {
+  .name = "navigationTask",
+  .stack_size = 1536,
+  .priority = (osPriority_t) osPriorityLow,
+};
+
 const osThreadAttr_t safetyTask_attributes = {
   .name = "safetyTask",
   .stack_size = 512,
@@ -130,6 +139,10 @@ const osMutexAttr_t localizationMutex_attributes = {
 
 const osMutexAttr_t gridMutex_attributes = {
   .name = "gridMutex",
+};
+
+const osMutexAttr_t navigationMutex_attributes = {
+  .name = "navigationMutex",
 };
 
 const osMutexAttr_t pidMutex_attributes = {
@@ -164,6 +177,7 @@ void MX_FREERTOS_Init(void) {
   g_odomMutex = osMutexNew(&odomMutex_attributes);
   g_localizationMutex = osMutexNew(&localizationMutex_attributes);
   g_gridMutex = osMutexNew(&gridMutex_attributes);
+  g_navigationMutex = osMutexNew(&navigationMutex_attributes);
   g_pidMutex = osMutexNew(&pidMutex_attributes);
   g_controlMutex = osMutexNew(&controlMutex_attributes);
   /* USER CODE END RTOS_MUTEX */
@@ -197,6 +211,7 @@ void MX_FREERTOS_Init(void) {
   lidarParseTaskHandle = osThreadNew(StartLiDARParseTask, NULL, &lidarParseTask_attributes);
   localizationTaskHandle = osThreadNew(StartLocalizationTask, NULL, &localizationTask_attributes);
   mappingTaskHandle = osThreadNew(StartMappingTask, NULL, &mappingTask_attributes);
+  navigationTaskHandle = osThreadNew(StartNavigationTask, NULL, &navigationTask_attributes);
   safetyTaskHandle = osThreadNew(StartSafetyTask, NULL, &safetyTask_attributes);
   telemetryTaskHandle = osThreadNew(StartTelemetryTask, NULL, &telemetryTask_attributes);
 

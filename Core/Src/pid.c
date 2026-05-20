@@ -20,14 +20,14 @@
  */
 
 #define ANGLE_TOLERANCE_FOR_MOVING  0.8f
-#define ANGLE_CONTROL_DEADBAND_ENTER_DEG  0.5f
-#define ANGLE_CONTROL_DEADBAND_EXIT_DEG   1.0f
+#define ANGLE_CONTROL_DEADBAND_ENTER_DEG  0.3f
+#define ANGLE_CONTROL_DEADBAND_EXIT_DEG   0.5f
 #define TURN_OUTPUT_LIMIT_MOVING    0.10f
 #define TURN_OUTPUT_LIMIT_INPLACE   0.12f
 #define TURN_OUTPUT_MOVING_BASE_RATIO     1.00f
-#define POSITION_SLOWDOWN_DISTANCE_M      0.15f
-#define POSITION_TERMINAL_MAX_SPEED_MPS   0.08f
-#define POSITION_TERMINAL_MIN_SPEED_MPS   0.015f
+#define POSITION_SLOWDOWN_DISTANCE_M      0.05f
+#define POSITION_TERMINAL_MAX_SPEED_MPS   0.18f
+#define POSITION_TERMINAL_MIN_SPEED_MPS   0.05f
 
 volatile PID_Controller g_pid_speed_left;
 volatile PID_Controller g_pid_speed_right;
@@ -672,7 +672,16 @@ void Start_Relative_Move(float dx, float dy)
         s_drive_direction = -1.0f;
     }
 
-    g_pid_angle.setpoint = pose.theta_deg + target_heading_deg;
+    // 检查当前是不是正在直行或旋转，如果是，说明是在连续下发
+    if (g_relative_move_state != RELATIVE_MOVE_IDLE) {
+        // 如果是连续动态下发（比如导航任务周期性刷新），目标角度直接等于本次计算的绝对航向
+        g_pid_angle.setpoint = target_heading_deg;
+    } else {
+        // 如果是从完全静止（IDLE）状态第一次启动：
+        // 目标航向 = 小车目前应该在的【目标角度】 + 相对本次增量的绝对航向
+        // 这样可以确保就算小车物理上偏了，也只会去追标准的角度线，而不是去迁就物理误差
+        g_pid_angle.setpoint = g_pid_angle.setpoint + target_heading_deg;
+    }
     s_initial_x = pose.x_m;
     s_initial_y = pose.y_m;
     pid_set_drive_axis_from_heading_deg(g_pid_angle.setpoint);

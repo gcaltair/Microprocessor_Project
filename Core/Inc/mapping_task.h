@@ -21,28 +21,17 @@ typedef struct {
     uint8_t robot_inside_grid;
     uint8_t map_update_active;
     uint8_t last_skip_reason;
-    uint8_t last_scan_match_reject_reason;
     uint32_t update_count;
     uint32_t last_scan_sequence;
     uint16_t last_usable_points;
     uint16_t last_endpoints_written;
     uint8_t last_localization_mode;
-    uint16_t last_localization_inliers;
     uint32_t skipped_turning_count;
     uint32_t skipped_settle_count;
     uint32_t skipped_quality_count;
     /* 面向遥测显示的定位字段；纯里程计模式下匹配相关值保持为 0。 */
-    float last_localization_fitness_m;
     float last_odom_delta_theta_deg;
     float last_odom_delta_translation_m;
-    uint16_t last_scan_match_tested_candidates;
-    uint16_t last_scan_match_used_points;
-    float last_scan_match_best_score;
-    float last_scan_match_second_score;
-    float last_scan_match_score_margin;
-    float last_scan_match_dx_m;
-    float last_scan_match_dy_m;
-    float last_scan_match_dtheta_deg;
     SlamGridCoord_t last_robot_cell;
     SlamPose2D_t last_pose;
 } MappingTaskStats_t;

@@ -53,8 +53,6 @@ add_executable(${CMAKE_PROJECT_NAME}
         Core/Src/pid.h
         Core/Src/occupancy_grid.c
         Core/Inc/occupancy_grid.h
-        Core/Src/scan_matcher.c
-        Core/Src/scan_matcher.h
         Core/Src/localization_task.c
         Core/Inc/localization_task.h
         Core/Src/mapping_task.c
@@ -63,8 +61,6 @@ add_executable(${CMAKE_PROJECT_NAME}
         Core/Inc/navigation_task.h
         Core/Src/control_logic.c
         Core/Inc/control_logic.h
-        Core/Src/telemetry.c
-        Core/Inc/telemetry.h
 )
 
 # Add STM32CubeMX generated sources

@@ -5,6 +5,8 @@
 
 #include "slam_types.h"
 
+#define NAVIGATION_PATH_TELEMETRY_MAX_POINTS 64U
+
 typedef enum {
     NAVIGATION_STATUS_IDLE = 0,
     NAVIGATION_STATUS_OK = 1,
@@ -12,6 +14,11 @@ typedef enum {
     NAVIGATION_STATUS_FAILED = 3,
     NAVIGATION_STATUS_BUSY = 4
 } NavigationStatus_t;
+
+typedef struct {
+    float x_m;
+    float y_m;
+} NavigationPathPoint_t;
 
 typedef struct {
     uint8_t goal_valid;
@@ -31,6 +38,7 @@ typedef struct {
 void StartNavigationTask(void *argument);
 /* 设置导航终点，坐标单位为米，坐标系与当前占据栅格地图一致。 */
 void NavigationTask_SetGoal(float goal_x_m, float goal_y_m);
+void NavigationTask_SetPlanGoal(float goal_x_m, float goal_y_m);
 /* 清除当前导航目标，同时让导航线程回到空闲状态。 */
 void NavigationTask_ClearGoal(void);
 /* 启动 UART5 命令接收，命令格式为 "NAV x y\n"、"NAVC\n" 或 "Pdx,dy\n"。 */
@@ -41,5 +49,6 @@ void NavigationTask_HandleCommandRxCompleteFromIsr(void);
 NavigationStatus_t NavigationTask_Update(void);
 /* 获取导航状态快照，主要供遥测或调试代码读取。 */
 void NavigationTask_GetStatsSnapshot(NavigationTaskStats_t *stats);
+uint16_t NavigationTask_CopySmoothPathPoints(NavigationPathPoint_t *points, uint16_t max_points);
 
 #endif /* NAVIGATION_TASK_H */

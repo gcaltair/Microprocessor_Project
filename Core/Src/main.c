@@ -30,6 +30,11 @@
 /* USER CODE BEGIN Includes */
 #include "freertos_app.h"
 #include "system.h"
+#include "encoder.h"
+#include "motor.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -61,6 +66,26 @@ void MX_FREERTOS_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void uart5_printf(const char *format, ...)
+{
+  char buffer[160];
+  va_list args;
+  int length;
+
+  va_start(args, format);
+  length = vsnprintf(buffer, sizeof(buffer), format, args);
+  va_end(args);
+
+  if (length < 0) {
+    return;
+  }
+  if (length > (int)sizeof(buffer)) {
+    length = (int)sizeof(buffer);
+  }
+
+  (void)HAL_UART_Transmit(&huart5, (uint8_t *)buffer, (uint16_t)length, 50U);
+}
+
 void system_init(void)
 {
   Motor_Init();
@@ -70,13 +95,13 @@ void system_init(void)
   HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
 }
 
-void PID_system_init(void)
-{
-  PID_Init((PID_Controller *)&g_pid_angle, 0.008f, 0.00f, 0.0005f, -0.22f, 0.22f);
-  PID_Init((PID_Controller *)&g_pid_speed_left, 3500, 6000, 0, -10000.0f, 10000.0f);
-  PID_Init((PID_Controller *)&g_pid_speed_right, 3500, 6000, 0, -10000.0f, 10000.0f);
-  PID_Init((PID_Controller *)&g_pid_position, 0.8f, 0.00f, 0.0f, 0.0f, MAX_BASE_SPEED);
-}
+  void PID_system_init(void)
+  {
+    PID_Init((PID_Controller *)&g_pid_angle, 0.009f, 0.00f, 0.000f, -0.22f, 0.22f);
+    PID_Init((PID_Controller *)&g_pid_speed_left, 3500, 6000, 0, -10000.0f, 10000.0f);
+    PID_Init((PID_Controller *)&g_pid_speed_right, 3500, 6000, 0, -10000.0f, 10000.0f);
+    PID_Init((PID_Controller *)&g_pid_position, 1.0f, 0.5f, 0.0f, 0.0f, MAX_BASE_SPEED);
+  }
 /* USER CODE END 0 */
 
 /**
@@ -122,12 +147,14 @@ int main(void)
   /* USER CODE END 2 */
 
   /* Init scheduler */
-  osKernelInitialize();
 
   /* Call init function for freertos objects (in cmsis_os2.c) */
-  MX_FREERTOS_Init();
 
   /* Start scheduler */
+  osKernelInitialize();
+
+  MX_FREERTOS_Init();
+
   osKernelStart();
 
   /* We should never get here as control is now taken by the scheduler */
@@ -136,7 +163,22 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
+    // /* USER CODE END WHILE */
+    // EncoderDebugSnapshot_t encoder_debug;
+    //
+    // // __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
+    // // __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 1000);
+    //
+    // encoder_update_speed();
+    // Encoder_GetDebugSnapshot(&encoder_debug);
+    // uart5_printf("cnt L/R=%d/%d delta=%d/%d raw=%.3f/%.3f\r\n",
+    //              encoder_debug.left_counter_raw,
+    //              encoder_debug.right_counter_raw,
+    //              encoder_debug.left_pulse_delta,
+    //              encoder_debug.right_pulse_delta,
+    //              encoder_debug.raw_left_speed_mps,
+    //              encoder_debug.raw_right_speed_mps);
+    // HAL_Delay(100);
 
     /* USER CODE BEGIN 3 */
   }

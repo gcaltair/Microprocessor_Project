@@ -7,13 +7,13 @@ from typing import List
 import numpy as np
 
 FRAME_MAGIC = b"\xC3\x3C"
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 6
 FRAME_TYPE_MAP_GRID = 1
 FREE_THRESHOLD = -10
 OCCUPIED_THRESHOLD = 10
 
 _HEADER_STRUCT = struct.Struct("<2sBBHH")
-_SUPPORTED_PROTOCOL_VERSIONS = {1, 2, PROTOCOL_VERSION}
+_SUPPORTED_PROTOCOL_VERSIONS = {PROTOCOL_VERSION}
 
 
 @dataclass(slots=True)
@@ -29,7 +29,6 @@ class MapFrame:
     tick_ms: int
     usable_points: int
     endpoints_written: int
-    localization_inliers: int
     grid_initialized: int
     robot_inside_grid: int
     map_update_active: int
@@ -37,7 +36,6 @@ class MapFrame:
     last_localization_mode: int
     robot_cell_x: int
     robot_cell_y: int
-    localization_fitness_m: float
     odom_delta_theta_deg: float
     odom_delta_translation_m: float
     pose_x_m: float
@@ -58,16 +56,8 @@ class MapFrame:
     nav_goal_y_m: float
     nav_target_x_m: float
     nav_target_y_m: float
+    nav_path_points: tuple[tuple[float, float], ...]
     cells: np.ndarray
-    scan_match_reject_reason: int = 0
-    scan_match_tested_candidates: int = 0
-    scan_match_used_points: int = 0
-    scan_match_best_score: float = 0.0
-    scan_match_second_score: float = 0.0
-    scan_match_score_margin: float = 0.0
-    scan_match_dx_m: float = 0.0
-    scan_match_dy_m: float = 0.0
-    scan_match_dtheta_deg: float = 0.0
     control_mode: int = 0
     relative_move_state: int = 0
     left_motor_direction: int = 2
@@ -162,7 +152,6 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     tick_ms = take("<I")
     usable_points = take("<H")
     endpoints_written = take("<H")
-    localization_inliers = take("<H")
     grid_initialized = take("<B")
     robot_inside_grid = take("<B")
     map_update_active = take("<B")
@@ -170,7 +159,6 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     last_localization_mode = take("<B")
     robot_cell_x = take("<h")
     robot_cell_y = take("<h")
-    localization_fitness = take("<f")
     odom_delta_theta = take("<f")
     odom_delta_translation = take("<f")
     pose_x = take("<f")
@@ -192,15 +180,8 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     nav_goal_y = take("<f")
     nav_target_x = take("<f")
     nav_target_y = take("<f")
-    scan_match_reject_reason = 0
-    scan_match_tested_candidates = 0
-    scan_match_used_points = 0
-    scan_match_best_score = 0.0
-    scan_match_second_score = 0.0
-    scan_match_score_margin = 0.0
-    scan_match_dx = 0.0
-    scan_match_dy = 0.0
-    scan_match_dtheta = 0.0
+    nav_path_point_count = take("<H")
+    nav_path_points = tuple((take("<f"), take("<f")) for _ in range(nav_path_point_count))
     control_mode = 0
     relative_move_state = 0
     left_motor_direction = 2
@@ -219,17 +200,6 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     left_speed_feedback = 0.0
     right_speed_feedback = 0.0
     cell_count = width * height
-    if len(payload) - offset >= cell_count + 30:
-        scan_match_reject_reason = take("<B")
-        _scan_match_reserved = take("<B")
-        scan_match_tested_candidates = take("<H")
-        scan_match_used_points = take("<H")
-        scan_match_best_score = take("<f")
-        scan_match_second_score = take("<f")
-        scan_match_score_margin = take("<f")
-        scan_match_dx = take("<f")
-        scan_match_dy = take("<f")
-        scan_match_dtheta = take("<f")
     if len(payload) - offset >= cell_count + 48:
         control_mode = take("<B")
         relative_move_state = take("<B")
@@ -264,7 +234,6 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         tick_ms=tick_ms,
         usable_points=usable_points,
         endpoints_written=endpoints_written,
-        localization_inliers=localization_inliers,
         grid_initialized=grid_initialized,
         robot_inside_grid=robot_inside_grid,
         map_update_active=map_update_active,
@@ -272,7 +241,6 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         last_localization_mode=last_localization_mode,
         robot_cell_x=robot_cell_x,
         robot_cell_y=robot_cell_y,
-        localization_fitness_m=localization_fitness,
         odom_delta_theta_deg=odom_delta_theta,
         odom_delta_translation_m=odom_delta_translation,
         pose_x_m=pose_x,
@@ -293,16 +261,8 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         nav_goal_y_m=nav_goal_y,
         nav_target_x_m=nav_target_x,
         nav_target_y_m=nav_target_y,
+        nav_path_points=nav_path_points,
         cells=cells,
-        scan_match_reject_reason=scan_match_reject_reason,
-        scan_match_tested_candidates=scan_match_tested_candidates,
-        scan_match_used_points=scan_match_used_points,
-        scan_match_best_score=scan_match_best_score,
-        scan_match_second_score=scan_match_second_score,
-        scan_match_score_margin=scan_match_score_margin,
-        scan_match_dx_m=scan_match_dx,
-        scan_match_dy_m=scan_match_dy,
-        scan_match_dtheta_deg=scan_match_dtheta,
         control_mode=control_mode,
         relative_move_state=relative_move_state,
         left_motor_direction=left_motor_direction,

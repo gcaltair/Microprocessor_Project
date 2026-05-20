@@ -14,7 +14,7 @@ from telemetry_protocol import (
     MapFrame,
     TelemetryParser,
 )
-from navigation_protocol import build_clear_goal_command, build_debug_command_line, build_set_goal_command
+from navigation_protocol import build_clear_goal_command, build_debug_command_line, build_plan_command, build_set_goal_command
 
 
 SKIP_REASON_LABELS = {
@@ -26,18 +26,6 @@ SKIP_REASON_LABELS = {
 
 LOCALIZATION_MODE_LABELS = {
     0: "odometry",
-    1: "scan_match",
-}
-
-SCAN_MATCH_REJECT_LABELS = {
-    0: "none",
-    1: "map_not_ready",
-    2: "scan_quality",
-    3: "low_score",
-    4: "low_margin",
-    5: "too_few_hits",
-    6: "large_correction",
-    7: "edge_best",
 }
 
 NAVIGATION_STATUS_LABELS = {
@@ -138,8 +126,12 @@ class MapView(QtWidgets.QLabel):
             QtGui.QImage.Format.Format_RGB888,
         ).copy()
 
-        painter = QtGui.QPainter(qimage)
-        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        for path_x_m, path_y_m in frame.nav_path_points:
+            path_cell_x = int((path_x_m - frame.origin_x_m) / frame.resolution_m_per_cell)
+            path_cell_y = int((path_y_m - frame.origin_y_m) / frame.resolution_m_per_cell)
+            path_y_screen = height - 1 - path_cell_y
+            if 0 <= path_cell_x < width and 0 <= path_y_screen < height:
+                qimage.setPixelColor(path_cell_x, path_y_screen, QtGui.QColor("#2fbf71"))
 
         if self._goal is not None:
             goal_x_m, goal_y_m = self._goal
@@ -147,31 +139,14 @@ class MapView(QtWidgets.QLabel):
             goal_cell_y = int((goal_y_m - frame.origin_y_m) / frame.resolution_m_per_cell)
             goal_y_screen = height - 1 - goal_cell_y
             if 0 <= goal_cell_x < width and 0 <= goal_y_screen < height:
-                center = QtCore.QPointF(goal_cell_x + 0.5, goal_y_screen + 0.5)
-                painter.setPen(QtGui.QPen(QtGui.QColor("#2f80ed"), 0.8))
-                painter.setBrush(QtGui.QBrush(QtGui.QColor("#2f80ed")))
-                painter.drawEllipse(center, 1.8, 1.8)
-                painter.drawLine(QtCore.QPointF(center.x() - 3.0, center.y()), QtCore.QPointF(center.x() + 3.0, center.y()))
-                painter.drawLine(QtCore.QPointF(center.x(), center.y() - 3.0), QtCore.QPointF(center.x(), center.y() + 3.0))
+                qimage.setPixelColor(goal_cell_x, goal_y_screen, QtGui.QColor("#2f80ed"))
 
         if frame.robot_inside_grid:
             robot_x = frame.robot_cell_x
             robot_y = height - 1 - frame.robot_cell_y
             if 0 <= robot_x < width and 0 <= robot_y < height:
-                center = QtCore.QPointF(robot_x + 0.5, robot_y + 0.5)
-                heading_len = max(2.0, min(width, height) * 0.03)
-                angle_rad = np.deg2rad(frame.pose_theta_deg)
-                end = QtCore.QPointF(
-                    center.x() + float(np.cos(angle_rad)) * heading_len,
-                    center.y() - float(np.sin(angle_rad)) * heading_len,
-                )
+                qimage.setPixelColor(robot_x, robot_y, QtGui.QColor("#f25f5c"))
 
-                painter.setPen(QtGui.QPen(QtGui.QColor("#f25f5c"), 0.7))
-                painter.setBrush(QtGui.QBrush(QtGui.QColor("#f25f5c")))
-                painter.drawEllipse(center, 1.6, 1.6)
-                painter.drawLine(center, end)
-
-        painter.end()
         return QtGui.QPixmap.fromImage(qimage)
 
     def _event_to_world(self, position: QtCore.QPointF) -> tuple[float, float] | None:
@@ -233,6 +208,7 @@ class MainWindow(QtWidgets.QWidget):
         self.goal_y_spin.setSingleStep(0.05)
         self.goal_y_spin.setSuffix(" m")
         self.send_goal_button = QtWidgets.QPushButton("Send Goal")
+        self.plan_button = QtWidgets.QPushButton("Plan")
         self.clear_goal_button = QtWidgets.QPushButton("Clear Goal")
         self.nav_status = QtWidgets.QLabel("Navigation idle")
         self.nav_status.setWordWrap(True)
@@ -309,6 +285,7 @@ class MainWindow(QtWidgets.QWidget):
         self.refresh_button.clicked.connect(lambda: self._refresh_ports(self.port_combo.currentText().strip()))
         self.connect_button.clicked.connect(self._toggle_connection)
         self.send_goal_button.clicked.connect(self._send_navigation_goal)
+        self.plan_button.clicked.connect(self._send_plan_goal)
         self.clear_goal_button.clicked.connect(self._clear_navigation_goal)
         self.send_debug_command_button.clicked.connect(self._send_debug_command)
         self.preset_p10_button.clicked.connect(lambda: self._set_debug_command("P1,0"))
@@ -325,6 +302,7 @@ class MainWindow(QtWidgets.QWidget):
 
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(self.send_goal_button)
+        buttons.addWidget(self.plan_button)
         buttons.addWidget(self.clear_goal_button)
 
         layout = QtWidgets.QVBoxLayout(group)
@@ -428,6 +406,14 @@ class MainWindow(QtWidgets.QWidget):
             self.nav_status.setText(f"Goal sent: x={goal_x:.3f} m, y={goal_y:.3f} m")
             self.nav_status.setStyleSheet("color:#7bd389;")
 
+    def _send_plan_goal(self) -> None:
+        goal_x = self.goal_x_spin.value()
+        goal_y = self.goal_y_spin.value()
+        if self._write_command(build_plan_command(goal_x, goal_y)):
+            self.map_view.set_goal((goal_x, goal_y))
+            self.nav_status.setText(f"Plan requested: x={goal_x:.3f} m, y={goal_y:.3f} m")
+            self.nav_status.setStyleSheet("color:#7bd389;")
+
     def _clear_navigation_goal(self) -> None:
         if self._write_command(build_clear_goal_command()):
             self.map_view.set_goal(None)
@@ -481,10 +467,6 @@ class MainWindow(QtWidgets.QWidget):
 
         skip_reason = SKIP_REASON_LABELS.get(frame.last_skip_reason, str(frame.last_skip_reason))
         loc_mode = LOCALIZATION_MODE_LABELS.get(frame.last_localization_mode, str(frame.last_localization_mode))
-        scan_match_reject = SCAN_MATCH_REJECT_LABELS.get(
-            frame.scan_match_reject_reason,
-            str(frame.scan_match_reject_reason),
-        )
         nav_status = NAVIGATION_STATUS_LABELS.get(frame.nav_status, str(frame.nav_status))
         control_mode = CONTROL_MODE_LABELS.get(frame.control_mode, str(frame.control_mode))
         move_state = RELATIVE_MOVE_STATE_LABELS.get(frame.relative_move_state, str(frame.relative_move_state))
@@ -497,7 +479,7 @@ class MainWindow(QtWidgets.QWidget):
             f"target=({frame.nav_target_x_m:.3f}, {frame.nav_target_y_m:.3f})\n"
             f"distance={frame.nav_distance_to_goal_m:.3f} m "
             f"path raw/smooth={frame.nav_raw_path_len}/{frame.nav_smooth_path_len} "
-            f"fail={frame.nav_fail_count}"
+            f"points={len(frame.nav_path_points)} fail={frame.nav_fail_count}"
         )
         self.control_telemetry.setText(
             f"mode={control_mode} move={move_state}\n"
@@ -520,14 +502,7 @@ class MainWindow(QtWidgets.QWidget):
                     f"tick_ms                 : {frame.tick_ms}",
                     f"usable_points           : {frame.usable_points}",
                     f"endpoints_written       : {frame.endpoints_written}",
-                    f"localization_inliers    : {frame.localization_inliers}",
                     f"localization_mode       : {loc_mode}",
-                    f"localization_fitness_m  : {frame.localization_fitness_m:.4f}",
-                    f"scan_match_reject       : {scan_match_reject}",
-                    f"scan_match_candidates   : {frame.scan_match_tested_candidates}",
-                    f"scan_match_points       : {frame.scan_match_used_points}",
-                    f"scan_match_score        : {frame.scan_match_best_score:.1f} / {frame.scan_match_second_score:.1f} / margin {frame.scan_match_score_margin:.1f}",
-                    f"scan_match_delta        : ({frame.scan_match_dx_m:.3f}, {frame.scan_match_dy_m:.3f}, {frame.scan_match_dtheta_deg:.2f} deg)",
                     f"map_update_active       : {frame.map_update_active}",
                     f"skip_reason             : {skip_reason}",
                     f"robot_inside_grid       : {frame.robot_inside_grid}",
@@ -543,6 +518,7 @@ class MainWindow(QtWidgets.QWidget):
                     f"nav_update_count        : {frame.nav_update_count}",
                     f"nav_fail_count          : {frame.nav_fail_count}",
                     f"nav_path_raw_smooth     : {frame.nav_raw_path_len}/{frame.nav_smooth_path_len}",
+                    f"nav_path_points         : {len(frame.nav_path_points)}",
                     f"nav_distance_to_goal_m  : {frame.nav_distance_to_goal_m:.3f}",
                     f"nav_goal                : ({frame.nav_goal_x_m:.3f}, {frame.nav_goal_y_m:.3f})",
                     f"nav_target              : ({frame.nav_target_x_m:.3f}, {frame.nav_target_y_m:.3f})",
@@ -565,6 +541,7 @@ class MainWindow(QtWidgets.QWidget):
                     "gray   = unknown / weak evidence",
                     "red    = robot pose",
                     "blue   = navigation goal",
+                    "green  = firmware path points",
                 ]
             )
         )

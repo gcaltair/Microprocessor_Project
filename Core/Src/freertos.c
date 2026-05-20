@@ -33,7 +33,6 @@
 #include "navigation_task.h"
 #include "scan_preprocess.h"
 #include "system.h"
-#include "telemetry.h"
 #include "tim.h"
 /* USER CODE END Includes */
 

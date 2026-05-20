@@ -25,12 +25,6 @@ typedef enum {
     MAPPING_CELL_UNKNOWN = 2
 } MappingCellState_t;
 
-static uint8_t mapping_task_normalize_downsample(uint8_t downsample)
-{
-    /* 下采样倍率不能为 0；传入 0 时按不下采样处理。 */
-    return (downsample == 0U) ? 1U : downsample;
-}
-
 static MappingCellState_t mapping_task_get_cell_state(int16_t cell_x, int16_t cell_y)
 {
     int8_t center_value = 0;
@@ -110,24 +104,13 @@ static void mapping_task_update_stats(const LidarScanMsg_t *scan_msg,
     g_mappingStats.robot_inside_grid = robot_inside_grid;
     g_mappingStats.map_update_active = (skip_reason == MAPPING_SKIP_REASON_NONE) ? 1U : 0U;
     g_mappingStats.last_skip_reason = (uint8_t)skip_reason;
-    g_mappingStats.last_scan_match_reject_reason = scan_msg->scan_match_reject_reason;
     g_mappingStats.update_count++;
     g_mappingStats.last_scan_sequence = scan_msg->scan_sequence;
     g_mappingStats.last_usable_points = scan_msg->quality.usable_point_count;
     g_mappingStats.last_endpoints_written = endpoints_written;
     g_mappingStats.last_localization_mode = (LocalizationMode_t)scan_msg->localization_mode;
-    g_mappingStats.last_localization_inliers = scan_msg->localization_inliers;
-    g_mappingStats.last_localization_fitness_m = scan_msg->localization_fitness_m;
     g_mappingStats.last_odom_delta_theta_deg = scan_msg->odom_delta_theta_deg;
     g_mappingStats.last_odom_delta_translation_m = scan_msg->odom_delta_translation_m;
-    g_mappingStats.last_scan_match_tested_candidates = scan_msg->scan_match_tested_candidates;
-    g_mappingStats.last_scan_match_used_points = scan_msg->scan_match_used_points;
-    g_mappingStats.last_scan_match_best_score = scan_msg->scan_match_best_score;
-    g_mappingStats.last_scan_match_second_score = scan_msg->scan_match_second_score;
-    g_mappingStats.last_scan_match_score_margin = scan_msg->scan_match_score_margin;
-    g_mappingStats.last_scan_match_dx_m = scan_msg->scan_match_dx_m;
-    g_mappingStats.last_scan_match_dy_m = scan_msg->scan_match_dy_m;
-    g_mappingStats.last_scan_match_dtheta_deg = scan_msg->scan_match_dtheta_deg;
     g_mappingStats.last_pose = scan_msg->corrected_pose;
 
     if (skip_reason == MAPPING_SKIP_REASON_TURNING) {
@@ -172,7 +155,7 @@ static void mapping_task_update_grid_from_scan(const LidarScanMsg_t *scan_msg)
     robot_inside_grid = OccupancyGrid_WorldToCell(&g_mappingGrid,
                                                   scan_msg->corrected_pose.x_m,
                                                   scan_msg->corrected_pose.y_m,
-                                                  &robot_cell);
+                                                   &robot_cell);
     if (robot_inside_grid == 0U) {
         /* 如果里程计位姿已经离开地图范围，则不写射线，只更新调试状态。 */
         mapping_task_update_stats(scan_msg,
@@ -297,21 +280,6 @@ void MappingTask_GetStatsSnapshot(MappingTaskStats_t *stats)
     mapping_task_unlock_grid();
 }
 
-void MappingTask_GetRenderDimensions(uint8_t downsample, uint16_t *width, uint16_t *height)
-{
-    /* 根据下采样倍率计算 ASCII 渲染后的宽高。 */
-    downsample = mapping_task_normalize_downsample(downsample);
-
-    /* 调用方可以只查询宽或只查询高，因此两个输出指针都允许为空。 */
-    if (width != NULL) {
-        *width = (uint16_t)((MAPPING_GRID_WIDTH_CELLS + downsample - 1U) / downsample);
-    }
-
-    if (height != NULL) {
-        *height = (uint16_t)((MAPPING_GRID_HEIGHT_CELLS + downsample - 1U) / downsample);
-    }
-}
-
 uint8_t MappingTask_GetGridMeta(MappingGridMeta_t *meta)
 {
     /* 读取地图尺寸、分辨率和世界坐标原点，供上位机还原栅格坐标。 */
@@ -415,91 +383,6 @@ void MappingTask_EndGridRead(void)
 uint8_t MappingTask_ReadCellDuringGridRead(int16_t cell_x, int16_t cell_y, int8_t *value)
 {
     return OccupancyGrid_GetCell(&g_mappingGrid, cell_x, cell_y, value);
-}
-
-uint8_t MappingTask_RenderAsciiRow(uint16_t render_row, uint8_t downsample, char *buffer, uint16_t buffer_size)
-{
-    uint16_t render_width;
-    uint16_t render_height;
-    uint16_t render_col;
-    uint16_t block_y_start;
-    uint16_t block_y_end;
-
-    /* 将占据栅格的一行渲染成 ASCII，主要用于串口调试或轻量遥测。 */
-    if ((buffer == NULL) || (buffer_size == 0U)) {
-        return 0U;
-    }
-
-    MappingTask_GetRenderDimensions(downsample, &render_width, &render_height);
-    downsample = mapping_task_normalize_downsample(downsample);
-
-    /* 输出缓冲区需要容纳一整行字符和结尾的 '\0'。 */
-    if ((render_row >= render_height) || (buffer_size <= render_width)) {
-        return 0U;
-    }
-
-    /* 渲染时第 0 行显示地图顶部，而栅格内部 y=0 表示底部。 */
-    block_y_start = (uint16_t)(MAPPING_GRID_HEIGHT_CELLS - 1U - (render_row * downsample));
-    block_y_end = (block_y_start >= (downsample - 1U)) ? (uint16_t)(block_y_start - (downsample - 1U)) : 0U;
-
-    mapping_task_lock_grid();
-    for (render_col = 0U; render_col < render_width; ++render_col) {
-        uint16_t block_x_start = (uint16_t)(render_col * downsample);
-        uint16_t block_x_end = block_x_start + downsample;
-        uint16_t cell_y;
-        uint16_t cell_x;
-        uint8_t has_free = 0U;
-        char symbol = ' ';
-
-        /* 一个 ASCII 字符代表 downsample x downsample 的栅格块。 */
-        if (block_x_end > MAPPING_GRID_WIDTH_CELLS) {
-            block_x_end = MAPPING_GRID_WIDTH_CELLS;
-        }
-
-        for (cell_y = block_y_start + 1U; cell_y > block_y_end; --cell_y) {
-            for (cell_x = block_x_start; cell_x < block_x_end; ++cell_x) {
-                int8_t cell_value;
-
-                /* 机器人所在块优先显示为 R。 */
-                if ((g_mappingStats.robot_inside_grid != 0U) &&
-                    (g_mappingStats.last_robot_cell.x == (int16_t)cell_x) &&
-                    (g_mappingStats.last_robot_cell.y == (int16_t)(cell_y - 1U))) {
-                    symbol = 'R';
-                    break;
-                }
-
-                if (OccupancyGrid_GetCell(&g_mappingGrid, cell_x, (int32_t)(cell_y - 1U), &cell_value) == 0U) {
-                    continue;
-                }
-
-                /* 占用块优先显示为 #。 */
-                if (cell_value >= 10) {
-                    symbol = '#';
-                    break;
-                }
-
-                /* 只要块中存在明确空闲栅格，后续可显示为 '.'。 */
-                if (cell_value <= -10) {
-                    has_free = 1U;
-                }
-            }
-
-            if ((symbol == 'R') || (symbol == '#')) {
-                break;
-            }
-        }
-
-        if ((symbol == ' ') && (has_free != 0U)) {
-            /* 没有机器人和障碍时，用 '.' 表示该块包含已知空闲区域。 */
-            symbol = '.';
-        }
-
-        buffer[render_col] = symbol;
-    }
-    mapping_task_unlock_grid();
-
-    buffer[render_width] = '\0';
-    return 1U;
 }
 
 uint8_t MappingTask_WorldToCell(float x_m, float y_m, SlamGridCoord_t *cell)

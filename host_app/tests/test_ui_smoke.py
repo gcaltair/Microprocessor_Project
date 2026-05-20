@@ -33,7 +33,6 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         tick_ms=1000,
         usable_points=40,
         endpoints_written=12,
-        localization_inliers=18,
         grid_initialized=1,
         robot_inside_grid=1,
         map_update_active=1,
@@ -41,7 +40,6 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         last_localization_mode=0,
         robot_cell_x=1,
         robot_cell_y=1,
-        localization_fitness_m=0.01,
         odom_delta_theta_deg=0.5,
         odom_delta_translation_m=0.02,
         pose_x_m=0.1,
@@ -62,6 +60,7 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         nav_goal_y_m=0.7,
         nav_target_x_m=0.2,
         nav_target_y_m=0.3,
+        nav_path_points=((0.1, 0.2), (0.2, 0.3)),
         cells=np.array(
             [[0, 10, -10, 0], [0, 0, 0, 0], [0, 0, 20, 0], [-15, 0, 0, 0]],
             dtype=np.int8,
@@ -79,15 +78,13 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         tick_ms=1250,
         usable_points=41,
         endpoints_written=13,
-        localization_inliers=19,
         grid_initialized=1,
         robot_inside_grid=1,
         map_update_active=1,
         last_skip_reason=3,
-        last_localization_mode=1,
+        last_localization_mode=0,
         robot_cell_x=2,
         robot_cell_y=3,
-        localization_fitness_m=0.02,
         odom_delta_theta_deg=0.6,
         odom_delta_translation_m=0.03,
         pose_x_m=0.3,
@@ -108,15 +105,7 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         nav_goal_y_m=0.7,
         nav_target_x_m=0.35,
         nav_target_y_m=0.45,
-        scan_match_reject_reason=4,
-        scan_match_tested_candidates=125,
-        scan_match_used_points=44,
-        scan_match_best_score=48.0,
-        scan_match_second_score=45.0,
-        scan_match_score_margin=3.0,
-        scan_match_dx_m=0.02,
-        scan_match_dy_m=-0.02,
-        scan_match_dtheta_deg=1.0,
+        nav_path_points=((0.3, 0.4), (0.35, 0.45), (0.6, 0.7)),
         control_mode=1,
         relative_move_state=2,
         left_motor_direction=0,
@@ -149,16 +138,16 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
     assert "frame=1 update=10 scan=50" in first_text
     assert "frame=2 update=11 scan=51" in second_text
     assert "skip_reason             : quality" in stats_text
-    assert "localization_mode       : scan_match" in stats_text
-    assert "scan_match_reject       : low_margin" in stats_text
-    assert "scan_match_candidates   : 125" in stats_text
+    assert "localization_mode       : odometry" in stats_text
     assert "nav_status              : busy" in stats_text
+    assert "nav_path_points         : 3" in stats_text
     assert "control_mode            : position" in stats_text
     assert "relative_move_state     : driving" in stats_text
     assert "pwm_left_right          : 1200 / 1300" in stats_text
     assert "pid_speed_output_l_r    : +514 / -615" in stats_text
     assert "PWM L/R= 1200/ 1300" in window.control_telemetry.text()
     assert window.send_goal_button.text() == "Send Goal"
+    assert window.plan_button.text() == "Plan"
     assert window.clear_goal_button.text() == "Clear Goal"
     assert window.send_debug_command_button.text() == "Send Debug"
     assert window.debug_command_edit.text() == "P1,0"

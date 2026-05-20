@@ -11,8 +11,7 @@
 #define LIDAR_DMA_BLOCK_QUEUE_LENGTH  16U
 
 typedef enum {
-    LOCALIZATION_MODE_ODOMETRY_ONLY = 0,
-    LOCALIZATION_MODE_SCAN_MATCH = 1
+    LOCALIZATION_MODE_ODOMETRY_ONLY = 0
 } LocalizationMode_t;
 
 typedef struct {
@@ -28,23 +27,12 @@ typedef struct {
     SlamPose2D_t pose_snapshot;
     SlamPose2D_t corrected_pose;
     LidarScanQuality_t quality;
-    float localization_fitness_m;
-    uint16_t localization_inliers;
     uint8_t localization_mode;
-    uint8_t scan_match_reject_reason;
     uint8_t map_update_allowed;
     uint8_t turning_detected;
     uint8_t map_skip_reason;
     float odom_delta_theta_deg;
     float odom_delta_translation_m;
-    uint16_t scan_match_tested_candidates;
-    uint16_t scan_match_used_points;
-    float scan_match_best_score;
-    float scan_match_second_score;
-    float scan_match_score_margin;
-    float scan_match_dx_m;
-    float scan_match_dy_m;
-    float scan_match_dtheta_deg;
 } LidarScanMsg_t;
 
 typedef struct {

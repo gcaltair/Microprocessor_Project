@@ -64,6 +64,7 @@ static float s_drive_axis_y = 0.0f;
  * 误差超过退出阈值时开始角度修正，误差回到进入阈值内时关闭修正，避免小误差附近反复抖动。
  */
 static uint8_t s_angle_control_active = 0U;
+static ControlDebugSnapshot_t s_control_debug_snapshot;
 
 static float pid_normalize_angle_deg(float angle_deg)
 {
@@ -374,6 +375,15 @@ void Speed_Control_Loop(float dt)
     } else {
         Motor_Control(MOTOR_RIGHT, MOTOR_STOP, 0);
     }
+
+    s_control_debug_snapshot.left_direction = direction_left;
+    s_control_debug_snapshot.right_direction = direction_right;
+    s_control_debug_snapshot.left_pwm = (uint16_t)applied_pwm_left;
+    s_control_debug_snapshot.right_pwm = (uint16_t)applied_pwm_right;
+    s_control_debug_snapshot.left_speed_pid_output = (int16_t)raw_pwm_left;
+    s_control_debug_snapshot.right_speed_pid_output = (int16_t)raw_pwm_right;
+    s_control_debug_snapshot.left_speed_feedback_mps = g_left_speed;
+    s_control_debug_snapshot.right_speed_feedback_mps = g_right_speed;
 }
 
 /*
@@ -421,6 +431,13 @@ void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt
 
     g_pid_speed_left.setpoint = base_speed - turn_output;
     g_pid_speed_right.setpoint = base_speed + turn_output;
+    s_control_debug_snapshot.control_mode = (uint8_t)g_control_mode;
+    s_control_debug_snapshot.relative_move_state = (uint8_t)g_relative_move_state;
+    s_control_debug_snapshot.angle_pid_output_mps = turn_output;
+    s_control_debug_snapshot.angle_error_deg = error;
+    s_control_debug_snapshot.base_speed_mps = base_speed;
+    s_control_debug_snapshot.left_speed_setpoint_mps = g_pid_speed_left.setpoint;
+    s_control_debug_snapshot.right_speed_setpoint_mps = g_pid_speed_right.setpoint;
 
     Speed_Control_Loop(dt);
 }
@@ -437,8 +454,34 @@ void Control_UpdateWheelSpeedTest(float dt)
     float right_setpoint = g_pid_speed_right.setpoint;
 
     base_car_speed = (left_setpoint + right_setpoint) * 0.5f;
+    s_control_debug_snapshot.control_mode = (uint8_t)g_control_mode;
+    s_control_debug_snapshot.relative_move_state = (uint8_t)g_relative_move_state;
+    s_control_debug_snapshot.position_pid_output_mps = 0.0f;
+    s_control_debug_snapshot.position_error_m = 0.0f;
+    s_control_debug_snapshot.angle_pid_output_mps = 0.0f;
+    s_control_debug_snapshot.angle_error_deg = 0.0f;
+    s_control_debug_snapshot.base_speed_mps = base_car_speed;
+    s_control_debug_snapshot.left_speed_setpoint_mps = left_setpoint;
+    s_control_debug_snapshot.right_speed_setpoint_mps = right_setpoint;
 
     Speed_Control_Loop(dt);
+}
+
+void Control_GetDebugSnapshot(ControlDebugSnapshot_t *snapshot)
+{
+    if (snapshot == NULL) {
+        return;
+    }
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexAcquire(g_pidMutex, osWaitForever);
+    }
+
+    *snapshot = s_control_debug_snapshot;
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexRelease(g_pidMutex);
+    }
 }
 
 uint8_t Control_GetPidTunings(char loop_id, float *kp, float *ki, float *kd)
@@ -669,6 +712,8 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
     {
         case RELATIVE_MOVE_IDLE:
             base_car_speed = 0.0f;
+            s_control_debug_snapshot.position_pid_output_mps = 0.0f;
+            s_control_debug_snapshot.position_error_m = 0.0f;
             break;
 
         case RELATIVE_MOVE_TURNING:
@@ -677,6 +722,8 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
 
             base_car_speed = 0.0f;
             angle_error = pid_normalize_angle_deg(g_pid_angle.setpoint - current_angle_deg);
+            s_control_debug_snapshot.position_pid_output_mps = 0.0f;
+            s_control_debug_snapshot.position_error_m = s_target_distance;
 
             if (fabsf(angle_error) < ANGLE_TOLERANCE_FOR_MOVING) {
                 s_initial_x = current_x_m;
@@ -713,6 +760,8 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
                 g_relative_move_state = RELATIVE_MOVE_IDLE;
                 g_control_mode = CONTROL_MODE_MANUAL;
                 base_car_speed = 0.0f;
+                s_control_debug_snapshot.position_pid_output_mps = 0.0f;
+                s_control_debug_snapshot.position_error_m = 0.0f;
                 s_drive_direction = 1.0f;
                 g_pid_position.integral = 0.0f;
                 g_pid_position.last_error = 0.0f;
@@ -724,6 +773,8 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
 
             g_pid_position.setpoint = 0.0f;
             raw_base_speed = s_drive_direction * PID_Calculate((PID_Controller *)&g_pid_position, -distance_error, dt);
+            s_control_debug_snapshot.position_pid_output_mps = raw_base_speed;
+            s_control_debug_snapshot.position_error_m = distance_error;
             base_car_speed = raw_base_speed;
 
             if (base_car_speed > MAX_BASE_SPEED) {

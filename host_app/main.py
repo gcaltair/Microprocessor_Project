@@ -48,6 +48,24 @@ NAVIGATION_STATUS_LABELS = {
     4: "busy",
 }
 
+CONTROL_MODE_LABELS = {
+    0: "manual",
+    1: "position",
+    2: "speed_test",
+}
+
+RELATIVE_MOVE_STATE_LABELS = {
+    0: "idle",
+    1: "turning",
+    2: "driving",
+}
+
+MOTOR_DIRECTION_LABELS = {
+    0: "forward",
+    1: "backward",
+    2: "stop",
+}
+
 
 class MapView(QtWidgets.QLabel):
     goalPicked = QtCore.Signal(float, float)
@@ -222,6 +240,9 @@ class MainWindow(QtWidgets.QWidget):
         self.nav_telemetry = QtWidgets.QLabel("Navigation telemetry: no frame")
         self.nav_telemetry.setWordWrap(True)
         self.nav_telemetry.setStyleSheet("font-family:Consolas, monospace; color:#dce3ea;")
+        self.control_telemetry = QtWidgets.QLabel("Control telemetry: no frame")
+        self.control_telemetry.setWordWrap(True)
+        self.control_telemetry.setStyleSheet("font-family:Consolas, monospace; color:#dce3ea;")
 
         self.debug_command_edit = QtWidgets.QLineEdit("P1,0")
         self.debug_command_edit.setPlaceholderText("ASCII command, e.g. P1,0")
@@ -311,6 +332,7 @@ class MainWindow(QtWidgets.QWidget):
         layout.addLayout(buttons)
         layout.addWidget(self.nav_status)
         layout.addWidget(self.nav_telemetry)
+        layout.addWidget(self.control_telemetry)
         layout.addWidget(QtWidgets.QLabel("Tip: click the map to fill goal coordinates."))
         return group
 
@@ -464,6 +486,10 @@ class MainWindow(QtWidgets.QWidget):
             str(frame.scan_match_reject_reason),
         )
         nav_status = NAVIGATION_STATUS_LABELS.get(frame.nav_status, str(frame.nav_status))
+        control_mode = CONTROL_MODE_LABELS.get(frame.control_mode, str(frame.control_mode))
+        move_state = RELATIVE_MOVE_STATE_LABELS.get(frame.relative_move_state, str(frame.relative_move_state))
+        left_direction = MOTOR_DIRECTION_LABELS.get(frame.left_motor_direction, str(frame.left_motor_direction))
+        right_direction = MOTOR_DIRECTION_LABELS.get(frame.right_motor_direction, str(frame.right_motor_direction))
 
         self.nav_telemetry.setText(
             f"fw_status={nav_status} goal_valid={frame.nav_goal_valid} target_valid={frame.nav_target_valid}\n"
@@ -472,6 +498,14 @@ class MainWindow(QtWidgets.QWidget):
             f"distance={frame.nav_distance_to_goal_m:.3f} m "
             f"path raw/smooth={frame.nav_raw_path_len}/{frame.nav_smooth_path_len} "
             f"fail={frame.nav_fail_count}"
+        )
+        self.control_telemetry.setText(
+            f"mode={control_mode} move={move_state}\n"
+            f"PWM L/R={frame.left_pwm:5d}/{frame.right_pwm:5d} "
+            f"dir={left_direction}/{right_direction}\n"
+            f"PID pos={frame.position_pid_output_mps:+.3f} m/s "
+            f"angle={frame.angle_pid_output_mps:+.3f} m/s\n"
+            f"PID speed L/R={frame.left_speed_pid_output:+6d}/{frame.right_speed_pid_output:+6d}"
         )
 
         self.frame_info.setText(
@@ -512,6 +546,18 @@ class MainWindow(QtWidgets.QWidget):
                     f"nav_distance_to_goal_m  : {frame.nav_distance_to_goal_m:.3f}",
                     f"nav_goal                : ({frame.nav_goal_x_m:.3f}, {frame.nav_goal_y_m:.3f})",
                     f"nav_target              : ({frame.nav_target_x_m:.3f}, {frame.nav_target_y_m:.3f})",
+                    f"control_mode            : {control_mode}",
+                    f"relative_move_state     : {move_state}",
+                    f"pwm_left_right          : {frame.left_pwm} / {frame.right_pwm}",
+                    f"motor_dir_left_right    : {left_direction} / {right_direction}",
+                    f"pid_position_output     : {frame.position_pid_output_mps:+.4f} m/s",
+                    f"pid_position_error      : {frame.position_error_m:.4f} m",
+                    f"pid_angle_output        : {frame.angle_pid_output_mps:+.4f} m/s",
+                    f"pid_angle_error         : {frame.angle_error_deg:+.3f} deg",
+                    f"pid_speed_output_l_r    : {frame.left_speed_pid_output:+d} / {frame.right_speed_pid_output:+d}",
+                    f"base_speed              : {frame.base_speed_mps:+.4f} m/s",
+                    f"wheel_setpoint_l_r      : {frame.left_speed_setpoint_mps:+.4f} / {frame.right_speed_setpoint_mps:+.4f} m/s",
+                    f"wheel_feedback_l_r      : {frame.left_speed_feedback_mps:+.4f} / {frame.right_speed_feedback_mps:+.4f} m/s",
                     "",
                     "Legend:",
                     "dark   = occupied",

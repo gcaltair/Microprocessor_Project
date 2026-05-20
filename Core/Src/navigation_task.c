@@ -510,6 +510,34 @@ static uint16_t navigation_open_pop_best(const NavigationGridPoint_t *goal)
  * 再正向输出。输出时只保留起点、转折点和终点，去掉同一直线上的中间格，
  * 降低后续平滑与控制目标的点数。
  */
+static uint8_t navigation_direction_between(const NavigationGridPoint_t *start_cell,
+                                            const NavigationGridPoint_t *end_cell,
+                                            uint8_t *direction)
+{
+    if ((start_cell == NULL) || (end_cell == NULL) || (direction == NULL)) {
+        return 0U;
+    }
+
+    if ((end_cell->x == (int16_t)(start_cell->x + 1)) && (end_cell->y == start_cell->y)) {
+        *direction = 0U;
+        return 1U;
+    }
+    if ((end_cell->x == (int16_t)(start_cell->x - 1)) && (end_cell->y == start_cell->y)) {
+        *direction = 1U;
+        return 1U;
+    }
+    if ((end_cell->x == start_cell->x) && (end_cell->y == (int16_t)(start_cell->y + 1))) {
+        *direction = 2U;
+        return 1U;
+    }
+    if ((end_cell->x == start_cell->x) && (end_cell->y == (int16_t)(start_cell->y - 1))) {
+        *direction = 3U;
+        return 1U;
+    }
+
+    return 0U;
+}
+
 static uint8_t navigation_build_raw_path(uint16_t goal_index, uint16_t start_index)
 {
     NavigationGridPoint_t reversed_path[NAVIGATION_MAX_PATH_POINTS];
@@ -517,7 +545,8 @@ static uint8_t navigation_build_raw_path(uint16_t goal_index, uint16_t start_ind
     uint16_t current_index = goal_index;
     uint8_t last_forward_dir = NAVIGATION_PARENT_NONE;
     uint8_t have_last_dir = 0U;
-    uint16_t reverse_pos;
+    NavigationGridPoint_t previous;
+    uint16_t forward_pos;
 
     /* 从终点沿父节点回溯到起点，得到反向路径。 */
     while (reversed_len < NAVIGATION_MAX_PATH_POINTS) {
@@ -548,39 +577,38 @@ static uint8_t navigation_build_raw_path(uint16_t goal_index, uint16_t start_ind
 
     /* 只保留起点、拐点和终点，把 A* 栅格路径压缩成折线路径。 */
     g_navigationRawPathLen = 0U;
-    for (reverse_pos = reversed_len; reverse_pos > 0U; --reverse_pos) {
-        NavigationGridPoint_t current = reversed_path[reverse_pos - 1U];
-        uint8_t store_point = 0U;
+    g_navigationRawPath[g_navigationRawPathLen++] = reversed_path[reversed_len - 1U];
+    previous = reversed_path[reversed_len - 1U];
 
-        if ((reverse_pos == reversed_len) || (reverse_pos == 1U)) {
-            store_point = 1U;
-        } else {
-            NavigationGridPoint_t previous = reversed_path[reverse_pos];
-            uint8_t forward_dir;
+    for (forward_pos = (uint16_t)(reversed_len - 1U); forward_pos > 0U; --forward_pos) {
+        NavigationGridPoint_t current = reversed_path[forward_pos - 1U];
+        uint8_t forward_dir;
 
-            if (current.x > previous.x) {
-                forward_dir = 0U;
-            } else if (current.x < previous.x) {
-                forward_dir = 1U;
-            } else if (current.y > previous.y) {
-                forward_dir = 2U;
-            } else {
-                forward_dir = 3U;
-            }
-
-            if ((have_last_dir != 0U) && (forward_dir != last_forward_dir)) {
-                store_point = 1U;
-            }
-            last_forward_dir = forward_dir;
-            have_last_dir = 1U;
+        if (navigation_direction_between(&previous, &current, &forward_dir) == 0U) {
+            return 0U;
         }
 
-        if (store_point != 0U) {
-            if (g_navigationRawPathLen >= NAVIGATION_MAX_PATH_POINTS) {
-                return 0U;
+        if ((have_last_dir != 0U) && (forward_dir != last_forward_dir)) {
+            if ((g_navigationRawPath[g_navigationRawPathLen - 1U].x != previous.x) ||
+                (g_navigationRawPath[g_navigationRawPathLen - 1U].y != previous.y)) {
+                if (g_navigationRawPathLen >= NAVIGATION_MAX_PATH_POINTS) {
+                    return 0U;
+                }
+                g_navigationRawPath[g_navigationRawPathLen++] = previous;
             }
-            g_navigationRawPath[g_navigationRawPathLen++] = current;
         }
+
+        last_forward_dir = forward_dir;
+        have_last_dir = 1U;
+        previous = current;
+    }
+
+    if ((g_navigationRawPath[g_navigationRawPathLen - 1U].x != reversed_path[0].x) ||
+        (g_navigationRawPath[g_navigationRawPathLen - 1U].y != reversed_path[0].y)) {
+        if (g_navigationRawPathLen >= NAVIGATION_MAX_PATH_POINTS) {
+            return 0U;
+        }
+        g_navigationRawPath[g_navigationRawPathLen++] = reversed_path[0];
     }
 
     return (g_navigationRawPathLen > 0U) ? 1U : 0U;
@@ -681,50 +709,40 @@ static uint8_t navigation_find_path_map(const NavigationGridPoint_t *start_cell,
 static uint8_t navigation_line_free(const NavigationGridPoint_t *start_cell,
                                     const NavigationGridPoint_t *end_cell)
 {
-    int16_t x0;
-    int16_t y0;
-    int16_t x1;
-    int16_t y1;
-    int16_t dx;
-    int16_t dy;
-    int16_t sx;
-    int16_t sy;
-    int16_t err;
-
     /* Bresenham 视线检测：如果直线经过膨胀障碍，则不能把中间路径点删掉。 */
     if ((start_cell == NULL) || (end_cell == NULL)) {
         return 0U;
     }
 
-    x0 = start_cell->x;
-    y0 = start_cell->y;
-    x1 = end_cell->x;
-    y1 = end_cell->y;
-    dx = (int16_t)abs(x1 - x0);
-    dy = (int16_t)(-abs(y1 - y0));
-    sx = (x0 < x1) ? 1 : -1;
-    sy = (y0 < y1) ? 1 : -1;
-    err = (int16_t)(dx + dy);
+    if ((start_cell->x != end_cell->x) && (start_cell->y != end_cell->y)) {
+        return 0U;
+    }
 
-    for (;;) {
-        int16_t e2;
+    if (start_cell->x == end_cell->x) {
+        int16_t y = start_cell->y;
+        int16_t step = (end_cell->y >= start_cell->y) ? 1 : -1;
 
-        if (navigation_is_blocked_inflated(x0, y0, start_cell) != 0U) {
-            return 0U;
+        for (;;) {
+            if (navigation_is_blocked_inflated(start_cell->x, y, start_cell) != 0U) {
+                return 0U;
+            }
+            if (y == end_cell->y) {
+                return 1U;
+            }
+            y = (int16_t)(y + step);
         }
+    } else {
+        int16_t x = start_cell->x;
+        int16_t step = (end_cell->x >= start_cell->x) ? 1 : -1;
 
-        if ((x0 == x1) && (y0 == y1)) {
-            return 1U;
-        }
-
-        e2 = (int16_t)(2 * err);
-        if (e2 >= dy) {
-            err = (int16_t)(err + dy);
-            x0 = (int16_t)(x0 + sx);
-        }
-        if (e2 <= dx) {
-            err = (int16_t)(err + dx);
-            y0 = (int16_t)(y0 + sy);
+        for (;;) {
+            if (navigation_is_blocked_inflated(x, start_cell->y, start_cell) != 0U) {
+                return 0U;
+            }
+            if (x == end_cell->x) {
+                return 1U;
+            }
+            x = (int16_t)(x + step);
         }
     }
 }
@@ -735,6 +753,61 @@ static uint8_t navigation_line_free(const NavigationGridPoint_t *start_cell,
  * 从当前原始路径点开始，尽量向后寻找最远且直线可达的点作为下一个点。
  * 每个保留下来的导航栅格点同时转换为世界坐标，供控制层作为局部目标使用。
  */
+static uint8_t navigation_orthogonal_link_free(const NavigationGridPoint_t *start_cell,
+                                               const NavigationGridPoint_t *end_cell,
+                                               const NavigationGridPoint_t *preferred_next,
+                                               NavigationGridPoint_t *link_points,
+                                               uint8_t *link_len)
+{
+    NavigationGridPoint_t corners[2];
+    uint8_t first_corner = 0U;
+    uint8_t attempt;
+
+    if ((start_cell == NULL) || (end_cell == NULL) || (link_points == NULL) || (link_len == NULL)) {
+        return 0U;
+    }
+
+    if (navigation_line_free(start_cell, end_cell) != 0U) {
+        link_points[0] = *end_cell;
+        *link_len = 1U;
+        return 1U;
+    }
+
+    corners[0].x = start_cell->x;
+    corners[0].y = end_cell->y;
+    corners[1].x = end_cell->x;
+    corners[1].y = start_cell->y;
+
+    if (preferred_next != NULL) {
+        if (preferred_next->y == start_cell->y) {
+            first_corner = 1U;
+        } else if (preferred_next->x == start_cell->x) {
+            first_corner = 0U;
+        }
+    }
+
+    for (attempt = 0U; attempt < 2U; ++attempt) {
+        uint8_t corner_index = (attempt == 0U) ? first_corner : (uint8_t)(1U - first_corner);
+        NavigationGridPoint_t corner = corners[corner_index];
+
+        if (((corner.x == start_cell->x) && (corner.y == start_cell->y)) ||
+            ((corner.x == end_cell->x) && (corner.y == end_cell->y)) ||
+            (navigation_is_inside(corner.x, corner.y) == 0U)) {
+            continue;
+        }
+
+        if ((navigation_line_free(start_cell, &corner) != 0U) &&
+            (navigation_line_free(&corner, end_cell) != 0U)) {
+            link_points[0] = corner;
+            link_points[1] = *end_cell;
+            *link_len = 2U;
+            return 1U;
+        }
+    }
+
+    return 0U;
+}
+
 static uint8_t navigation_build_smooth_path_from_raw_path(void)
 {
     uint16_t raw_index = 0U;
@@ -753,22 +826,44 @@ static uint8_t navigation_build_smooth_path_from_raw_path(void)
     while (raw_index < (uint16_t)(g_navigationRawPathLen - 1U)) {
         uint16_t candidate;
         uint16_t best_next = (uint16_t)(raw_index + 1U);
+        NavigationGridPoint_t best_link[2];
+        uint8_t best_link_len = 1U;
+        uint8_t link_pos;
+
+        best_link[0] = g_navigationRawPath[best_next];
 
         for (candidate = (uint16_t)(g_navigationRawPathLen - 1U); candidate > raw_index; --candidate) {
-            if (navigation_line_free(&g_navigationRawPath[raw_index], &g_navigationRawPath[candidate]) != 0U) {
+            NavigationGridPoint_t link_points[2];
+            uint8_t link_len = 0U;
+
+            if (navigation_orthogonal_link_free(&g_navigationRawPath[raw_index],
+                                                &g_navigationRawPath[candidate],
+                                                &g_navigationRawPath[raw_index + 1U],
+                                                link_points,
+                                                &link_len) != 0U) {
                 best_next = candidate;
+                best_link[0] = link_points[0];
+                best_link[1] = link_points[1];
+                best_link_len = link_len;
                 break;
             }
         }
 
-        if (g_navigationSmoothPathLen >= NAVIGATION_MAX_PATH_POINTS) {
-            return 0U;
-        }
+        for (link_pos = 0U; link_pos < best_link_len; ++link_pos) {
+            if ((g_navigationSmoothGridPath[g_navigationSmoothPathLen - 1U].x == best_link[link_pos].x) &&
+                (g_navigationSmoothGridPath[g_navigationSmoothPathLen - 1U].y == best_link[link_pos].y)) {
+                continue;
+            }
 
-        g_navigationSmoothGridPath[g_navigationSmoothPathLen] = g_navigationRawPath[best_next];
-        g_navigationSmoothPath[g_navigationSmoothPathLen] =
-            navigation_nav_cell_to_world(&g_navigationSmoothGridPath[g_navigationSmoothPathLen]);
-        g_navigationSmoothPathLen++;
+            if (g_navigationSmoothPathLen >= NAVIGATION_MAX_PATH_POINTS) {
+                return 0U;
+            }
+
+            g_navigationSmoothGridPath[g_navigationSmoothPathLen] = best_link[link_pos];
+            g_navigationSmoothPath[g_navigationSmoothPathLen] =
+                navigation_nav_cell_to_world(&g_navigationSmoothGridPath[g_navigationSmoothPathLen]);
+            g_navigationSmoothPathLen++;
+        }
         raw_index = best_next;
     }
 
@@ -969,11 +1064,37 @@ NavigationStatus_t NavigationTask_Update(void)
     }
 
     if (g_navigationSmoothPathLen >= 2U) {
-        target_pose.x_m = g_navigationSmoothPath[1].x_m;
-        target_pose.y_m = g_navigationSmoothPath[1].y_m;
+        if ((g_navigationSmoothGridPath[1].x != start_cell.x) &&
+            (g_navigationSmoothGridPath[1].y == start_cell.y)) {
+            target_pose.x_m = g_navigationSmoothPath[1].x_m;
+            target_pose.y_m = current_pose.y_m;
+        } else if ((g_navigationSmoothGridPath[1].y != start_cell.y) &&
+                   (g_navigationSmoothGridPath[1].x == start_cell.x)) {
+            target_pose.x_m = current_pose.x_m;
+            target_pose.y_m = g_navigationSmoothPath[1].y_m;
+        } else {
+            float dx_target_abs = fabsf(g_navigationSmoothPath[1].x_m - current_pose.x_m);
+            float dy_target_abs = fabsf(g_navigationSmoothPath[1].y_m - current_pose.y_m);
+
+            if (dx_target_abs >= dy_target_abs) {
+                target_pose.x_m = g_navigationSmoothPath[1].x_m;
+                target_pose.y_m = current_pose.y_m;
+            } else {
+                target_pose.x_m = current_pose.x_m;
+                target_pose.y_m = g_navigationSmoothPath[1].y_m;
+            }
+        }
     } else {
-        target_pose.x_m = goal_pose.x_m;
-        target_pose.y_m = goal_pose.y_m;
+        float dx_goal_abs = fabsf(goal_pose.x_m - current_pose.x_m);
+        float dy_goal_abs = fabsf(goal_pose.y_m - current_pose.y_m);
+
+        if (dx_goal_abs >= dy_goal_abs) {
+            target_pose.x_m = goal_pose.x_m;
+            target_pose.y_m = current_pose.y_m;
+        } else {
+            target_pose.x_m = current_pose.x_m;
+            target_pose.y_m = goal_pose.y_m;
+        }
     }
     target_pose.theta_deg = current_pose.theta_deg;
     target_pose.timestamp_ms = HAL_GetTick();

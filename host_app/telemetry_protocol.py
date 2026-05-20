@@ -7,13 +7,13 @@ from typing import List
 import numpy as np
 
 FRAME_MAGIC = b"\xC3\x3C"
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 FRAME_TYPE_MAP_GRID = 1
 FREE_THRESHOLD = -10
 OCCUPIED_THRESHOLD = 10
 
 _HEADER_STRUCT = struct.Struct("<2sBBHH")
-_SUPPORTED_PROTOCOL_VERSIONS = {1, PROTOCOL_VERSION}
+_SUPPORTED_PROTOCOL_VERSIONS = {1, 2, PROTOCOL_VERSION}
 
 
 @dataclass(slots=True)
@@ -68,6 +68,23 @@ class MapFrame:
     scan_match_dx_m: float = 0.0
     scan_match_dy_m: float = 0.0
     scan_match_dtheta_deg: float = 0.0
+    control_mode: int = 0
+    relative_move_state: int = 0
+    left_motor_direction: int = 2
+    right_motor_direction: int = 2
+    left_pwm: int = 0
+    right_pwm: int = 0
+    left_speed_pid_output: int = 0
+    right_speed_pid_output: int = 0
+    position_pid_output_mps: float = 0.0
+    angle_pid_output_mps: float = 0.0
+    angle_error_deg: float = 0.0
+    position_error_m: float = 0.0
+    base_speed_mps: float = 0.0
+    left_speed_setpoint_mps: float = 0.0
+    right_speed_setpoint_mps: float = 0.0
+    left_speed_feedback_mps: float = 0.0
+    right_speed_feedback_mps: float = 0.0
 
 
 class TelemetryParser:
@@ -184,6 +201,23 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     scan_match_dx = 0.0
     scan_match_dy = 0.0
     scan_match_dtheta = 0.0
+    control_mode = 0
+    relative_move_state = 0
+    left_motor_direction = 2
+    right_motor_direction = 2
+    left_pwm = 0
+    right_pwm = 0
+    left_speed_pid_output = 0
+    right_speed_pid_output = 0
+    position_pid_output = 0.0
+    angle_pid_output = 0.0
+    angle_error = 0.0
+    position_error = 0.0
+    base_speed = 0.0
+    left_speed_setpoint = 0.0
+    right_speed_setpoint = 0.0
+    left_speed_feedback = 0.0
+    right_speed_feedback = 0.0
     cell_count = width * height
     if len(payload) - offset >= cell_count + 30:
         scan_match_reject_reason = take("<B")
@@ -196,6 +230,24 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         scan_match_dx = take("<f")
         scan_match_dy = take("<f")
         scan_match_dtheta = take("<f")
+    if len(payload) - offset >= cell_count + 48:
+        control_mode = take("<B")
+        relative_move_state = take("<B")
+        left_motor_direction = take("<B")
+        right_motor_direction = take("<B")
+        left_pwm = take("<H")
+        right_pwm = take("<H")
+        left_speed_pid_output = take("<h")
+        right_speed_pid_output = take("<h")
+        position_pid_output = take("<f")
+        angle_pid_output = take("<f")
+        angle_error = take("<f")
+        position_error = take("<f")
+        base_speed = take("<f")
+        left_speed_setpoint = take("<f")
+        right_speed_setpoint = take("<f")
+        left_speed_feedback = take("<f")
+        right_speed_feedback = take("<f")
 
     cells = np.frombuffer(payload, dtype=np.int8, count=cell_count, offset=offset).copy()
     cells = cells.reshape((height, width))
@@ -251,4 +303,21 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         scan_match_dx_m=scan_match_dx,
         scan_match_dy_m=scan_match_dy,
         scan_match_dtheta_deg=scan_match_dtheta,
+        control_mode=control_mode,
+        relative_move_state=relative_move_state,
+        left_motor_direction=left_motor_direction,
+        right_motor_direction=right_motor_direction,
+        left_pwm=left_pwm,
+        right_pwm=right_pwm,
+        left_speed_pid_output=left_speed_pid_output,
+        right_speed_pid_output=right_speed_pid_output,
+        position_pid_output_mps=position_pid_output,
+        angle_pid_output_mps=angle_pid_output,
+        angle_error_deg=angle_error,
+        position_error_m=position_error,
+        base_speed_mps=base_speed,
+        left_speed_setpoint_mps=left_speed_setpoint,
+        right_speed_setpoint_mps=right_speed_setpoint,
+        left_speed_feedback_mps=left_speed_feedback,
+        right_speed_feedback_mps=right_speed_feedback,
     )

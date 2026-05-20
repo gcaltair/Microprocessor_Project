@@ -117,6 +117,23 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         scan_match_dx_m=0.02,
         scan_match_dy_m=-0.02,
         scan_match_dtheta_deg=1.0,
+        control_mode=1,
+        relative_move_state=2,
+        left_motor_direction=0,
+        right_motor_direction=1,
+        left_pwm=1200,
+        right_pwm=1300,
+        left_speed_pid_output=514,
+        right_speed_pid_output=-615,
+        position_pid_output_mps=0.12,
+        angle_pid_output_mps=-0.03,
+        angle_error_deg=2.5,
+        position_error_m=0.18,
+        base_speed_mps=0.10,
+        left_speed_setpoint_mps=0.07,
+        right_speed_setpoint_mps=0.13,
+        left_speed_feedback_mps=0.06,
+        right_speed_feedback_mps=0.11,
         cells=np.array(
             [[0, 0, 0, 0], [0, 20, 0, 0], [0, 0, -15, 0], [0, 0, 0, 0]],
             dtype=np.int8,
@@ -136,6 +153,11 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
     assert "scan_match_reject       : low_margin" in stats_text
     assert "scan_match_candidates   : 125" in stats_text
     assert "nav_status              : busy" in stats_text
+    assert "control_mode            : position" in stats_text
+    assert "relative_move_state     : driving" in stats_text
+    assert "pwm_left_right          : 1200 / 1300" in stats_text
+    assert "pid_speed_output_l_r    : +514 / -615" in stats_text
+    assert "PWM L/R= 1200/ 1300" in window.control_telemetry.text()
     assert window.send_goal_button.text() == "Send Goal"
     assert window.clear_goal_button.text() == "Clear Goal"
     assert window.send_debug_command_button.text() == "Send Debug"

@@ -179,7 +179,113 @@ def test_parser_reads_scan_match_diagnostics_from_v2_map_frame() -> None:
     assert int(result.cells[1, 0]) == -10
 
 
+def test_parser_reads_control_diagnostics_from_v3_map_frame() -> None:
+    width = 2
+    height = 2
+    cells = bytes([0, 10, 0xF6, 20])
+
+    payload = b"".join(
+        [
+            struct.pack("<H", width),
+            struct.pack("<H", height),
+            struct.pack("<f", 0.05),
+            struct.pack("<f", -0.5),
+            struct.pack("<f", -0.5),
+            struct.pack("<I", 22),
+            struct.pack("<I", 88),
+            struct.pack("<I", 2345),
+            struct.pack("<H", 90),
+            struct.pack("<H", 24),
+            struct.pack("<H", 16),
+            struct.pack("<B", 1),
+            struct.pack("<B", 1),
+            struct.pack("<B", 1),
+            struct.pack("<B", 0),
+            struct.pack("<B", 1),
+            struct.pack("<h", 3),
+            struct.pack("<h", 4),
+            struct.pack("<f", 42.0),
+            struct.pack("<f", 0.1),
+            struct.pack("<f", 0.02),
+            struct.pack("<f", 0.30),
+            struct.pack("<f", -0.20),
+            struct.pack("<f", 10.0),
+            struct.pack("<I", 0),
+            struct.pack("<I", 0),
+            struct.pack("<I", 0),
+            struct.pack("<B", 0),
+            struct.pack("<B", 0),
+            struct.pack("<B", 0),
+            struct.pack("<B", 0),
+            struct.pack("<I", 0),
+            struct.pack("<I", 0),
+            struct.pack("<H", 0),
+            struct.pack("<H", 0),
+            struct.pack("<f", 0.0),
+            struct.pack("<f", 0.0),
+            struct.pack("<f", 0.0),
+            struct.pack("<f", 0.0),
+            struct.pack("<f", 0.0),
+            struct.pack("<B", 0),
+            struct.pack("<B", 0),
+            struct.pack("<H", 125),
+            struct.pack("<H", 46),
+            struct.pack("<f", 51.0),
+            struct.pack("<f", 43.5),
+            struct.pack("<f", 7.5),
+            struct.pack("<f", 0.02),
+            struct.pack("<f", -0.04),
+            struct.pack("<f", 1.0),
+            struct.pack("<B", 1),
+            struct.pack("<B", 2),
+            struct.pack("<B", 0),
+            struct.pack("<B", 1),
+            struct.pack("<H", 1200),
+            struct.pack("<H", 1300),
+            struct.pack("<h", 514),
+            struct.pack("<h", -615),
+            struct.pack("<f", 0.12),
+            struct.pack("<f", -0.03),
+            struct.pack("<f", 2.5),
+            struct.pack("<f", 0.18),
+            struct.pack("<f", 0.10),
+            struct.pack("<f", 0.07),
+            struct.pack("<f", 0.13),
+            struct.pack("<f", 0.06),
+            struct.pack("<f", 0.11),
+            cells,
+        ]
+    )
+    header = struct.pack("<2sBBHH", FRAME_MAGIC, 3, 1, 11, len(payload))
+    frame_without_crc = header + payload
+    frame = frame_without_crc + struct.pack("<H", _crc16_ccitt(frame_without_crc))
+
+    parsed = TelemetryParser().feed(frame)
+
+    assert len(parsed) == 1
+    result = parsed[0]
+    assert result.control_mode == 1
+    assert result.relative_move_state == 2
+    assert result.left_motor_direction == 0
+    assert result.right_motor_direction == 1
+    assert result.left_pwm == 1200
+    assert result.right_pwm == 1300
+    assert result.left_speed_pid_output == 514
+    assert result.right_speed_pid_output == -615
+    assert result.position_pid_output_mps == pytest.approx(0.12)
+    assert result.angle_pid_output_mps == pytest.approx(-0.03)
+    assert result.angle_error_deg == pytest.approx(2.5)
+    assert result.position_error_m == pytest.approx(0.18)
+    assert result.base_speed_mps == pytest.approx(0.10)
+    assert result.left_speed_setpoint_mps == pytest.approx(0.07)
+    assert result.right_speed_setpoint_mps == pytest.approx(0.13)
+    assert result.left_speed_feedback_mps == pytest.approx(0.06)
+    assert result.right_speed_feedback_mps == pytest.approx(0.11)
+    assert int(result.cells[1, 0]) == -10
+
+
 if __name__ == "__main__":
     test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise()
     test_parser_reads_scan_match_diagnostics_from_v2_map_frame()
+    test_parser_reads_control_diagnostics_from_v3_map_frame()
     print("protocol_smoke_ok")

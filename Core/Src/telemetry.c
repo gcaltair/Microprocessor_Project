@@ -6,17 +6,18 @@
 #include "../Inc/navigation_task.h"
 #include "../Inc/telemetry.h"
 #include "../Inc/usart.h"
+#include "pid.h"
 
 #define TELEMETRY_FRAME_MAGIC_1          0xC3U
 #define TELEMETRY_FRAME_MAGIC_2          0x3CU
-#define TELEMETRY_PROTOCOL_VERSION       2U
+#define TELEMETRY_PROTOCOL_VERSION       3U
 #define TELEMETRY_FRAME_TYPE_MAP_GRID    1U
 #define TELEMETRY_FRAME_HEADER_SIZE      8U
 #define TELEMETRY_FRAME_CRC_SIZE         2U
 #define TELEMETRY_TASK_PERIOD_MS         250U
 #define TELEMETRY_KEEPALIVE_MS           1000U
 #define TELEMETRY_UART_TIMEOUT_MS        250U
-#define TELEMETRY_FIXED_PAYLOAD_SIZE     145U
+#define TELEMETRY_FIXED_PAYLOAD_SIZE     193U
 #define TELEMETRY_MAX_FRAME_SIZE         (TELEMETRY_FRAME_HEADER_SIZE + \
                                           TELEMETRY_FIXED_PAYLOAD_SIZE + \
                                           OGM_MAX_CELL_COUNT + \
@@ -94,6 +95,7 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     MappingGridMeta_t meta;
     MappingTaskStats_t stats;
     NavigationTaskStats_t nav_stats;
+    ControlDebugSnapshot_t control_stats;
     uint16_t offset = 0U;
     uint16_t payload_offset;
     uint16_t payload_len;
@@ -116,6 +118,7 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
 
     MappingTask_GetStatsSnapshot(&stats);
     NavigationTask_GetStatsSnapshot(&nav_stats);
+    Control_GetDebugSnapshot(&control_stats);
 
     if ((uint32_t)TELEMETRY_FRAME_HEADER_SIZE +
         TELEMETRY_FIXED_PAYLOAD_SIZE +
@@ -182,6 +185,23 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     telemetry_write_f32(&offset, stats.last_scan_match_dx_m);
     telemetry_write_f32(&offset, stats.last_scan_match_dy_m);
     telemetry_write_f32(&offset, stats.last_scan_match_dtheta_deg);
+    telemetry_write_u8(&offset, control_stats.control_mode);
+    telemetry_write_u8(&offset, control_stats.relative_move_state);
+    telemetry_write_u8(&offset, control_stats.left_direction);
+    telemetry_write_u8(&offset, control_stats.right_direction);
+    telemetry_write_u16(&offset, control_stats.left_pwm);
+    telemetry_write_u16(&offset, control_stats.right_pwm);
+    telemetry_write_i16(&offset, control_stats.left_speed_pid_output);
+    telemetry_write_i16(&offset, control_stats.right_speed_pid_output);
+    telemetry_write_f32(&offset, control_stats.position_pid_output_mps);
+    telemetry_write_f32(&offset, control_stats.angle_pid_output_mps);
+    telemetry_write_f32(&offset, control_stats.angle_error_deg);
+    telemetry_write_f32(&offset, control_stats.position_error_m);
+    telemetry_write_f32(&offset, control_stats.base_speed_mps);
+    telemetry_write_f32(&offset, control_stats.left_speed_setpoint_mps);
+    telemetry_write_f32(&offset, control_stats.right_speed_setpoint_mps);
+    telemetry_write_f32(&offset, control_stats.left_speed_feedback_mps);
+    telemetry_write_f32(&offset, control_stats.right_speed_feedback_mps);
     (void)memcpy(&g_telemetryFrameBuffer[offset], g_telemetryCellBuffer, cell_count);
     offset = (uint16_t)(offset + cell_count);
 

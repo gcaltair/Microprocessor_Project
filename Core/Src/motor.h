@@ -19,7 +19,7 @@
 // 电机控制函数声明
 void Car_test(uint8_t speed);
 void Motor_Init(void);
-void Motor_SetSpeed(uint8_t motor, uint8_t speed);
+void Motor_SetSpeed(uint8_t motor, uint16_t speed);
 void Motor_SetDirection(uint8_t motor, uint8_t direction);
 void Motor_Control(uint8_t motor, uint8_t direction, int speed);
 void Motor_Stop(uint8_t motor);

@@ -25,7 +25,7 @@ volatile ControlMode g_control_mode = CONTROL_MODE_MANUAL; // 默认启动时为
 /**
  * @brief  初始化PID控制器 (增加更健壮的积分抗饱和设置)
  */
-void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, float out_max)
+void PID_Init(volatile PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, float out_max)
 {
     pid->Kp = Kp;
     pid->Ki = Ki;
@@ -54,7 +54,7 @@ void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, 
  * @param  dt: 控制周期 (单位：秒) <-- 新增参数
  * @retval 计算得到的PID输出值
  */
-float PID_Calculate(PID_Controller *pid, float current_value, float dt)
+float PID_Calculate(volatile PID_Controller *pid, float current_value, float dt)
 {
     float error, p_out, i_out, d_out, output_float, derivative;
 

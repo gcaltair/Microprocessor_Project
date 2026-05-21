@@ -65,6 +65,9 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     Core/Src/motor.c
+    Core/Src/adc.c
+    Core/Src/iwdg.c
+    Core/Src/app_ui.c
 )
 
 # Add include paths

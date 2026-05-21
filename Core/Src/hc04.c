@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdarg.h>     // 用于 va_list, va_start, va_arg, va_end
 #include "system.h"
+#include "app_ui.h"
 extern UART_HandleTypeDef huart5;
 //extern uint8_t speed;
 // Car control command flags
@@ -80,6 +81,21 @@ void process_command(uint8_t *cmd, uint16_t size)
                 transmit("Stopped (PID)\r\n");
                 break;
 
+            case 'E':
+                App_RequestEmergencyStop("BTEMG");
+                transmit("Emergency stop latched\r\n");
+                break;
+
+            case 'C':
+                App_ClearEmergencyStop();
+                transmit("Emergency stop cleared\r\n");
+                break;
+
+            case 'G':
+                App_StartReturnHome();
+                transmit("Return-home requested\r\n");
+                break;
+
             // --- 其他 case 保持不变 ---
             case 'N':
                 RPLIDAR_StopRaw();
@@ -95,13 +111,25 @@ void process_command(uint8_t *cmd, uint16_t size)
                 transmit("A+angle: Set relative angle turn\r\n");
                 transmit("V+speed: Set speed for manual mode\r\n");
                 transmit("P{x},{y}: Set absolute target point (e.g., P0.5,1.2)\r\n"); // <-- 新命令
-                // 'T' 命令已移除
+                transmit("E/C/G: Emergency/Clear/Return-home\r\n");
                 transmit("M: Start LIDAR\r\n");
                 transmit("N: Stop LIDAR\r\n");
-                transmit("O: Output odometry (dl, dr, dθ)\r\n");
-                transmit("P: Show status\r\n");
-                transmit("Q: Disable status\r\n");
+                transmit("P: Enable periodic status\r\n");
+                transmit("Q: Disable periodic status\r\n");
                 transmit("H: Show This Help\r\n");
+                break;
+
+            case 'P':
+                App_SetTelemetryEnabled(true);
+                uart_printf("Status enabled, bat=%umV limit=%ucm/s safe=%s\r\n",
+                            App_GetBatteryMillivolts(),
+                            App_GetSpeedLimitCmps(),
+                            App_GetSafetyReason());
+                break;
+
+            case 'Q':
+                App_SetTelemetryEnabled(false);
+                transmit("Status disabled\r\n");
                 break;
 
             default:

@@ -35,7 +35,7 @@ void Motor_Init(void)
  * @param  speed: 速度值 (0-100)
  * @retval None
  */
-void Motor_SetSpeed(uint8_t motor, uint8_t speed)
+void Motor_SetSpeed(uint8_t motor, uint16_t speed)
 {
     // 限制速度范围
     if (speed > 10000)

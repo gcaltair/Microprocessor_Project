@@ -25,8 +25,8 @@ typedef struct
 
 } PID_Controller;
 
-void PID_Init(PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, float out_max);
-float PID_Calculate(PID_Controller *pid, float current_value, float dt);
+void PID_Init(volatile PID_Controller *pid, float Kp, float Ki, float Kd, float out_min, float out_max);
+float PID_Calculate(volatile PID_Controller *pid, float current_value, float dt);
 void Speed_Control_Loop(float dt);
 void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt);
 void Update_Relative_Move_PID(float dt);

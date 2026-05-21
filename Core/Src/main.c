@@ -24,12 +24,15 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
+#include "adc.h"
+#include "iwdg.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <math.h>
 
 #include "system.h"
+#include "app_ui.h"
 #include "lidar.h"  // 新增
 /* USER CODE END Includes */
 
@@ -132,9 +135,12 @@ int main(void)
   MX_SPI2_Init();
   MX_USART6_UART_Init();
   MX_TIM4_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   system_init();
   PID_system_init();
+  MX_IWDG_Init();
+  App_Init();
 
   /* USER CODE END 2 */
 
@@ -150,7 +156,12 @@ int main(void)
         MPU_update();
         encoder_update_speed();
         Odometry_Update(dt);
-        if (g_control_mode == CONTROL_MODE_POSITION)
+        App_Task10ms(dt);
+        if (!App_MotorsAllowed())
+        {
+          Motor_StopAll();
+        }
+        else if (g_control_mode == CONTROL_MODE_POSITION)
         {
           Update_Relative_Move_PID(dt);
         }
@@ -162,6 +173,7 @@ int main(void)
         g_system_update_flag=false;
       }
 
+      App_BackgroundTask();
       LIDAR_ParseTask();
 
     if (scan_data_ready_flag)

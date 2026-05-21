@@ -25,12 +25,13 @@
 #define NAVIGATION_PARENT_START            0xFEU
 #define NAVIGATION_FLAG_OPEN               0x01U
 #define NAVIGATION_FLAG_CLOSED             0x02U
-#define NAVIGATION_INFLATE_RADIUS_CELLS    1
+#define NAVIGATION_INFLATE_RADIUS_M        0.15f
 #define NAVIGATION_REACH_DISTANCE_M        0.1f
 #define NAVIGATION_MIN_SEGMENT_M           0.1f
 #define NAVIGATION_FREE_CELL_THRESHOLD     (-3)
 #define NAVIGATION_OCCUPIED_CELL_THRESHOLD (5)
 #define NAVIGATION_COMMAND_MAX_LEN         64U
+#define NAVIGATION_INFLATED_BLOCKED_BYTES  ((OGM_MAX_CELL_COUNT + 7U) / 8U)
 
 typedef struct {
     int16_t x;
@@ -58,6 +59,7 @@ static MappingGridMeta_t g_navigationMapMeta;
 static uint16_t g_navigationWidthCells = 0U;
 static uint16_t g_navigationHeightCells = 0U;
 static int8_t g_navigationMapCells[OGM_MAX_CELL_COUNT];
+static uint8_t g_navigationInflatedBlockedBits[NAVIGATION_INFLATED_BLOCKED_BYTES];
 static uint16_t g_navigationGScore[NAVIGATION_MAX_CELL_COUNT];
 static uint8_t g_navigationFlags[NAVIGATION_MAX_CELL_COUNT];
 static uint8_t g_navigationParentDir[NAVIGATION_MAX_CELL_COUNT];
@@ -247,6 +249,107 @@ static uint8_t navigation_is_inside(int16_t x, int16_t y)
  * NAVIGATION_GRID_DOWNSAMPLE 把原始地图尺寸折算为导航栅格尺寸。
  * 若地图无效、尺寸超过静态缓冲区或复制失败，则返回 0。
  */
+static uint32_t navigation_map_cell_index(int16_t map_x, int16_t map_y)
+{
+    return (uint32_t)(uint16_t)map_y * g_navigationMapMeta.width_cells + (uint32_t)(uint16_t)map_x;
+}
+
+static uint8_t navigation_map_cell_is_inside(int16_t map_x, int16_t map_y)
+{
+    if ((map_x < 0) || (map_y < 0)) {
+        return 0U;
+    }
+
+    if (((uint16_t)map_x >= g_navigationMapMeta.width_cells) ||
+        ((uint16_t)map_y >= g_navigationMapMeta.height_cells)) {
+        return 0U;
+    }
+
+    return 1U;
+}
+
+static uint8_t navigation_map_cell_is_occupied(int16_t map_x, int16_t map_y)
+{
+    if (navigation_map_cell_is_inside(map_x, map_y) == 0U) {
+        return 0U;
+    }
+
+    return (g_navigationMapCells[navigation_map_cell_index(map_x, map_y)] >= NAVIGATION_OCCUPIED_CELL_THRESHOLD) ?
+           1U :
+           0U;
+}
+
+static void navigation_set_inflated_blocked(uint32_t index)
+{
+    g_navigationInflatedBlockedBits[index / 8U] |= (uint8_t)(1U << (index % 8U));
+}
+
+static uint8_t navigation_is_inflated_blocked(uint32_t index)
+{
+    return ((g_navigationInflatedBlockedBits[index / 8U] & (uint8_t)(1U << (index % 8U))) != 0U) ? 1U : 0U;
+}
+
+static uint16_t navigation_inflate_radius_map_cells(void)
+{
+    float cells_f;
+    uint16_t cells;
+
+    if ((g_navigationMapMeta.resolution_m_per_cell <= 0.0f) || (NAVIGATION_INFLATE_RADIUS_M <= 0.0f)) {
+        return 0U;
+    }
+
+    cells_f = NAVIGATION_INFLATE_RADIUS_M / g_navigationMapMeta.resolution_m_per_cell;
+    cells = (uint16_t)cells_f;
+    if ((float)cells < cells_f) {
+        cells++;
+    }
+
+    return cells;
+}
+
+static void navigation_build_inflated_blocked_map(uint32_t cell_count)
+{
+    uint16_t radius_cells;
+    uint16_t map_y;
+    uint16_t map_x;
+
+    (void)cell_count;
+    (void)memset(g_navigationInflatedBlockedBits, 0, sizeof(g_navigationInflatedBlockedBits));
+    radius_cells = navigation_inflate_radius_map_cells();
+
+    for (map_y = 0U; map_y < g_navigationMapMeta.height_cells; ++map_y) {
+        for (map_x = 0U; map_x < g_navigationMapMeta.width_cells; ++map_x) {
+            int16_t dy;
+            int16_t base_x = (int16_t)map_x;
+            int16_t base_y = (int16_t)map_y;
+
+            if (navigation_map_cell_is_occupied(base_x, base_y) == 0U) {
+                continue;
+            }
+
+            for (dy = -(int16_t)radius_cells; dy <= (int16_t)radius_cells; ++dy) {
+                int16_t dx;
+
+                for (dx = -(int16_t)radius_cells; dx <= (int16_t)radius_cells; ++dx) {
+                    int16_t inflated_x;
+                    int16_t inflated_y;
+
+                    if (((int32_t)dx * dx) + ((int32_t)dy * dy) >
+                        ((int32_t)radius_cells * radius_cells)) {
+                        continue;
+                    }
+
+                    inflated_x = (int16_t)(base_x + dx);
+                    inflated_y = (int16_t)(base_y + dy);
+                    if (navigation_map_cell_is_inside(inflated_x, inflated_y) != 0U) {
+                        navigation_set_inflated_blocked(navigation_map_cell_index(inflated_x, inflated_y));
+                    }
+                }
+            }
+        }
+    }
+}
+
 static uint8_t navigation_load_map_snapshot(void)
 {
     uint32_t cell_count;
@@ -264,6 +367,8 @@ static uint8_t navigation_load_map_snapshot(void)
     if (MappingTask_CopyGridCells(g_navigationMapCells, OGM_MAX_CELL_COUNT) == 0U) {
         return 0U;
     }
+
+    navigation_build_inflated_blocked_map(cell_count);
 
     g_navigationWidthCells = (uint16_t)((g_navigationMapMeta.width_cells + NAVIGATION_GRID_DOWNSAMPLE - 1U) /
                                         NAVIGATION_GRID_DOWNSAMPLE);
@@ -337,19 +442,18 @@ static NavigationWorldPoint_t navigation_nav_cell_to_world(const NavigationGridP
  */
 static uint8_t navigation_map_cell_known_free(int16_t map_x, int16_t map_y)
 {
-    uint32_t index;
     int8_t value;
 
     /* 越界区域不作为可通行区域 */
-    if ((map_x < 0) ||
-        (map_y < 0) ||
-        ((uint16_t)map_x >= g_navigationMapMeta.width_cells) ||
-        ((uint16_t)map_y >= g_navigationMapMeta.height_cells)) {
+    if (navigation_map_cell_is_inside(map_x, map_y) == 0U) {
         return 0U;
     }
 
-    index = (uint32_t)(uint16_t)map_y * g_navigationMapMeta.width_cells + (uint32_t)(uint16_t)map_x;
-    value = g_navigationMapCells[index];
+    if (navigation_is_inflated_blocked(navigation_map_cell_index(map_x, map_y)) != 0U) {
+        return 0U;
+    }
+
+    value = g_navigationMapCells[navigation_map_cell_index(map_x, map_y)];
 
     /*
      * 原来的判断是：(value <= NAVIGATION_FREE_CELL_THRESHOLD) ? 1U : 0U;
@@ -411,11 +515,11 @@ static uint8_t navigation_is_blocked_inflated(int16_t nav_x,
         return 0U;
     }
 
-    for (check_y = (int16_t)(nav_y - NAVIGATION_INFLATE_RADIUS_CELLS);
-         check_y <= (int16_t)(nav_y + NAVIGATION_INFLATE_RADIUS_CELLS);
+    for (check_y = nav_y;
+         check_y <= nav_y;
          ++check_y) {
-        for (check_x = (int16_t)(nav_x - NAVIGATION_INFLATE_RADIUS_CELLS);
-             check_x <= (int16_t)(nav_x + NAVIGATION_INFLATE_RADIUS_CELLS);
+        for (check_x = nav_x;
+             check_x <= nav_x;
              ++check_x) {
             if (navigation_nav_cell_known_free(check_x, check_y) == 0U) {
                 return 1U;

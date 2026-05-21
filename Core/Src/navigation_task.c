@@ -64,13 +64,11 @@ static uint8_t g_navigationParentDir[NAVIGATION_MAX_CELL_COUNT];
 static uint16_t g_navigationOpen[NAVIGATION_MAX_CELL_COUNT];
 static uint16_t g_navigationOpenCount = 0U;
 static NavigationGridPoint_t g_navigationRawPath[NAVIGATION_MAX_PATH_POINTS];
-static NavigationGridPoint_t g_navigationSmoothGridPath[NAVIGATION_MAX_PATH_POINTS];
 static NavigationWorldPoint_t g_navigationSmoothPath[NAVIGATION_MAX_PATH_POINTS];
 static uint16_t g_navigationRawPathLen = 0U;
 static uint16_t g_navigationSmoothPathLen = 0U;
-static NavigationPathPoint_t g_navigationPublishedPath[NAVIGATION_PATH_TELEMETRY_MAX_POINTS];
-static uint16_t g_navigationPublishedPathLen = 0U;
-static uint8_t g_navigationPlanOnlyMode = 0U;
+static NavigationWorldPoint_t g_workingSmoothPath[NAVIGATION_MAX_PATH_POINTS];
+static uint16_t g_workingSmoothPathLen = 0U;
 
 static void navigation_lock(void);
 static void navigation_unlock(void);
@@ -147,22 +145,14 @@ static void navigation_process_pending_command(void)
         return;
     }
 
-    if ((command[0] == 'P') && (command[1] == 'L') && (command[2] == 'A') && (command[3] == 'N') &&
-        (command[4] == ' ')) {
-        float goal_x_m;
-        float goal_y_m;
-
-        if (navigation_parse_float_pair(&command[5], &goal_x_m, &goal_y_m) != 0U) {
-            NavigationTask_SetPlanGoal(goal_x_m, goal_y_m);
-        }
-    } else if ((command[0] == 'N') && (command[1] == 'A') && (command[2] == 'V') && (command[3] == ' ')) {
+    if (strncmp(command, "NAV ", 4) == 0) {
         float goal_x_m;
         float goal_y_m;
 
         if (navigation_parse_float_pair(&command[4], &goal_x_m, &goal_y_m) != 0U) {
             NavigationTask_SetGoal(goal_x_m, goal_y_m);
         }
-    } else if ((command[0] == 'N') && (command[1] == 'A') && (command[2] == 'V') && (command[3] == 'C')) {
+    } else if (strncmp(command, "NAVC", 4) == 0) {
         NavigationTask_ClearGoal();
     } else if ((command[0] == 'P') || (command[0] == 'p')) {
         float dx_m;
@@ -521,40 +511,13 @@ static uint16_t navigation_open_pop_best(const NavigationGridPoint_t *goal)
  * 再正向输出。输出时只保留起点、转折点和终点，去掉同一直线上的中间格，
  * 降低后续平滑与控制目标的点数。
  */
-static uint8_t navigation_direction_between(const NavigationGridPoint_t *start_cell,
-                                            const NavigationGridPoint_t *end_cell,
-                                            uint8_t *direction)
-{
-    if ((start_cell == NULL) || (end_cell == NULL) || (direction == NULL)) {
-        return 0U;
-    }
-
-    if ((end_cell->x == (int16_t)(start_cell->x + 1)) && (end_cell->y == start_cell->y)) {
-        *direction = 0U;
-        return 1U;
-    }
-    if ((end_cell->x == (int16_t)(start_cell->x - 1)) && (end_cell->y == start_cell->y)) {
-        *direction = 1U;
-        return 1U;
-    }
-    if ((end_cell->x == start_cell->x) && (end_cell->y == (int16_t)(start_cell->y + 1))) {
-        *direction = 2U;
-        return 1U;
-    }
-    if ((end_cell->x == start_cell->x) && (end_cell->y == (int16_t)(start_cell->y - 1))) {
-        *direction = 3U;
-        return 1U;
-    }
-
-    return 0U;
-}
-
 static uint8_t navigation_build_raw_path(uint16_t goal_index, uint16_t start_index)
 {
     NavigationGridPoint_t reversed_path[NAVIGATION_MAX_PATH_POINTS];
     uint16_t reversed_len = 0U;
     uint16_t current_index = goal_index;
-    uint8_t last_forward_dir = NAVIGATION_PARENT_NONE;
+    int16_t last_dx = 0;
+    int16_t last_dy = 0;
     uint8_t have_last_dir = 0U;
     NavigationGridPoint_t previous;
     uint16_t forward_pos;
@@ -593,13 +556,10 @@ static uint8_t navigation_build_raw_path(uint16_t goal_index, uint16_t start_ind
 
     for (forward_pos = (uint16_t)(reversed_len - 1U); forward_pos > 0U; --forward_pos) {
         NavigationGridPoint_t current = reversed_path[forward_pos - 1U];
-        uint8_t forward_dir;
+        int16_t dx = current.x - previous.x;
+        int16_t dy = current.y - previous.y;
 
-        if (navigation_direction_between(&previous, &current, &forward_dir) == 0U) {
-            return 0U;
-        }
-
-        if ((have_last_dir != 0U) && (forward_dir != last_forward_dir)) {
+        if ((have_last_dir != 0U) && ((dx != last_dx) || (dy != last_dy))) {
             if ((g_navigationRawPath[g_navigationRawPathLen - 1U].x != previous.x) ||
                 (g_navigationRawPath[g_navigationRawPathLen - 1U].y != previous.y)) {
                 if (g_navigationRawPathLen >= NAVIGATION_MAX_PATH_POINTS) {
@@ -609,7 +569,8 @@ static uint8_t navigation_build_raw_path(uint16_t goal_index, uint16_t start_ind
             }
         }
 
-        last_forward_dir = forward_dir;
+        last_dx = dx;
+        last_dy = dy;
         have_last_dir = 1U;
         previous = current;
     }
@@ -822,17 +783,17 @@ static uint8_t navigation_orthogonal_link_free(const NavigationGridPoint_t *star
 static uint8_t navigation_build_smooth_path_from_raw_path(void)
 {
     uint16_t raw_index = 0U;
+    NavigationGridPoint_t last_smooth_grid_point;
 
     /* 用视线法从 A* 拐点中尽量跳到更远的点，减少直角折线。 */
     if (g_navigationRawPathLen == 0U) {
         return 0U;
     }
 
-    g_navigationSmoothPathLen = 0U;
-    g_navigationSmoothGridPath[g_navigationSmoothPathLen] = g_navigationRawPath[0];
-    g_navigationSmoothPath[g_navigationSmoothPathLen] =
-        navigation_nav_cell_to_world(&g_navigationSmoothGridPath[g_navigationSmoothPathLen]);
-    g_navigationSmoothPathLen++;
+    g_workingSmoothPathLen = 0U;
+    last_smooth_grid_point = g_navigationRawPath[0];
+    g_workingSmoothPath[g_workingSmoothPathLen] = navigation_nav_cell_to_world(&last_smooth_grid_point);
+    g_workingSmoothPathLen++;
 
     while (raw_index < (uint16_t)(g_navigationRawPathLen - 1U)) {
         uint16_t candidate;
@@ -861,19 +822,18 @@ static uint8_t navigation_build_smooth_path_from_raw_path(void)
         }
 
         for (link_pos = 0U; link_pos < best_link_len; ++link_pos) {
-            if ((g_navigationSmoothGridPath[g_navigationSmoothPathLen - 1U].x == best_link[link_pos].x) &&
-                (g_navigationSmoothGridPath[g_navigationSmoothPathLen - 1U].y == best_link[link_pos].y)) {
+            if ((last_smooth_grid_point.x == best_link[link_pos].x) &&
+                (last_smooth_grid_point.y == best_link[link_pos].y)) {
                 continue;
             }
 
-            if (g_navigationSmoothPathLen >= NAVIGATION_MAX_PATH_POINTS) {
+            if (g_workingSmoothPathLen >= NAVIGATION_MAX_PATH_POINTS) {
                 return 0U;
             }
 
-            g_navigationSmoothGridPath[g_navigationSmoothPathLen] = best_link[link_pos];
-            g_navigationSmoothPath[g_navigationSmoothPathLen] =
-                navigation_nav_cell_to_world(&g_navigationSmoothGridPath[g_navigationSmoothPathLen]);
-            g_navigationSmoothPathLen++;
+            last_smooth_grid_point = best_link[link_pos];
+            g_workingSmoothPath[g_workingSmoothPathLen] = navigation_nav_cell_to_world(&last_smooth_grid_point);
+            g_workingSmoothPathLen++;
         }
         raw_index = best_next;
     }
@@ -922,42 +882,19 @@ static void navigation_update_stats_locked(NavigationStatus_t status,
     }
 }
 
-static void navigation_clear_published_path_locked(void)
-{
-    g_navigationPublishedPathLen = 0U;
-}
-
-static void navigation_publish_smooth_path_locked(void)
-{
-    uint16_t idx;
-    uint16_t copy_len = g_navigationSmoothPathLen;
-
-    if (copy_len > NAVIGATION_PATH_TELEMETRY_MAX_POINTS) {
-        copy_len = NAVIGATION_PATH_TELEMETRY_MAX_POINTS;
-    }
-
-    for (idx = 0U; idx < copy_len; ++idx) {
-        g_navigationPublishedPath[idx].x_m = g_navigationSmoothPath[idx].x_m;
-        g_navigationPublishedPath[idx].y_m = g_navigationSmoothPath[idx].y_m;
-    }
-
-    g_navigationPublishedPathLen = copy_len;
-}
-
-static void navigation_set_goal_mode(float goal_x_m, float goal_y_m, uint8_t plan_only)
+static void navigation_set_goal(float goal_x_m, float goal_y_m)
 {
     navigation_lock();
     (void)memset(&g_navigationGoal, 0, sizeof(g_navigationGoal));
     g_navigationGoal.x_m = goal_x_m;
     g_navigationGoal.y_m = goal_y_m;
     g_navigationGoalValid = 1U;
-    g_navigationPlanOnlyMode = plan_only;
     g_navigationStats.goal_valid = 1U;
     g_navigationStats.goal_pose = g_navigationGoal;
     g_navigationStats.last_status = NAVIGATION_STATUS_IDLE;
     g_navigationStats.raw_path_len = 0U;
     g_navigationStats.smooth_path_len = 0U;
-    navigation_clear_published_path_locked();
+    g_navigationSmoothPathLen = 0U;
     navigation_unlock();
 }
 
@@ -970,12 +907,7 @@ static void navigation_set_goal_mode(float goal_x_m, float goal_y_m, uint8_t pla
 void NavigationTask_SetGoal(float goal_x_m, float goal_y_m)
 {
     /* 设置终点后，导航线程会在下一次周期更新中自动规划并下发局部目标。 */
-    navigation_set_goal_mode(goal_x_m, goal_y_m, 0U);
-}
-
-void NavigationTask_SetPlanGoal(float goal_x_m, float goal_y_m)
-{
-    navigation_set_goal_mode(goal_x_m, goal_y_m, 1U);
+    navigation_set_goal(goal_x_m, goal_y_m);
 }
 
 /*
@@ -989,14 +921,13 @@ void NavigationTask_ClearGoal(void)
     /* 清除目标只影响导航线程，不强制停止当前正在执行的相对位移。 */
     navigation_lock();
     g_navigationGoalValid = 0U;
-    g_navigationPlanOnlyMode = 0U;
     (void)memset(&g_navigationGoal, 0, sizeof(g_navigationGoal));
     g_navigationStats.goal_valid = 0U;
     g_navigationStats.target_valid = 0U;
     g_navigationStats.last_status = NAVIGATION_STATUS_IDLE;
     g_navigationStats.raw_path_len = 0U;
     g_navigationStats.smooth_path_len = 0U;
-    navigation_clear_published_path_locked();
+    g_navigationSmoothPathLen = 0U;
     navigation_unlock();
 }
 
@@ -1063,42 +994,39 @@ NavigationStatus_t NavigationTask_Update(void)
     NavigationGridPoint_t goal_cell;
     float dx_goal;
     float dy_goal;
-    float distance_to_goal_m;
+    float distance_to_goal_m = 0.0f;
     NavigationStatus_t status = NAVIGATION_STATUS_FAILED;
     uint8_t target_valid = 0U;
-    uint8_t plan_only = 0U;
+    uint8_t copy_working_path = 0U;
+
+    SlamPose2D_t *p_current_pose = NULL;
+    SlamPose2D_t *p_goal_pose = NULL;
+    SlamPose2D_t *p_target_pose = NULL;
 
     /* 读取目标快照；没有目标时保持空闲，不干预控制。 */
     navigation_lock();
     if (g_navigationGoalValid == 0U) {
-        navigation_clear_published_path_locked();
-        navigation_update_stats_locked(NAVIGATION_STATUS_IDLE, NULL, NULL, NULL, 0.0f, 0U);
-        navigation_unlock();
-        return NAVIGATION_STATUS_IDLE;
+        status = NAVIGATION_STATUS_IDLE;
+        goto exit_update;
     }
     goal_pose = g_navigationGoal;
-    plan_only = g_navigationPlanOnlyMode;
+    p_goal_pose = &goal_pose;
     navigation_unlock();
 
     LocalizationTask_GetEstimatedPoseSnapshot(&current_pose);
+    p_current_pose = &current_pose;
+
     dx_goal = goal_pose.x_m - current_pose.x_m;
     dy_goal = goal_pose.y_m - current_pose.y_m;
     distance_to_goal_m = sqrtf((dx_goal * dx_goal) + (dy_goal * dy_goal));
 
     if (distance_to_goal_m <= NAVIGATION_REACH_DISTANCE_M) {
         /* 到达终点后清除目标，避免后续周期重复下发微小移动。 */
+        status = NAVIGATION_STATUS_REACHED;
         navigation_lock();
         g_navigationGoalValid = 0U;
-        g_navigationPlanOnlyMode = 0U;
-        navigation_clear_published_path_locked();
-        navigation_update_stats_locked(NAVIGATION_STATUS_REACHED,
-                                       &current_pose,
-                                       &goal_pose,
-                                       NULL,
-                                       distance_to_goal_m,
-                                       0U);
-        navigation_unlock();
-        return NAVIGATION_STATUS_REACHED;
+        (void)memset(&g_navigationGoal, 0, sizeof(g_navigationGoal));
+        goto exit_update;
     }
 
     if ((navigation_load_map_snapshot() == 0U) ||
@@ -1106,38 +1034,21 @@ NavigationStatus_t NavigationTask_Update(void)
         (navigation_world_to_nav_cell(goal_pose.x_m, goal_pose.y_m, &goal_cell) == 0U) ||
         (navigation_find_path_map(&start_cell, &goal_cell) == 0U) ||
         (navigation_build_smooth_path_from_raw_path() == 0U)) {
+        status = NAVIGATION_STATUS_FAILED;
         navigation_lock();
-        navigation_clear_published_path_locked();
-        navigation_update_stats_locked(NAVIGATION_STATUS_FAILED,
-                                       &current_pose,
-                                       &goal_pose,
-                                       NULL,
-                                       distance_to_goal_m,
-                                       0U);
-        navigation_unlock();
-        return NAVIGATION_STATUS_FAILED;
+        goto exit_update;
     }
 
-    if (g_navigationSmoothPathLen >= 2U) {
-        if ((g_navigationSmoothGridPath[1].x != start_cell.x) &&
-            (g_navigationSmoothGridPath[1].y == start_cell.y)) {
-            target_pose.x_m = g_navigationSmoothPath[1].x_m;
-            target_pose.y_m = current_pose.y_m;
-        } else if ((g_navigationSmoothGridPath[1].y != start_cell.y) &&
-                   (g_navigationSmoothGridPath[1].x == start_cell.x)) {
-            target_pose.x_m = current_pose.x_m;
-            target_pose.y_m = g_navigationSmoothPath[1].y_m;
-        } else {
-            float dx_target_abs = fabsf(g_navigationSmoothPath[1].x_m - current_pose.x_m);
-            float dy_target_abs = fabsf(g_navigationSmoothPath[1].y_m - current_pose.y_m);
+    if (g_workingSmoothPathLen >= 2U) {
+        float dx_target_abs = fabsf(g_workingSmoothPath[1].x_m - current_pose.x_m);
+        float dy_target_abs = fabsf(g_workingSmoothPath[1].y_m - current_pose.y_m);
 
-            if (dx_target_abs >= dy_target_abs) {
-                target_pose.x_m = g_navigationSmoothPath[1].x_m;
-                target_pose.y_m = current_pose.y_m;
-            } else {
-                target_pose.x_m = current_pose.x_m;
-                target_pose.y_m = g_navigationSmoothPath[1].y_m;
-            }
+        if (dx_target_abs >= dy_target_abs) {
+            target_pose.x_m = g_workingSmoothPath[1].x_m;
+            target_pose.y_m = current_pose.y_m;
+        } else {
+            target_pose.x_m = current_pose.x_m;
+            target_pose.y_m = g_workingSmoothPath[1].y_m;
         }
     } else {
         float dx_goal_abs = fabsf(goal_pose.x_m - current_pose.x_m);
@@ -1154,10 +1065,9 @@ NavigationStatus_t NavigationTask_Update(void)
     target_pose.theta_deg = current_pose.theta_deg;
     target_pose.timestamp_ms = HAL_GetTick();
     target_valid = 1U;
+    p_target_pose = &target_pose;
 
-    if (plan_only != 0U) {
-        status = NAVIGATION_STATUS_OK;
-    } else if ((g_relative_move_state == RELATIVE_MOVE_IDLE) && (g_control_mode != CONTROL_MODE_SPEED_TEST)) {
+    if ((g_relative_move_state == RELATIVE_MOVE_IDLE) && (g_control_mode != CONTROL_MODE_SPEED_TEST)) {
         float dx_target = target_pose.x_m - current_pose.x_m;
         float dy_target = target_pose.y_m - current_pose.y_m;
         float target_distance_m = sqrtf((dx_target * dx_target) + (dy_target * dy_target));
@@ -1171,12 +1081,21 @@ NavigationStatus_t NavigationTask_Update(void)
         status = NAVIGATION_STATUS_BUSY;
     }
 
+    copy_working_path = 1U;
     navigation_lock();
-    navigation_publish_smooth_path_locked();
+
+exit_update:
+    if (copy_working_path != 0U) {
+        g_navigationSmoothPathLen = g_workingSmoothPathLen;
+        (void)memcpy(g_navigationSmoothPath, g_workingSmoothPath, g_workingSmoothPathLen * sizeof(NavigationWorldPoint_t));
+    } else {
+        g_navigationSmoothPathLen = 0U;
+    }
+
     navigation_update_stats_locked(status,
-                                   &current_pose,
-                                   &goal_pose,
-                                   &target_pose,
+                                   p_current_pose,
+                                   p_goal_pose,
+                                   p_target_pose,
                                    distance_to_goal_m,
                                    target_valid);
     navigation_unlock();
@@ -1211,13 +1130,14 @@ uint16_t NavigationTask_CopySmoothPathPoints(NavigationPathPoint_t *points, uint
     }
 
     navigation_lock();
-    copy_len = g_navigationPublishedPathLen;
+    copy_len = g_navigationSmoothPathLen;
     if (copy_len > max_points) {
         copy_len = max_points;
     }
 
     for (idx = 0U; idx < copy_len; ++idx) {
-        points[idx] = g_navigationPublishedPath[idx];
+        points[idx].x_m = g_navigationSmoothPath[idx].x_m;
+        points[idx].y_m = g_navigationSmoothPath[idx].y_m;
     }
     navigation_unlock();
 

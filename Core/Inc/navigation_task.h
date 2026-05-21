@@ -38,7 +38,6 @@ typedef struct {
 void StartNavigationTask(void *argument);
 /* 设置导航终点，坐标单位为米，坐标系与当前占据栅格地图一致。 */
 void NavigationTask_SetGoal(float goal_x_m, float goal_y_m);
-void NavigationTask_SetPlanGoal(float goal_x_m, float goal_y_m);
 /* 清除当前导航目标，同时让导航线程回到空闲状态。 */
 void NavigationTask_ClearGoal(void);
 /* 启动 UART5 命令接收，命令格式为 "NAV x y\n"、"NAVC\n" 或 "Pdx,dy\n"。 */

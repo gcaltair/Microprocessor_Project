@@ -505,35 +505,21 @@ static uint8_t navigation_nav_cell_known_free(int16_t nav_x, int16_t nav_y)
 /*
  * 判断导航栅格在障碍物膨胀后是否被阻挡。
  *
- * 为了给车体尺寸和定位误差留出余量，会检查目标栅格周围
- * NAVIGATION_INFLATE_RADIUS_CELLS 范围内是否存在不可通行格。起点特殊
- * 放行，避免车辆当前所在栅格因为贴近障碍或地图边界而无法启动规划。
+ * 障碍物膨胀已在原始地图分辨率上由 navigation_build_inflated_blocked_map
+ * 完成并写入 g_navigationInflatedBlockedBits，navigation_nav_cell_known_free
+ * 会检查该位图，因此这里只需做单格可通行判断。起点特殊放行，避免车辆
+ * 当前所在栅格因为贴近障碍或地图边界而无法启动规划。
  */
 static uint8_t navigation_is_blocked_inflated(int16_t nav_x,
                                               int16_t nav_y,
                                               const NavigationGridPoint_t *start_cell)
 {
-    int16_t check_y;
-    int16_t check_x;
-
     /* 起点使用当前车体位置，允许它从未知/边界处脱困；其他格子需要经过膨胀检测。 */
     if ((start_cell != NULL) && (nav_x == start_cell->x) && (nav_y == start_cell->y)) {
         return 0U;
     }
 
-    for (check_y = nav_y;
-         check_y <= nav_y;
-         ++check_y) {
-        for (check_x = nav_x;
-             check_x <= nav_x;
-             ++check_x) {
-            if (navigation_nav_cell_known_free(check_x, check_y) == 0U) {
-                return 1U;
-            }
-        }
-    }
-
-    return 0U;
+    return (navigation_nav_cell_known_free(nav_x, nav_y) == 0U) ? 1U : 0U;
 }
 
 static uint8_t navigation_map_cell_blocked_for_line(int16_t map_x,

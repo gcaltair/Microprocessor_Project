@@ -31,7 +31,7 @@ NAVIGATION_PARENT_NONE = 0xFF
 NAVIGATION_PARENT_START = 0xFE
 NAVIGATION_FLAG_OPEN = 0x01
 NAVIGATION_FLAG_CLOSED = 0x02
-NAVIGATION_INFLATE_RADIUS_CELLS = 1
+NAVIGATION_INFLATE_RADIUS_M = 0.15
 NAVIGATION_REACH_DISTANCE_M = 0.1
 NAVIGATION_MIN_SEGMENT_M = 0.1
 NAVIGATION_OCCUPIED_CELL_THRESHOLD = 5
@@ -105,6 +105,7 @@ class NavigationPlanner:
         self.raw_path: list[GridPoint] = []
         self.smooth_grid_path: list[GridPoint] = []
         self.smooth_world_path: list[WorldPoint] = []
+        self.inflated_blocked = self._build_inflated_blocked_map()
 
     def update(self, current_pose: Pose2D, goal_pose: Pose2D | None, control_busy: bool = False) -> NavigationResult:
         if goal_pose is None:
@@ -291,19 +292,7 @@ class NavigationPlanner:
         if start_cell.x != end_cell.x and start_cell.y != end_cell.y:
             return False
 
-        # The simulated car only accepts horizontal or vertical local targets.
-        if start_cell.x == end_cell.x:
-            step = 1 if end_cell.y >= start_cell.y else -1
-            for y in range(start_cell.y, end_cell.y + step, step):
-                if self.is_blocked_inflated(start_cell.x, y, start_cell):
-                    return False
-            return True
-
-        step = 1 if end_cell.x >= start_cell.x else -1
-        for x in range(start_cell.x, end_cell.x + step, step):
-            if self.is_blocked_inflated(x, start_cell.y, start_cell):
-                return False
-        return True
+        return self.line_free_map(start_cell, end_cell)
 
     @staticmethod
     def select_axis_target(
@@ -336,8 +325,80 @@ class NavigationPlanner:
     def is_inside(self, x: int, y: int) -> bool:
         return 0 <= x < self.nav_width_cells and 0 <= y < self.nav_height_cells
 
+    def _inflate_radius_map_cells(self) -> int:
+        if self.resolution_m_per_cell <= 0.0:
+            return 0
+        return math.ceil(NAVIGATION_INFLATE_RADIUS_M / self.resolution_m_per_cell)
+
+    def _build_inflated_blocked_map(self) -> list[list[bool]]:
+        inflated = [[False for _ in range(self.width_cells)] for _ in range(self.height_cells)]
+        radius = self._inflate_radius_map_cells()
+        for map_y, row in enumerate(self.cells):
+            for map_x, value in enumerate(row):
+                if value < NAVIGATION_OCCUPIED_CELL_THRESHOLD:
+                    continue
+                for dy in range(-radius, radius + 1):
+                    for dx in range(-radius, radius + 1):
+                        if dx * dx + dy * dy > radius * radius:
+                            continue
+                        inflated_x = map_x + dx
+                        inflated_y = map_y + dy
+                        if 0 <= inflated_x < self.width_cells and 0 <= inflated_y < self.height_cells:
+                            inflated[inflated_y][inflated_x] = True
+        return inflated
+
+    @staticmethod
+    def nav_cell_to_map_center_coord(nav_coord: int) -> int:
+        return nav_coord * NAVIGATION_GRID_DOWNSAMPLE + NAVIGATION_GRID_DOWNSAMPLE // 2
+
+    def map_cell_blocked_for_line(self, map_x: int, map_y: int, start_map_x: int, start_map_y: int) -> bool:
+        if map_x == start_map_x and map_y == start_map_y:
+            return False
+        return not self.map_cell_known_free(map_x, map_y)
+
+    def line_free_map(self, start_cell: GridPoint, end_cell: GridPoint) -> bool:
+        start_map_x = self.nav_cell_to_map_center_coord(start_cell.x)
+        start_map_y = self.nav_cell_to_map_center_coord(start_cell.y)
+        end_map_x = self.nav_cell_to_map_center_coord(end_cell.x)
+        end_map_y = self.nav_cell_to_map_center_coord(end_cell.y)
+
+        dx = abs(end_map_x - start_map_x)
+        dy = abs(end_map_y - start_map_y)
+        step_x = 1 if start_map_x < end_map_x else -1
+        step_y = 1 if start_map_y < end_map_y else -1
+        err = dx - dy
+        x = start_map_x
+        y = start_map_y
+
+        while True:
+            if self.map_cell_blocked_for_line(x, y, start_map_x, start_map_y):
+                return False
+            if x == end_map_x and y == end_map_y:
+                return True
+
+            prev_x = x
+            prev_y = y
+            moved_x = False
+            moved_y = False
+            twice_err = 2 * err
+            if twice_err > -dy:
+                err -= dy
+                x += step_x
+                moved_x = True
+            if twice_err < dx:
+                err += dx
+                y += step_y
+                moved_y = True
+            if moved_x and moved_y:
+                if self.map_cell_blocked_for_line(x, prev_y, start_map_x, start_map_y):
+                    return False
+                if self.map_cell_blocked_for_line(prev_x, y, start_map_x, start_map_y):
+                    return False
+
     def map_cell_known_free(self, map_x: int, map_y: int) -> bool:
         if map_x < 0 or map_y < 0 or map_x >= self.width_cells or map_y >= self.height_cells:
+            return False
+        if self.inflated_blocked[map_y][map_x]:
             return False
         return self.cells[map_y][map_x] < NAVIGATION_OCCUPIED_CELL_THRESHOLD
 
@@ -355,11 +416,7 @@ class NavigationPlanner:
     def is_blocked_inflated(self, nav_x: int, nav_y: int, start_cell: GridPoint | None) -> bool:
         if start_cell is not None and nav_x == start_cell.x and nav_y == start_cell.y:
             return False
-        for check_y in range(nav_y - NAVIGATION_INFLATE_RADIUS_CELLS, nav_y + NAVIGATION_INFLATE_RADIUS_CELLS + 1):
-            for check_x in range(nav_x - NAVIGATION_INFLATE_RADIUS_CELLS, nav_x + NAVIGATION_INFLATE_RADIUS_CELLS + 1):
-                if not self.nav_cell_known_free(check_x, check_y):
-                    return True
-        return False
+        return not self.nav_cell_known_free(nav_x, nav_y)
 
     def build_blocked_overlay(self, start_cell: GridPoint | None) -> list[list[bool]]:
         return [
@@ -646,11 +703,10 @@ class NavigationSimulatorApp(tk.Tk):
         planner = NavigationPlanner(self.cells, self.resolution, self.origin_x_m, self.origin_y_m)
         start_cell = planner.world_to_nav_cell(self.robot_pose.x_m, self.robot_pose.y_m)
         if self.show_inflation.get():
-            blocked = planner.build_blocked_overlay(start_cell)
-            for nav_y, row in enumerate(blocked):
-                for nav_x, is_blocked in enumerate(row):
+            for map_y, row in enumerate(planner.inflated_blocked):
+                for map_x, is_blocked in enumerate(row):
                     if is_blocked:
-                        self._draw_nav_cell(nav_x, nav_y, "#d95f5f", stipple="gray25")
+                        self._draw_map_cell(map_x, map_y, "#d95f5f", stipple="gray25")
 
         if self.show_nav_grid.get():
             self._draw_nav_grid(planner.nav_width_cells, planner.nav_height_cells)
@@ -683,7 +739,7 @@ class NavigationSimulatorApp(tk.Tk):
             f"downsample          : {NAVIGATION_GRID_DOWNSAMPLE}x{NAVIGATION_GRID_DOWNSAMPLE}",
             "motion_model        : x-only/y-only segments",
             f"occupied_threshold  : >= {NAVIGATION_OCCUPIED_CELL_THRESHOLD}",
-            f"inflate_radius_nav  : {NAVIGATION_INFLATE_RADIUS_CELLS}",
+            f"inflate_radius_m    : {NAVIGATION_INFLATE_RADIUS_M:.2f}",
             f"start_nav_cell      : {self._point_text(start_cell)}",
             f"goal_nav_cell       : {self._point_text(goal_cell)}",
             f"raw_path_len        : {len(result.raw_path)}",
@@ -828,6 +884,11 @@ class NavigationSimulatorApp(tk.Tk):
             for x in range(center_x - radius, center_x + radius + 1):
                 if 0 <= x < width and 0 <= y < height:
                     self.cells[y][x] = value
+
+    def _draw_map_cell(self, map_x: int, map_y: int, fill: str, stipple: str = "") -> None:
+        x0 = self.map_left + map_x * self.cell_px
+        y0 = self.map_top + (len(self.cells) - 1 - map_y) * self.cell_px
+        self.canvas.create_rectangle(x0, y0, x0 + self.cell_px, y0 + self.cell_px, fill=fill, outline="", stipple=stipple)
 
     def _draw_nav_cell(self, nav_x: int, nav_y: int, fill: str, stipple: str = "") -> None:
         x0 = self.map_left + nav_x * NAVIGATION_GRID_DOWNSAMPLE * self.cell_px

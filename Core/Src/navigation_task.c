@@ -13,7 +13,7 @@
 #include "pid.h"
 #include "system.h"
 
-#define NAVIGATION_TASK_PERIOD_MS          600U
+#define NAVIGATION_TASK_PERIOD_MS          300U
 #define NAVIGATION_GRID_DOWNSAMPLE         2U
 #define NAVIGATION_MAX_WIDTH_CELLS         ((OGM_MAX_WIDTH_CELLS + NAVIGATION_GRID_DOWNSAMPLE - 1U) / NAVIGATION_GRID_DOWNSAMPLE)
 #define NAVIGATION_MAX_HEIGHT_CELLS        ((OGM_MAX_HEIGHT_CELLS + NAVIGATION_GRID_DOWNSAMPLE - 1U) / NAVIGATION_GRID_DOWNSAMPLE)
@@ -433,6 +433,12 @@ static NavigationWorldPoint_t navigation_nav_cell_to_world(const NavigationGridP
     return point;
 }
 
+static int16_t navigation_nav_cell_to_map_center_coord(int16_t nav_coord)
+{
+    return (int16_t)((nav_coord * (int16_t)NAVIGATION_GRID_DOWNSAMPLE) +
+                     (int16_t)(NAVIGATION_GRID_DOWNSAMPLE / 2U));
+}
+
 /*
  * 判断原始建图栅格是否可作为可通行空间。
  *
@@ -528,6 +534,18 @@ static uint8_t navigation_is_blocked_inflated(int16_t nav_x,
     }
 
     return 0U;
+}
+
+static uint8_t navigation_map_cell_blocked_for_line(int16_t map_x,
+                                                    int16_t map_y,
+                                                    int16_t start_map_x,
+                                                    int16_t start_map_y)
+{
+    if ((map_x == start_map_x) && (map_y == start_map_y)) {
+        return 0U;
+    }
+
+    return (navigation_map_cell_known_free(map_x, map_y) == 0U) ? 1U : 0U;
 }
 
 /*
@@ -772,6 +790,10 @@ static uint8_t navigation_find_path_map(const NavigationGridPoint_t *start_cell,
 static uint8_t navigation_line_free(const NavigationGridPoint_t *start_cell,
                                     const NavigationGridPoint_t *end_cell)
 {
+    int16_t start_map_x;
+    int16_t start_map_y;
+    int16_t end_map_x;
+    int16_t end_map_y;
     int16_t dx;
     int16_t dy;
     int16_t step_x;
@@ -779,37 +801,37 @@ static uint8_t navigation_line_free(const NavigationGridPoint_t *start_cell,
     int16_t err;
     int16_t x;
     int16_t y;
-    uint8_t first_cell = 1U;
 
     /* Bresenham 视线检测：如果直线经过膨胀障碍，则不能把中间路径点删掉。 */
     if ((start_cell == NULL) || (end_cell == NULL)) {
         return 0U;
     }
 
-    dx = (int16_t)abs((int)(end_cell->x - start_cell->x));
-    dy = (int16_t)abs((int)(end_cell->y - start_cell->y));
-    step_x = (start_cell->x < end_cell->x) ? 1 : -1;
-    step_y = (start_cell->y < end_cell->y) ? 1 : -1;
+    start_map_x = navigation_nav_cell_to_map_center_coord(start_cell->x);
+    start_map_y = navigation_nav_cell_to_map_center_coord(start_cell->y);
+    end_map_x = navigation_nav_cell_to_map_center_coord(end_cell->x);
+    end_map_y = navigation_nav_cell_to_map_center_coord(end_cell->y);
+
+    dx = (int16_t)abs((int)(end_map_x - start_map_x));
+    dy = (int16_t)abs((int)(end_map_y - start_map_y));
+    step_x = (start_map_x < end_map_x) ? 1 : -1;
+    step_y = (start_map_y < end_map_y) ? 1 : -1;
     err = (int16_t)(dx - dy);
-    x = start_cell->x;
-    y = start_cell->y;
+    x = start_map_x;
+    y = start_map_y;
 
     for (;;) {
         int16_t twice_err;
+        int16_t prev_x = x;
+        int16_t prev_y = y;
+        uint8_t moved_x = 0U;
+        uint8_t moved_y = 0U;
 
-        if (navigation_is_inside(x, y) == 0U) {
+        if (navigation_map_cell_blocked_for_line(x, y, start_map_x, start_map_y) != 0U) {
             return 0U;
         }
 
-        if (first_cell == 0U) {
-            if (navigation_is_blocked_inflated(x, y, start_cell) != 0U) {
-                return 0U;
-            }
-        }
-
-        first_cell = 0U;
-
-        if ((x == end_cell->x) && (y == end_cell->y)) {
+        if ((x == end_map_x) && (y == end_map_y)) {
             return 1U;
         }
 
@@ -817,10 +839,19 @@ static uint8_t navigation_line_free(const NavigationGridPoint_t *start_cell,
         if (twice_err > (int16_t)(-dy)) {
             err = (int16_t)(err - dy);
             x = (int16_t)(x + step_x);
+            moved_x = 1U;
         }
         if (twice_err < dx) {
             err = (int16_t)(err + dx);
             y = (int16_t)(y + step_y);
+            moved_y = 1U;
+        }
+
+        if ((moved_x != 0U) && (moved_y != 0U)) {
+            if ((navigation_map_cell_blocked_for_line(x, prev_y, start_map_x, start_map_y) != 0U) ||
+                (navigation_map_cell_blocked_for_line(prev_x, y, start_map_x, start_map_y) != 0U)) {
+                return 0U;
+            }
         }
     }
 }

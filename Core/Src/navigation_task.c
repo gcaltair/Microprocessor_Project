@@ -32,6 +32,7 @@
 #define NAVIGATION_OCCUPIED_CELL_THRESHOLD (5)
 #define NAVIGATION_COMMAND_MAX_LEN         64U
 #define NAVIGATION_INFLATED_BLOCKED_BYTES  ((OGM_MAX_CELL_COUNT + 7U) / 8U)
+#define NAVIGATION_PREEMPT_ANGLE_DEG       45.0f
 
 typedef struct {
     int16_t x;
@@ -1055,6 +1056,54 @@ void NavigationTask_HandleCommandRxCompleteFromIsr(void)
 }
 
 /*
+ * 将角度归一化到 [-180, 180] 范围。
+ */
+static float navigation_normalize_angle_deg(float angle_deg)
+{
+    while (angle_deg > 180.0f) {
+        angle_deg -= 360.0f;
+    }
+
+    while (angle_deg < -180.0f) {
+        angle_deg += 360.0f;
+    }
+
+    return angle_deg;
+}
+
+/*
+ * 判断新规划的局部目标方向是否与当前正在执行的运动方向偏差过大。
+ *
+ * 用新目标相对当前位置的方向角与控制层正在追踪的目标航向做比较，
+ * 偏差超过 NAVIGATION_PREEMPT_ANGLE_DEG 时返回 1，表示应当抢占。
+ * 如果当前不在相对位移模式或位移量过小，则不触发抢占。
+ */
+static uint8_t navigation_should_preempt(float new_dx, float new_dy)
+{
+    float new_heading_deg;
+    float current_heading_deg;
+    float deviation_deg;
+
+    if (g_relative_move_state == RELATIVE_MOVE_IDLE) {
+        return 0U;
+    }
+
+    if (sqrtf((new_dx * new_dx) + (new_dy * new_dy)) < NAVIGATION_MIN_SEGMENT_M) {
+        return 0U;
+    }
+
+    new_heading_deg = atan2f(new_dy, new_dx) * 180.0f / 3.14159265f;
+    current_heading_deg = g_pid_angle.setpoint;
+    deviation_deg = navigation_normalize_angle_deg(new_heading_deg - current_heading_deg);
+
+    if (deviation_deg < 0.0f) {
+        deviation_deg = -deviation_deg;
+    }
+
+    return (deviation_deg > NAVIGATION_PREEMPT_ANGLE_DEG) ? 1U : 0U;
+}
+
+/*
  * 执行一次导航状态机更新。
  *
  * 更新流程包括：读取目标快照、读取当前定位、判断是否到达、复制地图快照、
@@ -1138,18 +1187,33 @@ NavigationStatus_t NavigationTask_Update(void)
 
     if (plan_only != 0U) {
         status = NAVIGATION_STATUS_OK;
-    } else if ((g_relative_move_state == RELATIVE_MOVE_IDLE) && (g_control_mode != CONTROL_MODE_SPEED_TEST)) {
+    } else if (g_control_mode == CONTROL_MODE_SPEED_TEST) {
+        status = NAVIGATION_STATUS_BUSY;
+    } else {
         float dx_target = target_pose.x_m - current_pose.x_m;
         float dy_target = target_pose.y_m - current_pose.y_m;
         float target_distance_m = sqrtf((dx_target * dx_target) + (dy_target * dy_target));
 
-        /* 只有控制空闲时才下发下一段相对位移，避免打断正在执行的运动。 */
-        if (target_distance_m >= NAVIGATION_MIN_SEGMENT_M) {
-            Start_Relative_Move(dx_target, dy_target);
+        if (g_relative_move_state == RELATIVE_MOVE_IDLE) {
+            /* 控制空闲，直接下发下一段相对位移。 */
+            if (target_distance_m >= NAVIGATION_MIN_SEGMENT_M) {
+                Start_Relative_Move(dx_target, dy_target);
+            }
+            status = NAVIGATION_STATUS_OK;
+        } else if (navigation_should_preempt(dx_target, dy_target) != 0U) {
+            /*
+             * 新规划路径方向与当前运动方向偏差过大，抢占当前运动：
+             * 先取消正在执行的相对位移，再立即下发新方向的运动。
+             */
+            Cancel_Relative_Move();
+            if (target_distance_m >= NAVIGATION_MIN_SEGMENT_M) {
+                Start_Relative_Move(dx_target, dy_target);
+            }
+            status = NAVIGATION_STATUS_OK;
+        } else {
+            /* 方向偏差在容许范围内，等待当前运动完成。 */
+            status = NAVIGATION_STATUS_BUSY;
         }
-        status = NAVIGATION_STATUS_OK;
-    } else {
-        status = NAVIGATION_STATUS_BUSY;
     }
 
     navigation_lock();

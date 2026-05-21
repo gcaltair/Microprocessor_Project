@@ -696,6 +696,29 @@ void Start_Relative_Move(float dx, float dy)
 }
 
 /*
+ * 取消正在执行的相对位移运动。
+ *
+ * 导航任务在重新规划路径后发现新方向与当前运动方向偏差过大时调用此函数，
+ * 立即中断当前 relative_move 并将控制层恢复为空闲状态，为后续下发新运动
+ * 腾出条件。若当前不在相对位移模式，则不做任何操作。
+ */
+void Cancel_Relative_Move(void)
+{
+    lock_control_and_pid();
+
+    if (g_relative_move_state != RELATIVE_MOVE_IDLE) {
+        g_relative_move_state = RELATIVE_MOVE_IDLE;
+        g_control_mode = CONTROL_MODE_MANUAL;
+        base_car_speed = 0.0f;
+        g_pid_position.integral = 0.0f;
+        g_pid_position.last_error = 0.0f;
+        s_angle_control_active = 0U;
+    }
+
+    unlock_pid_and_control();
+}
+
+/*
  * 相对位移模式的外层状态机。
  *
  * TURNING：base_car_speed 为 0，只用角度环把车头转到目标航向。

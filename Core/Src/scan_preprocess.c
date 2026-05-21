@@ -3,8 +3,8 @@
 #include "../Inc/scan_preprocess.h"
 
 const ScanPreprocessConfig_t g_scanPreprocessConfig = {
-    .min_distance_mm = 80.0f,
-    .max_distance_mm = 3500.0f,
+    .min_distance_mm = 15.0f,
+    .max_distance_mm = 4000.0f,
     .min_quality = 8U,
 };
 

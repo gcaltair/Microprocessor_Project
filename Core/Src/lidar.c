@@ -11,6 +11,7 @@ volatile uint8_t lidar_raw_overflow = 0U;
 volatile uint32_t overflow_count = 0U;
 
 #define TX_BUFFER_SIZE  8192U
+#define LIDAR_DISTANCE_BIAS_MM 267.0f
 
 static uint8_t lidar_dma_rx_buffer[LIDAR_DMA_RX_BUFFER_SIZE];
 static uint8_t tx_buffer_A[TX_BUFFER_SIZE];
@@ -62,6 +63,7 @@ static uint8_t parse_packet_into_scan(const uint8_t *packet, LidarScanBuffer_t *
     uint16_t angle_q6;
     uint16_t distance_q2;
     uint16_t index;
+    float distance_mm;
 
     if ((packet == NULL) || (scan_buffer == NULL)) {
         return 0U;
@@ -81,10 +83,15 @@ static uint8_t parse_packet_into_scan(const uint8_t *packet, LidarScanBuffer_t *
         return 0U;
     }
 
+    distance_mm = ((float)distance_q2 / 4.0f) - LIDAR_DISTANCE_BIAS_MM;
+    if (distance_mm <= 0.0f) {
+        return 0U;
+    }
+
     index = scan_buffer->point_count;
     scan_buffer->points[index].quality = packet[0] >> 2;
     scan_buffer->points[index].angle_deg = (float)angle_q6 / 64.0f;
-    scan_buffer->points[index].distance_mm = (float)distance_q2 / 4.0f;
+    scan_buffer->points[index].distance_mm = distance_mm;
     scan_buffer->point_count++;
 
     return 1U;

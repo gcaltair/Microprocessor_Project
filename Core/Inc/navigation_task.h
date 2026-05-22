@@ -5,8 +5,54 @@
 
 #include "slam_types.h"
 
+/* ── 遥测路径最大点数 ── */
 #define NAVIGATION_PATH_TELEMETRY_MAX_POINTS 64U
 
+/* ── 迷宫图参数 ── */
+#define MAZE_COLS                5U
+#define MAZE_ROWS                5U
+#define MAZE_NODE_COUNT          (MAZE_COLS * MAZE_ROWS)
+#define MAZE_DIR_COUNT           4U
+#define CELL_SIZE_M              0.70f
+
+/* 墙壁检测阈值：小于此距离判定为墙 */
+#define WALL_DETECT_THRESHOLD_M  0.45f
+/* LiDAR 扇区半宽（度） */
+#define WALL_SECTOR_HALF_DEG     15.0f
+
+/* ── 方向枚举 ── */
+typedef enum {
+    MAZE_DIR_EAST  = 0,   /* +X */
+    MAZE_DIR_NORTH = 1,   /* +Y */
+    MAZE_DIR_WEST  = 2,   /* -X */
+    MAZE_DIR_SOUTH = 3    /* -Y */
+} MazeEdgeDir_t;
+
+/* ── 边状态 ── */
+typedef enum {
+    EDGE_UNKNOWN = 0,
+    EDGE_OPEN    = 1,
+    EDGE_WALL    = 2
+} MazeEdgeState_t;
+
+/* ── 探索状态机 ── */
+typedef enum {
+    MAZE_EXPLORE_IDLE      = 0,
+    MAZE_EXPLORE_SCAN      = 1,   /* 扫描当前格四向墙壁 */
+    MAZE_EXPLORE_CHOOSE    = 2,   /* 选择下一步方向 */
+    MAZE_EXPLORE_MOVING    = 3,   /* 正在移动到邻格 */
+    MAZE_EXPLORE_BACKTRACK = 4,   /* BFS 回溯中 */
+    MAZE_EXPLORE_RETURN    = 5,   /* 探索完成，返回起点 */
+    MAZE_EXPLORE_DONE      = 6    /* 全部完成 */
+} MazeExploreState_t;
+
+/* ── 迷宫图结构体 ── */
+typedef struct {
+    MazeEdgeState_t edges[MAZE_NODE_COUNT][MAZE_DIR_COUNT];
+    uint8_t         visited[MAZE_NODE_COUNT];
+} MazeGraph_t;
+
+/* ── 导航状态 ── */
 typedef enum {
     NAVIGATION_STATUS_IDLE = 0,
     NAVIGATION_STATUS_OK = 1,
@@ -34,19 +80,20 @@ typedef struct {
     SlamPose2D_t target_pose;
 } NavigationTaskStats_t;
 
-/* FreeRTOS 导航线程入口：周期性规划路径，并在控制空闲时下发下一段局部目标。 */
+/* ── FreeRTOS 线程入口 ── */
 void StartNavigationTask(void *argument);
-/* 设置导航终点，坐标单位为米，坐标系与当前占据栅格地图一致。 */
+
+/* ── 迷宫探索 API ── */
+void NavigationTask_SetStartCell(uint8_t col, uint8_t row);
+void NavigationTask_GetMazeGraph(MazeGraph_t *graph_out);
+MazeExploreState_t NavigationTask_GetExploreState(void);
+
+/* ── 原有 API（保留兼容） ── */
 void NavigationTask_SetGoal(float goal_x_m, float goal_y_m);
-/* 清除当前导航目标，同时让导航线程回到空闲状态。 */
 void NavigationTask_ClearGoal(void);
-/* 启动 UART5 命令接收，命令格式为 "NAV x y\n"、"NAVC\n" 或 "Pdx,dy\n"。 */
 void NavigationTask_StartCommandRx(void);
-/* UART5 收到 1 字节后的中断回调入口，只做拼行和重新挂接收。 */
 void NavigationTask_HandleCommandRxCompleteFromIsr(void);
-/* 手动触发一次导航更新，返回本次规划和下发结果。 */
 NavigationStatus_t NavigationTask_Update(void);
-/* 获取导航状态快照，主要供遥测或调试代码读取。 */
 void NavigationTask_GetStatsSnapshot(NavigationTaskStats_t *stats);
 uint16_t NavigationTask_CopySmoothPathPoints(NavigationPathPoint_t *points, uint16_t max_points);
 

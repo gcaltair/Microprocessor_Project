@@ -449,7 +449,7 @@ void StartLiDARParseTask(void *argument)
         if (g_odomMutex != NULL) {
           (void)osMutexAcquire(g_odomMutex, osWaitForever);
         }
-        Odometry_GetPoseSnapshot(&scan_msg.pose_snapshot);
+        Odometry_GetPoseSnapshot(&scan_msg.pose);
         if (g_odomMutex != NULL) {
           (void)osMutexRelease(g_odomMutex);
         }

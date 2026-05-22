@@ -24,8 +24,7 @@ typedef struct {
     uint8_t scan_index;
     uint16_t point_count;
     uint32_t scan_sequence;
-    SlamPose2D_t pose_snapshot;
-    SlamPose2D_t corrected_pose;
+    SlamPose2D_t pose;
     LidarScanQuality_t quality;
     uint8_t localization_mode;
     uint8_t map_update_allowed;

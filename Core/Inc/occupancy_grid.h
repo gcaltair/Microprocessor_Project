@@ -32,7 +32,9 @@ uint8_t OccupancyGrid_IsInside(const OccupancyGrid_t *grid, int32_t cell_x, int3
 uint8_t OccupancyGrid_WorldToCell(const OccupancyGrid_t *grid, float x_m, float y_m, SlamGridCoord_t *cell);
 uint8_t OccupancyGrid_UpdateCell(OccupancyGrid_t *grid, int32_t cell_x, int32_t cell_y, int8_t delta_log_odds);
 uint8_t OccupancyGrid_GetCell(const OccupancyGrid_t *grid, int32_t cell_x, int32_t cell_y, int8_t *value);
+//标记为空
 void OccupancyGrid_MarkFree(OccupancyGrid_t *grid, int32_t cell_x, int32_t cell_y);
+//标记为被占据
 void OccupancyGrid_MarkOccupied(OccupancyGrid_t *grid, int32_t cell_x, int32_t cell_y);
 void OccupancyGrid_TraceRay(OccupancyGrid_t *grid,
                             const SlamGridCoord_t *start_cell,

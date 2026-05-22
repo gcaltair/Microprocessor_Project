@@ -731,6 +731,7 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
 
             base_car_speed = 0.0f;
             angle_error = pid_normalize_angle_deg(g_pid_angle.setpoint - current_angle_deg);
+
             s_control_debug_snapshot.position_pid_output_mps = 0.0f;
             s_control_debug_snapshot.position_error_m = s_target_distance;
 

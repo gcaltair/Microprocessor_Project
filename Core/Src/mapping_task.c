@@ -111,7 +111,7 @@ static void mapping_task_update_stats(const LidarScanMsg_t *scan_msg,
     g_mappingStats.last_localization_mode = (LocalizationMode_t)scan_msg->localization_mode;
     g_mappingStats.last_odom_delta_theta_deg = scan_msg->odom_delta_theta_deg;
     g_mappingStats.last_odom_delta_translation_m = scan_msg->odom_delta_translation_m;
-    g_mappingStats.last_pose = scan_msg->corrected_pose;
+    g_mappingStats.last_pose = scan_msg->pose;
 
     if (skip_reason == MAPPING_SKIP_REASON_TURNING) {
         /* 记录因为转弯暂停建图的次数。 */
@@ -153,8 +153,8 @@ static void mapping_task_update_grid_from_scan(const LidarScanMsg_t *scan_msg)
      */
     mapping_task_lock_grid();
     robot_inside_grid = OccupancyGrid_WorldToCell(&g_mappingGrid,
-                                                  scan_msg->corrected_pose.x_m,
-                                                  scan_msg->corrected_pose.y_m,
+                                                  scan_msg->pose.x_m,
+                                                  scan_msg->pose.y_m,
                                                    &robot_cell);
     if (robot_inside_grid == 0U) {
         /* 如果里程计位姿已经离开地图范围，则不写射线，只更新调试状态。 */
@@ -198,11 +198,11 @@ static void mapping_task_update_grid_from_scan(const LidarScanMsg_t *scan_msg)
 
         /* 使用纯里程计位姿，把雷达极坐标点转换到世界坐标系。 */
         distance_m = scan_buffer->points[idx].distance_mm * 0.001f;
-        beam_angle_rad = ScanPreprocess_BeamWorldAngleDeg(scan_msg->corrected_pose.theta_deg,
+        beam_angle_rad = ScanPreprocess_BeamWorldAngleDeg(scan_msg->pose.theta_deg,
                                                           scan_buffer->points[idx].angle_deg) *
                          DEG_TO_RAD;
-        world_x_m = scan_msg->corrected_pose.x_m + distance_m * cosf(beam_angle_rad);
-        world_y_m = scan_msg->corrected_pose.y_m + distance_m * sinf(beam_angle_rad);
+        world_x_m = scan_msg->pose.x_m + distance_m * cosf(beam_angle_rad);
+        world_y_m = scan_msg->pose.y_m + distance_m * sinf(beam_angle_rad);
 
         if (OccupancyGrid_WorldToCell(&g_mappingGrid, world_x_m, world_y_m, &endpoint_cell) == 0U) {
             /* 地图外的回波直接忽略，避免把边界裁剪成错误的墙。 */

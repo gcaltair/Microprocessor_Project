@@ -86,6 +86,11 @@ static int8_t s_start_node = -1;
 static uint8_t s_start_col = 0U;
 static uint8_t s_start_row = 0U;
 static uint8_t s_start_cell_set = 0U;
+static uint8_t s_origin_calibrated = 0U;
+
+/* 世界坐标原点校准偏移：起点格子中心相对于机器人初始位置 (0,0) 的偏移 */
+static float s_origin_offset_x = 0.0f;
+static float s_origin_offset_y = 0.0f;
 
 /* DFS 栈 */
 static int8_t s_dfs_stack[DFS_STACK_MAX];
@@ -144,15 +149,16 @@ static MazeEdgeDir_t nav_opposite_dir(MazeEdgeDir_t dir)
 }
 
 /*
- * 给定节点 ID，返回其格子中心的世界坐标（以起点为原点）。
+ * 给定节点 ID，返回其格子中心的世界坐标。
+ * 以机器人初始里程计 (0,0) 为原点，通过 s_origin_offset 校准。
  */
 static void nav_cell_center(int8_t node_id, float *x_m, float *y_m)
 {
     uint8_t col, row;
 
     nav_node_to_colrow(node_id, &col, &row);
-    *x_m = ((float)col - (float)s_start_col) * CELL_SIZE_M;
-    *y_m = ((float)row - (float)s_start_row) * CELL_SIZE_M;
+    *x_m = s_origin_offset_x + ((float)col - (float)s_start_col) * CELL_SIZE_M;
+    *y_m = s_origin_offset_y + ((float)row - (float)s_start_row) * CELL_SIZE_M;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -302,6 +308,96 @@ static void nav_scan_walls_at_current_node(void)
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  世界坐标原点校准
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * 利用 LiDAR 到相邻墙壁的距离，校准起点格子中心的世界坐标。
+ *
+ * 原理：
+ *   机器人初始位置为里程计原点 (0, 0)。LiDAR 读取到相邻墙壁的距离后，
+ *   可以推算出格子中心相对于机器人的偏移量。
+ *
+ *   例如：起点 (0,0)，WEST 方向有墙，LiDAR 测距 d_w = 0.20 m
+ *     → 西墙在 world_x = -0.20
+ *     → 格子中心 x = -0.20 + CELL_SIZE/2 = -0.20 + 0.35 = 0.15
+ *     → s_origin_offset_x = 0.15
+ *
+ * 对每个轴，优先使用有 WALL 边的方向进行校准。如果两侧都有墙，取均值。
+ * 如果该轴没有相邻墙壁，则假设机器人在格子中心（偏移 = 0）。
+ */
+static void nav_calibrate_origin(void)
+{
+    float half_cell = CELL_SIZE_M * 0.5f;
+    uint8_t x_done = 0U;
+    uint8_t y_done = 0U;
+
+    /* ─── X 轴校准 ─── */
+
+    /* 优先用 WEST 墙 */
+    if (s_maze_graph.edges[s_current_node][MAZE_DIR_WEST] == EDGE_WALL) {
+        float d_w = nav_lidar_sector_min_dist_m(s_dir_world_angle_offset[MAZE_DIR_WEST]);
+        if (d_w < CELL_SIZE_M) {
+            s_origin_offset_x = half_cell - d_w;
+            x_done = 1U;
+
+            /* 如果 EAST 也有墙，取均值提高精度 */
+            if (s_maze_graph.edges[s_current_node][MAZE_DIR_EAST] == EDGE_WALL) {
+                float d_e = nav_lidar_sector_min_dist_m(s_dir_world_angle_offset[MAZE_DIR_EAST]);
+                if (d_e < CELL_SIZE_M) {
+                    s_origin_offset_x = (d_e - d_w) * 0.5f;
+                }
+            }
+        }
+    }
+    /* 否则尝试 EAST 墙 */
+    if ((x_done == 0U) &&
+        (s_maze_graph.edges[s_current_node][MAZE_DIR_EAST] == EDGE_WALL)) {
+        float d_e = nav_lidar_sector_min_dist_m(s_dir_world_angle_offset[MAZE_DIR_EAST]);
+        if (d_e < CELL_SIZE_M) {
+            s_origin_offset_x = d_e - half_cell;
+            x_done = 1U;
+        }
+    }
+
+    /* ─── Y 轴校准 ─── */
+
+    /* 优先用 SOUTH 墙 */
+    if (s_maze_graph.edges[s_current_node][MAZE_DIR_SOUTH] == EDGE_WALL) {
+        float d_s = nav_lidar_sector_min_dist_m(s_dir_world_angle_offset[MAZE_DIR_SOUTH]);
+        if (d_s < CELL_SIZE_M) {
+            s_origin_offset_y = half_cell - d_s;
+            y_done = 1U;
+
+            /* 如果 NORTH 也有墙，取均值 */
+            if (s_maze_graph.edges[s_current_node][MAZE_DIR_NORTH] == EDGE_WALL) {
+                float d_n = nav_lidar_sector_min_dist_m(s_dir_world_angle_offset[MAZE_DIR_NORTH]);
+                if (d_n < CELL_SIZE_M) {
+                    s_origin_offset_y = (d_n - d_s) * 0.5f;
+                }
+            }
+        }
+    }
+    /* 否则尝试 NORTH 墙 */
+    if ((y_done == 0U) &&
+        (s_maze_graph.edges[s_current_node][MAZE_DIR_NORTH] == EDGE_WALL)) {
+        float d_n = nav_lidar_sector_min_dist_m(s_dir_world_angle_offset[MAZE_DIR_NORTH]);
+        if (d_n < CELL_SIZE_M) {
+            s_origin_offset_y = d_n - half_cell;
+            y_done = 1U;
+        }
+    }
+
+    /* 如果某轴无法校准，假设机器人在格子中心 */
+    if (x_done == 0U) {
+        s_origin_offset_x = 0.0f;
+    }
+    if (y_done == 0U) {
+        s_origin_offset_y = 0.0f;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  BFS 最短路
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -417,10 +513,20 @@ static int8_t nav_choose_unvisited_neighbor(void)
  */
 static void nav_move_one_cell(MazeEdgeDir_t dir)
 {
-    float dx = (float)s_dir_dcol[dir] * CELL_SIZE_M;
-    float dy = (float)s_dir_drow[dir] * CELL_SIZE_M;
+    int8_t target_node = nav_neighbor_id(s_current_node, dir);
+    if (target_node >= 0) {
+        float target_x_m = 0.0f;
+        float target_y_m = 0.0f;
+        nav_cell_center(target_node, &target_x_m, &target_y_m);
 
-    Start_Relative_Move(dx, dy);
+        SlamPose2D_t pose;
+        LocalizationTask_GetPoseSnapshot(&pose);
+
+        float dx = target_x_m - pose.x_m;
+        float dy = target_y_m - pose.y_m;
+
+        Start_Relative_Move(dx, dy);
+    }
 }
 
 /*
@@ -456,6 +562,12 @@ static void nav_explore_tick(void)
 
             /* 扫描当前格四向墙壁 */
             nav_scan_walls_at_current_node();
+
+            /* 首次扫墙后校准世界坐标原点 */
+            if (s_origin_calibrated == 0U) {
+                nav_calibrate_origin();
+                s_origin_calibrated = 1U;
+            }
 
             /* 标记当前格已访问 */
             s_maze_graph.visited[s_current_node] = 1U;
@@ -699,6 +811,9 @@ void NavigationTask_SetStartCell(uint8_t col, uint8_t row)
     s_start_node = node;
     s_current_node = node;
     s_start_cell_set = 1U;
+    s_origin_calibrated = 0U;
+    s_origin_offset_x = 0.0f;
+    s_origin_offset_y = 0.0f;
 
     /* 迷宫外边界预初始化：边缘格子向外的方向标记为 WALL */
     for (uint8_t r = 0U; r < MAZE_ROWS; r++) {

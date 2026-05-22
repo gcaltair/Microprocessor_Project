@@ -1,0 +1,10 @@
+../Core/Src/freertos.c:124:6:MX_FREERTOS_Init	4
+../Core/Src/freertos.c:187:6:StartDefaultTask	1
+../Core/Src/freertos.c:210:12:Freertos_NotifyControlTickFromISR	3
+../Core/Src/freertos.c:226:12:Freertos_SubmitLidarBlockFromISR	4
+../Core/Src/freertos.c:251:6:Freertos_ResetLidarPipeline	7
+../Core/Src/freertos.c:286:6:Freertos_GetRuntimeStatsSnapshot	2
+../Core/Src/freertos.c:293:6:StartControlTask	9
+../Core/Src/freertos.c:347:6:StartLiDARParseTask	11
+../Core/Src/freertos.c:426:6:StartSafetyTask	1
+../Core/Src/freertos.c:453:6:StartTelemetryTask	1

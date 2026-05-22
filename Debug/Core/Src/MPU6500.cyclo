@@ -1,0 +1,9 @@
+../Core/Src/MPU6500.c:11:6:MPU6500_Calibrate	2
+../Core/Src/MPU6500.c:46:9:MPU_Read_Byte	1
+../Core/Src/MPU6500.c:57:6:MPU_update	1
+../Core/Src/MPU6500.c:62:6:MPU_Write_Byte	1
+../Core/Src/MPU6500.c:74:9:MPU6500_Init	3
+../Core/Src/MPU6500.c:102:6:MPU6500_Read_Accel	1
+../Core/Src/MPU6500.c:124:6:MPU6500_Read_Gyro	1
+../Core/Src/MPU6500.c:157:6:MPU6500_PrintAccelData	1
+../Core/Src/MPU6500.c:168:6:MPU6500_PrintGyroData	1

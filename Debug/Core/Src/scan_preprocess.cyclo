@@ -1,0 +1,5 @@
+../Core/Src/scan_preprocess.c:13:9:ScanPreprocess_IsPointUsable	5
+../Core/Src/scan_preprocess.c:31:6:ScanPreprocess_Analyze	11
+../Core/Src/scan_preprocess.c:79:8:ScanPreprocess_GetAngleSign	1
+../Core/Src/scan_preprocess.c:84:6:ScanPreprocess_SetAngleSign	2
+../Core/Src/scan_preprocess.c:89:7:ScanPreprocess_BeamWorldAngleDeg	1

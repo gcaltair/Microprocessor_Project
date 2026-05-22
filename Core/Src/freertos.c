@@ -22,7 +22,6 @@
 #include "task.h"
 #include "main.h"
 #include "cmsis_os.h"
-#include "navigation_task.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -33,7 +32,7 @@
 #include "mapping_task.h"
 #include "scan_preprocess.h"
 #include "system.h"
-#include "telemetry.h"
+//#include "telemetry.h"
 #include "tim.h"
 /* USER CODE END Includes */
 
@@ -51,6 +50,39 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+/* ==================== 补充缺失的任务句柄和属性 ==================== */
+osThreadId_t controlTaskHandle;
+osThreadId_t lidarParseTaskHandle;
+osThreadId_t localizationTaskHandle;
+osThreadId_t mappingTaskHandle;
+osThreadId_t safetyTaskHandle;
+osThreadId_t telemetryTaskHandle;
+osThreadId_t navigationTaskHandle;
+
+const osThreadAttr_t controlTask_attributes      = { .name = "control",      .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+const osThreadAttr_t lidarParseTask_attributes   = { .name = "lidar",        .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+const osThreadAttr_t localizationTask_attributes = { .name = "localization", .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+const osThreadAttr_t mappingTask_attributes      = { .name = "mapping",      .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+const osThreadAttr_t safetyTask_attributes       = { .name = "safety",       .stack_size = 128 * 4, .priority = (osPriority_t) osPriorityNormal };
+const osThreadAttr_t telemetryTask_attributes    = { .name = "telemetry",    .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+const osThreadAttr_t navigationTask_attributes   = { .name = "navigation",   .stack_size = 256 * 4, .priority = (osPriority_t) osPriorityNormal };
+
+/* ==================== 补充缺失的互斥锁属性 ==================== */
+const osMutexAttr_t odomMutex_attributes         = { .name = "odomMutex" };
+const osMutexAttr_t localizationMutex_attributes = { .name = "locMutex" };
+const osMutexAttr_t gridMutex_attributes         = { .name = "gridMutex" };
+const osMutexAttr_t pidMutex_attributes          = { .name = "pidMutex" };
+const osMutexAttr_t controlMutex_attributes      = { .name = "ctrlMutex" };
+
+/* ==================== 补充缺失的任务入口函数声明 ==================== */
+extern void StartControlTask(void *argument);
+extern void StartLiDARParseTask(void *argument);
+extern void StartLocalizationTask(void *argument);
+extern void StartMappingTask(void *argument);
+extern void StartSafetyTask(void *argument);
+extern void StartTelemetryTask(void *argument);
+extern void StartNavigationTask(void *argument);
+/* ================================================================= */
 osSemaphoreId_t g_controlTickSem = NULL;
 osMessageQueueId_t g_lidarBlockQueue = NULL;
 osMessageQueueId_t g_lidarResultQueue = NULL;
@@ -68,88 +100,13 @@ FreertosRuntimeStats_t g_runtimeStats;
 static volatile uint32_t g_lidarBlockSequence = 0U;
 static uint32_t g_lidarScanSequence = 0U;
 /* USER CODE END Variables */
-
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 512,
-  .priority = (osPriority_t) osPriorityLow,
-};
-
-/* USER CODE BEGIN ThreadDefs */
-osThreadId_t controlTaskHandle;
-osThreadId_t lidarParseTaskHandle;
-osThreadId_t localizationTaskHandle;
-osThreadId_t mappingTaskHandle;
-osThreadId_t safetyTaskHandle;
-osThreadId_t telemetryTaskHandle;
-
-const osThreadAttr_t controlTask_attributes = {
-  .name = "controlTask",
-  .stack_size = 1536,
-  .priority = (osPriority_t) osPriorityRealtime,
-};
-
-const osThreadAttr_t lidarParseTask_attributes = {
-  .name = "lidarParseTask",
-  .stack_size = 1536,
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-
-const osThreadAttr_t localizationTask_attributes = {
-  .name = "localizeTask",
-  .stack_size = 2048,
-  .priority = (osPriority_t) osPriorityLow,
-};
-
-const osThreadAttr_t mappingTask_attributes = {
-  .name = "mappingTask",
-  .stack_size = 2048,
-  .priority = (osPriority_t) osPriorityLow,
-};
-
-const osThreadAttr_t safetyTask_attributes = {
-  .name = "safetyTask",
-  .stack_size = 512,
-  .priority = (osPriority_t) osPriorityAboveNormal,
-};
-
-const osThreadAttr_t telemetryTask_attributes = {
-  .name = "telemetryTask",
-  .stack_size = 768,
-  .priority = (osPriority_t) osPriorityLow,
-};
-
-const osMutexAttr_t odomMutex_attributes = {
-  .name = "odomMutex",
-};
-
-const osMutexAttr_t localizationMutex_attributes = {
-  .name = "localizationMutex",
-};
-
-const osMutexAttr_t gridMutex_attributes = {
-  .name = "gridMutex",
-};
-
-const osMutexAttr_t pidMutex_attributes = {
-  .name = "pidMutex",
-};
-
-const osMutexAttr_t controlMutex_attributes = {
-  .name = "controlMutex",
-};
-
-osThreadId_t navigationTaskHandle;
-
-const osThreadAttr_t navigationTask_attributes = {
-    .name = "navigationTask",
-    .stack_size = 1024,
-    .priority = (osPriority_t) osPriorityBelowNormal,
-};
-
-/* USER CODE END ThreadDefs */
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -217,8 +174,16 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* USER CODE END RTOS_EVENTS */
+
 }
 
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN StartDefaultTask */
@@ -484,4 +449,14 @@ void StartSafetyTask(void *argument)
   }
 }
 
+
+void StartTelemetryTask(void *argument)
+{
+  for(;;)
+  {
+    osDelay(1000); // 什么都不做，每秒睡一次
+  }
+}
+
 /* USER CODE END Application */
+

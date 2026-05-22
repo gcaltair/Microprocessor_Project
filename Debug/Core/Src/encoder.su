@@ -1,0 +1,14 @@
+../Core/Src/encoder.c:36:14:encoder_apply_odometry_scale	24	static
+../Core/Src/encoder.c:45:14:encoder_reject_single_sample_sign_spike	24	static
+../Core/Src/encoder.c:65:6:encoder_init	8	static
+../Core/Src/encoder.c:73:6:encoder_update_speed	32	static
+../Core/Src/encoder.c:132:6:encoder_Reset	4	static
+../Core/Src/encoder.c:158:6:Odometry_ResetPose	4	static
+../Core/Src/encoder.c:168:10:encoder_left_get_count	4	static
+../Core/Src/encoder.c:173:10:encoder_right_get_count	4	static
+../Core/Src/encoder.c:178:6:Odometry_Update	40	static
+../Core/Src/encoder.c:209:6:Odometry_GetPoseSnapshot	16	static
+../Core/Src/encoder.c:221:6:Encoder_GetTravelSnapshot	24	static
+../Core/Src/encoder.c:243:6:Encoder_GetCalibration	24	static
+../Core/Src/encoder.c:262:9:Encoder_SetCalibration	24	static
+../Core/Src/encoder.c:278:6:Encoder_GetDebugSnapshot	24	static

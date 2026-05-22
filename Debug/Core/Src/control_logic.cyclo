@@ -1,0 +1,6 @@
+../Core/Src/control_logic.c:11:7:ControlLogic_WrapAngleDeg	3
+../Core/Src/control_logic.c:24:7:ControlLogic_ResolveAbsoluteSetpointFromCurrentHeading	1
+../Core/Src/control_logic.c:29:16:control_logic_has_manual_turn_intent	3
+../Core/Src/control_logic.c:43:16:control_logic_wheels_show_in_place_turn	8
+../Core/Src/control_logic.c:60:9:ControlLogic_ShouldPauseMappingForTurn	3
+../Core/Src/control_logic.c:82:9:ControlLogic_ShouldFuseCorrectedControlPose	6

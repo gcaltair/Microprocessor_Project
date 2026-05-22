@@ -42,7 +42,6 @@ extern UART_HandleTypeDef huart6;
 
 void MX_UART5_Init(void);
 void MX_USART6_UART_Init(void);
-HAL_StatusTypeDef UART5_ReconfigureBaudRate(uint32_t baud_rate);
 
 /* USER CODE BEGIN Prototypes */
 

@@ -1,0 +1,4 @@
+../Core/Src/hc04.c:15:13:transmit_buffer	16	static
+../Core/Src/hc04.c:27:6:transmit	16	static
+../Core/Src/hc04.c:34:6:transmit_uint8	16	static
+../Core/Src/hc04.c:39:6:uart_printf	16	static

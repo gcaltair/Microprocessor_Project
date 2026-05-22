@@ -9,13 +9,7 @@
 
 #define ASTAR_MAX_NODES  512
 
-typedef struct {
-    int16_t gx, gy;
-    int16_t parent_idx;
-    float g, f;
-    uint8_t open;
-    uint8_t closed;
-} AStarNode_t;
+
 
 static AStarNode_t g_nodes[ASTAR_MAX_NODES];
 static uint16_t g_node_count = 0;
@@ -182,4 +176,4 @@ int16_t AStar_Plan(float start_x, float start_y,
     }
 
     return path_len;
-}}
+}

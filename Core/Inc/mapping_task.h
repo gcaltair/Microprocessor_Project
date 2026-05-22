@@ -50,10 +50,6 @@ void StartMappingTask(void *argument);
 void MappingTask_ResetGrid(void);
 /* 获取建图统计快照，主要供遥测线程读取。 */
 void MappingTask_GetStatsSnapshot(MappingTaskStats_t *stats);
-/* 按下采样倍率计算 ASCII/遥测渲染尺寸。 */
-void MappingTask_GetRenderDimensions(uint8_t downsample, uint16_t *width, uint16_t *height);
-/* 将指定渲染行转换为 ASCII 字符串。 */
-uint8_t MappingTask_RenderAsciiRow(uint16_t render_row, uint8_t downsample, char *buffer, uint16_t buffer_size);
 /* 读取地图元数据，包括尺寸、分辨率和世界坐标原点。 */
 uint8_t MappingTask_GetGridMeta(MappingGridMeta_t *meta);
 /* 拷贝整张占据栅格地图。 */

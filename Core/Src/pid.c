@@ -657,7 +657,7 @@ void Start_Relative_Move(float dx, float dy)
     }
 
     s_target_distance = sqrtf(dx * dx + dy * dy);
-    if (s_target_distance < 0.01f) {
+    if (s_target_distance < POSITION_REACHED_THRESHOLD) {
         unlock_pid_control_and_odom();
         return;
     }

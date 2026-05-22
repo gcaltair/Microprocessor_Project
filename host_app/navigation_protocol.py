@@ -13,6 +13,14 @@ def build_clear_goal_command() -> bytes:
     return b"NAVC\n"
 
 
+def build_set_start_cell_command(col: int, row: int) -> bytes:
+    return f"CELL {col} {row}\n".encode("ascii")
+
+
+def build_relative_move_command(dx: float, dy: float) -> bytes:
+    return f"P{dx:.3f},{dy:.3f}\n".encode("ascii")
+
+
 def build_debug_command_line(command: str) -> bytes:
     line = command.strip()
     if not line:

@@ -11,84 +11,204 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from telemetry_protocol import (
     FREE_THRESHOLD,
     OCCUPIED_THRESHOLD,
+    MAZE_NODE_COUNT,
+    MAZE_DIR_COUNT,
     MapFrame,
     TelemetryParser,
 )
-from navigation_protocol import build_clear_goal_command, build_debug_command_line, build_plan_command, build_set_goal_command
+from navigation_protocol import (
+    build_clear_goal_command,
+    build_debug_command_line,
+    build_set_start_cell_command,
+)
 
+# ── Label maps ──────────────────────────────────────────────────────────────
 
-SKIP_REASON_LABELS = {
-    0: "none",
-    1: "turning",
-    2: "settle",
-    3: "quality",
+SKIP_REASON_LABELS = {0: "none", 1: "turning", 2: "settle", 3: "quality"}
+LOCALIZATION_MODE_LABELS = {0: "odometry"}
+NAVIGATION_STATUS_LABELS = {0: "idle", 1: "ok", 2: "reached", 3: "failed", 4: "busy"}
+CONTROL_MODE_LABELS = {0: "manual", 1: "position", 2: "speed_test"}
+RELATIVE_MOVE_STATE_LABELS = {0: "idle", 1: "turning", 2: "driving"}
+MOTOR_DIRECTION_LABELS = {0: "forward", 1: "backward", 2: "stop"}
+MAZE_EXPLORE_STATE_LABELS = {
+    0: "IDLE", 1: "SCAN", 2: "CHOOSE", 3: "MOVING",
+    4: "BACKTRACK", 5: "RETURN", 6: "DONE",
 }
+EDGE_STATE_LABELS = {0: "unknown", 1: "open", 2: "wall"}
 
-LOCALIZATION_MODE_LABELS = {
-    0: "odometry",
-}
+# ── Color palette ───────────────────────────────────────────────────────────
 
-NAVIGATION_STATUS_LABELS = {
-    0: "idle",
-    1: "ok",
-    2: "reached",
-    3: "failed",
-    4: "busy",
-}
+CLR_BG = "#0e1216"
+CLR_PANEL = "#14181d"
+CLR_BORDER = "#2f3944"
+CLR_TEXT = "#dce3ea"
+CLR_TEXT_DIM = "#9fb3c8"
+CLR_ACCENT = "#58a6ff"
+CLR_SUCCESS = "#7bd389"
+CLR_ERROR = "#ff7b72"
+CLR_WARN = "#f4d35e"
 
-CONTROL_MODE_LABELS = {
-    0: "manual",
-    1: "position",
-    2: "speed_test",
-}
-
-RELATIVE_MOVE_STATE_LABELS = {
-    0: "idle",
-    1: "turning",
-    2: "driving",
-}
-
-MOTOR_DIRECTION_LABELS = {
-    0: "forward",
-    1: "backward",
-    2: "stop",
-}
+# Maze colors
+CLR_CELL_UNVISITED = "#1c2128"
+CLR_CELL_VISITED = "#1f3a5f"
+CLR_CELL_CURRENT = "#58a6ff"
+CLR_CELL_START = "#f0883e"
+CLR_EDGE_UNKNOWN = "#2f3944"
+CLR_EDGE_OPEN = "#7bd389"
+CLR_EDGE_WALL = "#ff7b72"
+CLR_NODE_DOT = "#8b949e"
 
 
-class MapView(QtWidgets.QLabel):
-    goalPicked = QtCore.Signal(float, float)
+# ── Maze Graph View ────────────────────────────────────────────────────────
+
+class MazeGraphView(QtWidgets.QWidget):
+    """Interactive 5×5 maze graph visualization with walls and robot position."""
+
+    cellClicked = QtCore.Signal(int, int)  # col, row
+
+    CELL_PX = 80
+    WALL_PX = 6
+    PAD = 24
 
     def __init__(self) -> None:
         super().__init__()
-        self._pixmap: QtGui.QPixmap | None = None
-        self._last_frame: MapFrame | None = None
-        self._goal: tuple[float, float] | None = None
-        self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.setMinimumSize(520, 520)
-        self.setStyleSheet("background:#14181d; border:1px solid #2f3944;")
+        self._frame: MapFrame | None = None
+        total = self.PAD * 2 + self.CELL_PX * 5
+        self.setMinimumSize(total, total)
+        self.setMaximumSize(total + 40, total + 40)
 
     def set_frame(self, frame: MapFrame) -> None:
-        self._last_frame = frame
+        self._frame = frame
+        self.update()
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        col, row = self._pos_to_cell(event.position())
+        if 0 <= col < 5 and 0 <= row < 5:
+            self.cellClicked.emit(col, row)
+
+    def _pos_to_cell(self, pos: QtCore.QPointF) -> tuple[int, int]:
+        x = pos.x() - self.PAD
+        y = pos.y() - self.PAD
+        col = int(x / self.CELL_PX)
+        # Y axis: screen top = row 4 (north), bottom = row 0 (south)
+        row = 4 - int(y / self.CELL_PX)
+        return col, row
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+
+        # Background
+        painter.fillRect(self.rect(), QtGui.QColor(CLR_BG))
+
+        frame = self._frame
+
+        for row in range(5):
+            for col in range(5):
+                node_id = row * 5 + col
+                sx = self.PAD + col * self.CELL_PX
+                sy = self.PAD + (4 - row) * self.CELL_PX  # flip Y
+
+                # Cell fill
+                if frame and frame.maze_current_node == node_id:
+                    color = CLR_CELL_CURRENT
+                elif frame and frame.maze_start_node == node_id and frame.maze_start_node >= 0:
+                    color = CLR_CELL_START
+                elif frame and frame.maze_visited[node_id]:
+                    color = CLR_CELL_VISITED
+                else:
+                    color = CLR_CELL_UNVISITED
+
+                painter.setBrush(QtGui.QColor(color))
+                painter.setPen(QtCore.Qt.PenStyle.NoPen)
+                painter.drawRoundedRect(sx + 2, sy + 2, self.CELL_PX - 4, self.CELL_PX - 4, 6, 6)
+
+                # Node label
+                painter.setPen(QtGui.QColor(CLR_TEXT))
+                painter.setFont(QtGui.QFont("Consolas", 9))
+                painter.drawText(
+                    QtCore.QRectF(sx, sy, self.CELL_PX, self.CELL_PX),
+                    QtCore.Qt.AlignmentFlag.AlignCenter,
+                    f"({col},{row})",
+                )
+
+        # Draw edges (walls / open / unknown)
+        if frame:
+            pen = QtGui.QPen()
+            pen.setWidth(self.WALL_PX)
+            pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+
+            for row in range(5):
+                for col in range(5):
+                    node_id = row * 5 + col
+                    sx = self.PAD + col * self.CELL_PX
+                    sy = self.PAD + (4 - row) * self.CELL_PX
+
+                    edges = frame.maze_edges[node_id]
+
+                    # EAST edge (right side)
+                    if col < 4:
+                        edge_state = edges[0]
+                        pen.setColor(QtGui.QColor(self._edge_color(edge_state)))
+                        painter.setPen(pen)
+                        x = sx + self.CELL_PX
+                        painter.drawLine(x, sy + 8, x, sy + self.CELL_PX - 8)
+
+                    # NORTH edge (top side in world = top on screen since we flip)
+                    if row < 4:
+                        edge_state = edges[1]
+                        pen.setColor(QtGui.QColor(self._edge_color(edge_state)))
+                        painter.setPen(pen)
+                        y = sy
+                        painter.drawLine(sx + 8, y, sx + self.CELL_PX - 8, y)
+
+                    # WEST edge (left side) — only draw for col=0 boundary
+                    if col == 0:
+                        edge_state = edges[2]
+                        pen.setColor(QtGui.QColor(self._edge_color(edge_state)))
+                        painter.setPen(pen)
+                        painter.drawLine(sx, sy + 8, sx, sy + self.CELL_PX - 8)
+
+                    # SOUTH edge (bottom side) — only draw for row=0 boundary
+                    if row == 0:
+                        edge_state = edges[3]
+                        pen.setColor(QtGui.QColor(self._edge_color(edge_state)))
+                        painter.setPen(pen)
+                        y = sy + self.CELL_PX
+                        painter.drawLine(sx + 8, y, sx + self.CELL_PX - 8, y)
+
+        # Border
+        painter.setPen(QtGui.QColor(CLR_BORDER))
+        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
+        painter.end()
+
+    @staticmethod
+    def _edge_color(state: int) -> str:
+        if state == 1:
+            return CLR_EDGE_OPEN
+        if state == 2:
+            return CLR_EDGE_WALL
+        return CLR_EDGE_UNKNOWN
+
+
+# ── OGM Map View ───────────────────────────────────────────────────────────
+
+class MapView(QtWidgets.QLabel):
+    def __init__(self) -> None:
+        super().__init__()
+        self._pixmap: QtGui.QPixmap | None = None
+        self.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumSize(400, 400)
+        self.setStyleSheet(f"background:{CLR_BG}; border:1px solid {CLR_BORDER};")
+
+    def set_frame(self, frame: MapFrame) -> None:
         self._pixmap = self._build_pixmap(frame)
         self._refresh_pixmap()
-
-    def set_goal(self, goal: tuple[float, float] | None) -> None:
-        self._goal = goal
-        if self._last_frame is not None:
-            self._pixmap = self._build_pixmap(self._last_frame)
-            self._refresh_pixmap()
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
         self._refresh_pixmap()
-
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        if self._last_frame is None:
-            return
-
-        world = self._event_to_world(event.position())
-        if world is not None:
-            self.goalPicked.emit(world[0], world[1])
 
     def _refresh_pixmap(self) -> None:
         if self._pixmap is None:
@@ -100,10 +220,10 @@ class MapView(QtWidgets.QLabel):
         )
         self.setPixmap(scaled)
 
-    def _build_pixmap(self, frame: MapFrame) -> QtGui.QPixmap:
+    @staticmethod
+    def _build_pixmap(frame: MapFrame) -> QtGui.QPixmap:
         cells = frame.cells
         height, width = cells.shape
-
         image_data = np.zeros((height, width, 3), dtype=np.uint8)
         image_data[:, :] = (120, 132, 146)
 
@@ -119,60 +239,21 @@ class MapView(QtWidgets.QLabel):
 
         image_data = np.ascontiguousarray(np.flipud(image_data))
         qimage = QtGui.QImage(
-            image_data.data,
-            width,
-            height,
-            width * 3,
+            image_data.data, width, height, width * 3,
             QtGui.QImage.Format.Format_RGB888,
         ).copy()
 
-        for path_x_m, path_y_m in frame.nav_path_points:
-            path_cell_x = int((path_x_m - frame.origin_x_m) / frame.resolution_m_per_cell)
-            path_cell_y = int((path_y_m - frame.origin_y_m) / frame.resolution_m_per_cell)
-            path_y_screen = height - 1 - path_cell_y
-            if 0 <= path_cell_x < width and 0 <= path_y_screen < height:
-                qimage.setPixelColor(path_cell_x, path_y_screen, QtGui.QColor("#2fbf71"))
-
-        if self._goal is not None:
-            goal_x_m, goal_y_m = self._goal
-            goal_cell_x = int((goal_x_m - frame.origin_x_m) / frame.resolution_m_per_cell)
-            goal_cell_y = int((goal_y_m - frame.origin_y_m) / frame.resolution_m_per_cell)
-            goal_y_screen = height - 1 - goal_cell_y
-            if 0 <= goal_cell_x < width and 0 <= goal_y_screen < height:
-                qimage.setPixelColor(goal_cell_x, goal_y_screen, QtGui.QColor("#2f80ed"))
-
+        # Robot dot
         if frame.robot_inside_grid:
-            robot_x = frame.robot_cell_x
-            robot_y = height - 1 - frame.robot_cell_y
-            if 0 <= robot_x < width and 0 <= robot_y < height:
-                qimage.setPixelColor(robot_x, robot_y, QtGui.QColor("#f25f5c"))
+            rx = frame.robot_cell_x
+            ry = height - 1 - frame.robot_cell_y
+            if 0 <= rx < width and 0 <= ry < height:
+                qimage.setPixelColor(rx, ry, QtGui.QColor("#f25f5c"))
 
         return QtGui.QPixmap.fromImage(qimage)
 
-    def _event_to_world(self, position: QtCore.QPointF) -> tuple[float, float] | None:
-        frame = self._last_frame
-        if frame is None:
-            return None
 
-        label_w = self.width()
-        label_h = self.height()
-        scale = min(label_w / frame.width, label_h / frame.height)
-        image_w = frame.width * scale
-        image_h = frame.height * scale
-        left = (label_w - image_w) * 0.5
-        top = (label_h - image_h) * 0.5
-        image_x = (position.x() - left) / scale
-        image_y = (position.y() - top) / scale
-
-        if image_x < 0 or image_y < 0 or image_x >= frame.width or image_y >= frame.height:
-            return None
-
-        cell_x = int(image_x)
-        cell_y = frame.height - 1 - int(image_y)
-        world_x = frame.origin_x_m + (cell_x + 0.5) * frame.resolution_m_per_cell
-        world_y = frame.origin_y_m + (cell_y + 0.5) * frame.resolution_m_per_cell
-        return world_x, world_y
-
+# ── Main Window ─────────────────────────────────────────────────────────────
 
 class MainWindow(QtWidgets.QWidget):
     def __init__(self, default_port: str | None, baudrate: int) -> None:
@@ -182,58 +263,11 @@ class MainWindow(QtWidgets.QWidget):
         self._parser = TelemetryParser()
         self._last_frame: MapFrame | None = None
 
-        self.setWindowTitle("Car Mapping Host App")
-        self.resize(1180, 760)
+        self.setWindowTitle("Maze Explorer — 5×5 Graph Navigation")
+        self.resize(1280, 800)
+        self.setStyleSheet(f"background:{CLR_PANEL}; color:{CLR_TEXT};")
 
-        self.port_combo = QtWidgets.QComboBox()
-        self.port_combo.setEditable(True)
-        self.refresh_button = QtWidgets.QPushButton("Refresh")
-        self.connect_button = QtWidgets.QPushButton("Connect")
-        self.status_banner = QtWidgets.QLabel("Disconnected")
-        self.status_banner.setStyleSheet("color:#f4d35e; font-weight:600;")
-
-        self.map_view = MapView()
-        self.frame_info = QtWidgets.QLabel("No telemetry yet")
-        self.frame_info.setWordWrap(True)
-        self.frame_info.setStyleSheet("font-family:Consolas, monospace; color:#dce3ea;")
-
-        self.goal_x_spin = QtWidgets.QDoubleSpinBox()
-        self.goal_x_spin.setRange(-10.0, 10.0)
-        self.goal_x_spin.setDecimals(3)
-        self.goal_x_spin.setSingleStep(0.05)
-        self.goal_x_spin.setSuffix(" m")
-        self.goal_y_spin = QtWidgets.QDoubleSpinBox()
-        self.goal_y_spin.setRange(-10.0, 10.0)
-        self.goal_y_spin.setDecimals(3)
-        self.goal_y_spin.setSingleStep(0.05)
-        self.goal_y_spin.setSuffix(" m")
-        self.send_goal_button = QtWidgets.QPushButton("Send Goal")
-        self.plan_button = QtWidgets.QPushButton("Plan")
-        self.clear_goal_button = QtWidgets.QPushButton("Clear Goal")
-        self.nav_status = QtWidgets.QLabel("Navigation idle")
-        self.nav_status.setWordWrap(True)
-        self.nav_status.setStyleSheet("color:#9fb3c8;")
-        self.nav_telemetry = QtWidgets.QLabel("Navigation telemetry: no frame")
-        self.nav_telemetry.setWordWrap(True)
-        self.nav_telemetry.setStyleSheet("font-family:Consolas, monospace; color:#dce3ea;")
-        self.control_telemetry = QtWidgets.QLabel("Control telemetry: no frame")
-        self.control_telemetry.setWordWrap(True)
-        self.control_telemetry.setStyleSheet("font-family:Consolas, monospace; color:#dce3ea;")
-
-        self.debug_command_edit = QtWidgets.QLineEdit("P1,0")
-        self.debug_command_edit.setPlaceholderText("ASCII command, e.g. P1,0")
-        self.send_debug_command_button = QtWidgets.QPushButton("Send Debug")
-        self.preset_p10_button = QtWidgets.QPushButton("P1,0")
-        self.debug_status = QtWidgets.QLabel("Debug command ready")
-        self.debug_status.setWordWrap(True)
-        self.debug_status.setStyleSheet("color:#9fb3c8;")
-
-        self.stats_box = QtWidgets.QPlainTextEdit()
-        self.stats_box.setReadOnly(True)
-        self.stats_box.setStyleSheet(
-            "background:#0e1216; color:#dce3ea; font-family:Consolas, monospace; border:1px solid #2f3944;"
-        )
-
+        self._create_widgets()
         self._build_layout()
         self._wire_events()
         self._refresh_ports(default_port)
@@ -246,310 +280,334 @@ class MainWindow(QtWidgets.QWidget):
         if default_port:
             self._toggle_connection()
 
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
-        self._close_serial()
-        super().closeEvent(event)
+    # ── Widget Creation ──
+
+    def _create_widgets(self) -> None:
+        # Connection bar
+        self.port_combo = QtWidgets.QComboBox()
+        self.port_combo.setEditable(True)
+        self.refresh_btn = QtWidgets.QPushButton("⟳ Refresh")
+        self.connect_btn = QtWidgets.QPushButton("Connect")
+        self.status_banner = QtWidgets.QLabel("Disconnected")
+        self.status_banner.setStyleSheet(f"color:{CLR_WARN}; font-weight:600;")
+
+        # Maze graph view
+        self.maze_view = MazeGraphView()
+
+        # OGM map view
+        self.ogm_view = MapView()
+
+        # Explore control panel
+        self.start_col_spin = QtWidgets.QSpinBox()
+        self.start_col_spin.setRange(0, 4)
+        self.start_col_spin.setValue(0)
+        self.start_row_spin = QtWidgets.QSpinBox()
+        self.start_row_spin.setRange(0, 4)
+        self.start_row_spin.setValue(0)
+        self.start_explore_btn = QtWidgets.QPushButton("▶ Start Explore")
+        self.start_explore_btn.setStyleSheet(
+            f"background:{CLR_ACCENT}; color:#fff; font-weight:bold; padding:6px 12px; border-radius:4px;"
+        )
+        self.stop_btn = QtWidgets.QPushButton("■ Stop")
+        self.stop_btn.setStyleSheet(
+            f"background:{CLR_ERROR}; color:#fff; font-weight:bold; padding:6px 12px; border-radius:4px;"
+        )
+
+        # Explore status
+        self.explore_state_label = QtWidgets.QLabel("State: IDLE")
+        self.explore_state_label.setStyleSheet(f"font-size:14px; font-weight:bold; color:{CLR_ACCENT};")
+        self.explore_info_label = QtWidgets.QLabel("Waiting for start command")
+        self.explore_info_label.setWordWrap(True)
+        self.explore_info_label.setStyleSheet(f"color:{CLR_TEXT_DIM};")
+
+        # Debug command
+        self.debug_edit = QtWidgets.QLineEdit()
+        self.debug_edit.setPlaceholderText("ASCII command, e.g. P0.70,0")
+        self.debug_send_btn = QtWidgets.QPushButton("Send")
+
+        # Telemetry details
+        self.telemetry_box = QtWidgets.QPlainTextEdit()
+        self.telemetry_box.setReadOnly(True)
+        self.telemetry_box.setStyleSheet(
+            f"background:{CLR_BG}; color:{CLR_TEXT}; font-family:Consolas,monospace; "
+            f"border:1px solid {CLR_BORDER}; font-size:11px;"
+        )
+        self.telemetry_box.setMaximumHeight(260)
+
+    # ── Layout ──
 
     def _build_layout(self) -> None:
-        self.setStyleSheet("background:#101419; color:#f1f5f9;")
-
+        # Top bar
         top_bar = QtWidgets.QHBoxLayout()
         top_bar.addWidget(QtWidgets.QLabel("Port"))
         top_bar.addWidget(self.port_combo, 1)
-        top_bar.addWidget(QtWidgets.QLabel(f"Baud {self._baudrate}"))
-        top_bar.addWidget(self.refresh_button)
-        top_bar.addWidget(self.connect_button)
+        top_bar.addWidget(QtWidgets.QLabel(f"@ {self._baudrate}"))
+        top_bar.addWidget(self.refresh_btn)
+        top_bar.addWidget(self.connect_btn)
         top_bar.addWidget(self.status_banner)
 
-        side_panel = QtWidgets.QVBoxLayout()
-        side_panel.addWidget(QtWidgets.QLabel("Latest Frame"))
-        side_panel.addWidget(self.frame_info)
-        side_panel.addWidget(self._build_navigation_panel())
-        side_panel.addWidget(self._build_debug_panel())
-        side_panel.addWidget(QtWidgets.QLabel("Telemetry Details"))
-        side_panel.addWidget(self.stats_box, 1)
+        # Left: Maze + OGM stacked
+        left_col = QtWidgets.QVBoxLayout()
+        left_col.addWidget(self._section_label("5×5 Maze Graph"))
+        left_col.addWidget(self.maze_view)
+        left_col.addWidget(self._section_label("Occupancy Grid Map"))
+        left_col.addWidget(self.ogm_view, 1)
 
-        main_layout = QtWidgets.QHBoxLayout()
-        main_layout.addWidget(self.map_view, 3)
+        # Right: Controls + telemetry
+        right_col = QtWidgets.QVBoxLayout()
+        right_col.addWidget(self._build_explore_panel())
+        right_col.addWidget(self._build_debug_panel())
+        right_col.addWidget(self._section_label("Telemetry"))
+        right_col.addWidget(self.telemetry_box, 1)
 
-        side_widget = QtWidgets.QWidget()
-        side_widget.setLayout(side_panel)
-        side_widget.setMinimumWidth(340)
-        main_layout.addWidget(side_widget, 2)
+        # Combine
+        body = QtWidgets.QHBoxLayout()
+        body.addLayout(left_col, 3)
+        right_widget = QtWidgets.QWidget()
+        right_widget.setLayout(right_col)
+        right_widget.setMinimumWidth(360)
+        body.addWidget(right_widget, 2)
 
         root = QtWidgets.QVBoxLayout(self)
         root.addLayout(top_bar)
-        root.addLayout(main_layout, 1)
+        root.addLayout(body, 1)
 
-    def _wire_events(self) -> None:
-        self.refresh_button.clicked.connect(lambda: self._refresh_ports(self.port_combo.currentText().strip()))
-        self.connect_button.clicked.connect(self._toggle_connection)
-        self.send_goal_button.clicked.connect(self._send_navigation_goal)
-        self.plan_button.clicked.connect(self._send_plan_goal)
-        self.clear_goal_button.clicked.connect(self._clear_navigation_goal)
-        self.send_debug_command_button.clicked.connect(self._send_debug_command)
-        self.preset_p10_button.clicked.connect(lambda: self._set_debug_command("P1,0"))
-        self.debug_command_edit.returnPressed.connect(self._send_debug_command)
-        self.map_view.goalPicked.connect(self._set_goal_from_map)
+    def _build_explore_panel(self) -> QtWidgets.QGroupBox:
+        group = QtWidgets.QGroupBox("Maze Exploration")
+        group.setStyleSheet(
+            f"QGroupBox{{border:1px solid {CLR_BORDER}; margin-top:10px; padding:12px; border-radius:4px;}}"
+            f"QGroupBox::title{{color:{CLR_ACCENT};}}"
+        )
 
-    def _build_navigation_panel(self) -> QtWidgets.QGroupBox:
-        group = QtWidgets.QGroupBox("Navigation")
-        group.setStyleSheet("QGroupBox{border:1px solid #2f3944; margin-top:8px; padding:8px;}")
-
-        form = QtWidgets.QFormLayout()
-        form.addRow("Goal X", self.goal_x_spin)
-        form.addRow("Goal Y", self.goal_y_spin)
+        form = QtWidgets.QHBoxLayout()
+        form.addWidget(QtWidgets.QLabel("Start Col:"))
+        form.addWidget(self.start_col_spin)
+        form.addWidget(QtWidgets.QLabel("Row:"))
+        form.addWidget(self.start_row_spin)
 
         buttons = QtWidgets.QHBoxLayout()
-        buttons.addWidget(self.send_goal_button)
-        buttons.addWidget(self.plan_button)
-        buttons.addWidget(self.clear_goal_button)
+        buttons.addWidget(self.start_explore_btn)
+        buttons.addWidget(self.stop_btn)
 
         layout = QtWidgets.QVBoxLayout(group)
         layout.addLayout(form)
         layout.addLayout(buttons)
-        layout.addWidget(self.nav_status)
-        layout.addWidget(self.nav_telemetry)
-        layout.addWidget(self.control_telemetry)
-        layout.addWidget(QtWidgets.QLabel("Tip: click the map to fill goal coordinates."))
+        layout.addWidget(self.explore_state_label)
+        layout.addWidget(self.explore_info_label)
+        layout.addWidget(QtWidgets.QLabel("💡 Click a cell on the maze to set start position"))
         return group
 
     def _build_debug_panel(self) -> QtWidgets.QGroupBox:
         group = QtWidgets.QGroupBox("Debug Command")
-        group.setStyleSheet("QGroupBox{border:1px solid #2f3944; margin-top:8px; padding:8px;}")
-
+        group.setStyleSheet(
+            f"QGroupBox{{border:1px solid {CLR_BORDER}; margin-top:10px; padding:12px; border-radius:4px;}}"
+            f"QGroupBox::title{{color:{CLR_TEXT_DIM};}}"
+        )
         row = QtWidgets.QHBoxLayout()
-        row.addWidget(self.debug_command_edit, 1)
-        row.addWidget(self.send_debug_command_button)
-
-        presets = QtWidgets.QHBoxLayout()
-        presets.addWidget(QtWidgets.QLabel("Preset"))
-        presets.addWidget(self.preset_p10_button)
-        presets.addStretch(1)
-
+        row.addWidget(self.debug_edit, 1)
+        row.addWidget(self.debug_send_btn)
         layout = QtWidgets.QVBoxLayout(group)
         layout.addLayout(row)
-        layout.addLayout(presets)
-        layout.addWidget(self.debug_status)
         return group
 
-    def _refresh_ports(self, preferred: str | None) -> None:
-        ports = [port.device for port in list_ports.comports()]
-        current_text = preferred or self.port_combo.currentText().strip()
+    @staticmethod
+    def _section_label(text: str) -> QtWidgets.QLabel:
+        lbl = QtWidgets.QLabel(text)
+        lbl.setStyleSheet(f"color:{CLR_ACCENT}; font-weight:bold; font-size:12px; margin-top:4px;")
+        return lbl
 
+    # ── Events ──
+
+    def _wire_events(self) -> None:
+        self.refresh_btn.clicked.connect(lambda: self._refresh_ports(self.port_combo.currentText().strip()))
+        self.connect_btn.clicked.connect(self._toggle_connection)
+        self.start_explore_btn.clicked.connect(self._send_start_explore)
+        self.stop_btn.clicked.connect(self._send_stop)
+        self.debug_send_btn.clicked.connect(self._send_debug)
+        self.debug_edit.returnPressed.connect(self._send_debug)
+        self.maze_view.cellClicked.connect(self._on_maze_cell_clicked)
+
+    def _on_maze_cell_clicked(self, col: int, row: int) -> None:
+        self.start_col_spin.setValue(col)
+        self.start_row_spin.setValue(row)
+        self.explore_info_label.setText(f"Start cell set to ({col}, {row})")
+        self.explore_info_label.setStyleSheet(f"color:{CLR_ACCENT};")
+
+    # ── Serial ──
+
+    def _refresh_ports(self, preferred: str | None) -> None:
+        ports = [p.device for p in list_ports.comports()]
+        current = preferred or self.port_combo.currentText().strip()
         self.port_combo.blockSignals(True)
         self.port_combo.clear()
         self.port_combo.addItems(ports)
-        if current_text:
-            if current_text not in ports:
-                self.port_combo.addItem(current_text)
-            self.port_combo.setCurrentText(current_text)
+        if current:
+            if current not in ports:
+                self.port_combo.addItem(current)
+            self.port_combo.setCurrentText(current)
         self.port_combo.blockSignals(False)
 
     def _toggle_connection(self) -> None:
-        if self._serial is not None and self._serial.is_open:
+        if self._serial and self._serial.is_open:
             self._close_serial()
             return
-
         port = self.port_combo.currentText().strip()
         if not port:
-            self.status_banner.setText("Select a serial port")
-            self.status_banner.setStyleSheet("color:#ff7b72; font-weight:600;")
+            self._set_status("Select a serial port", CLR_ERROR)
             return
-
         try:
             self._serial = serial.Serial(port=port, baudrate=self._baudrate, timeout=0)
         except serial.SerialException as exc:
             self._serial = None
-            self.status_banner.setText(f"Open failed: {exc}")
-            self.status_banner.setStyleSheet("color:#ff7b72; font-weight:600;")
+            self._set_status(f"Open failed: {exc}", CLR_ERROR)
             return
-
-        self.connect_button.setText("Disconnect")
-        self.status_banner.setText(f"Connected to {port}")
-        self.status_banner.setStyleSheet("color:#7bd389; font-weight:600;")
+        self.connect_btn.setText("Disconnect")
+        self._set_status(f"Connected to {port}", CLR_SUCCESS)
         self._parser = TelemetryParser()
 
     def _close_serial(self) -> None:
-        if self._serial is not None:
+        if self._serial:
             try:
                 if self._serial.is_open:
                     self._serial.close()
             finally:
                 self._serial = None
+        self.connect_btn.setText("Connect")
+        self._set_status("Disconnected", CLR_WARN)
 
-        self.connect_button.setText("Connect")
-        self.status_banner.setText("Disconnected")
-        self.status_banner.setStyleSheet("color:#f4d35e; font-weight:600;")
+    def _set_status(self, text: str, color: str) -> None:
+        self.status_banner.setText(text)
+        self.status_banner.setStyleSheet(f"color:{color}; font-weight:600;")
 
-    def _write_command(self, command: bytes) -> bool:
-        if self._serial is None or not self._serial.is_open:
-            self.nav_status.setText("Navigation command not sent: serial is disconnected")
-            self.nav_status.setStyleSheet("color:#ff7b72;")
+    def _write_cmd(self, cmd: bytes) -> bool:
+        if not self._serial or not self._serial.is_open:
+            self.explore_info_label.setText("Not connected")
+            self.explore_info_label.setStyleSheet(f"color:{CLR_ERROR};")
             return False
-
         try:
-            self._serial.write(command)
+            self._serial.write(cmd)
+            return True
         except serial.SerialException as exc:
-            self.nav_status.setText(f"Navigation command failed: {exc}")
-            self.nav_status.setStyleSheet("color:#ff7b72;")
+            self.explore_info_label.setText(f"Send failed: {exc}")
+            self.explore_info_label.setStyleSheet(f"color:{CLR_ERROR};")
             self._close_serial()
             return False
 
-        return True
+    # ── Commands ──
 
-    def _send_navigation_goal(self) -> None:
-        goal_x = self.goal_x_spin.value()
-        goal_y = self.goal_y_spin.value()
-        if self._write_command(build_set_goal_command(goal_x, goal_y)):
-            self.map_view.set_goal((goal_x, goal_y))
-            self.nav_status.setText(f"Goal sent: x={goal_x:.3f} m, y={goal_y:.3f} m")
-            self.nav_status.setStyleSheet("color:#7bd389;")
+    def _send_start_explore(self) -> None:
+        col = self.start_col_spin.value()
+        row = self.start_row_spin.value()
+        if self._write_cmd(build_set_start_cell_command(col, row)):
+            self.explore_info_label.setText(f"Sent: CELL {col} {row}")
+            self.explore_info_label.setStyleSheet(f"color:{CLR_SUCCESS};")
 
-    def _send_plan_goal(self) -> None:
-        goal_x = self.goal_x_spin.value()
-        goal_y = self.goal_y_spin.value()
-        if self._write_command(build_plan_command(goal_x, goal_y)):
-            self.map_view.set_goal((goal_x, goal_y))
-            self.nav_status.setText(f"Plan requested: x={goal_x:.3f} m, y={goal_y:.3f} m")
-            self.nav_status.setStyleSheet("color:#7bd389;")
+    def _send_stop(self) -> None:
+        if self._write_cmd(build_clear_goal_command()):
+            self.explore_info_label.setText("Exploration stopped")
+            self.explore_info_label.setStyleSheet(f"color:{CLR_WARN};")
 
-    def _clear_navigation_goal(self) -> None:
-        if self._write_command(build_clear_goal_command()):
-            self.map_view.set_goal(None)
-            self.nav_status.setText("Goal cleared")
-            self.nav_status.setStyleSheet("color:#9fb3c8;")
-
-    def _set_debug_command(self, command: str) -> None:
-        self.debug_command_edit.setText(command)
-        self.debug_command_edit.setFocus()
-
-    def _send_debug_command(self) -> None:
-        command_text = self.debug_command_edit.text()
+    def _send_debug(self) -> None:
+        text = self.debug_edit.text()
         try:
-            command = build_debug_command_line(command_text)
-        except (UnicodeEncodeError, ValueError) as exc:
-            self.debug_status.setText(f"Debug command invalid: {exc}")
-            self.debug_status.setStyleSheet("color:#ff7b72;")
+            cmd = build_debug_command_line(text)
+        except (UnicodeEncodeError, ValueError):
             return
+        if self._write_cmd(cmd):
+            self.explore_info_label.setText(f"Debug sent: {text}")
+            self.explore_info_label.setStyleSheet(f"color:{CLR_SUCCESS};")
 
-        if self._write_command(command):
-            sent_text = command.decode("ascii").rstrip("\n")
-            self.debug_status.setText(f"Debug command sent: {sent_text}")
-            self.debug_status.setStyleSheet("color:#7bd389;")
-
-    def _set_goal_from_map(self, x_m: float, y_m: float) -> None:
-        self.goal_x_spin.setValue(x_m)
-        self.goal_y_spin.setValue(y_m)
-        self.map_view.set_goal((x_m, y_m))
-        self.nav_status.setText(f"Goal selected from map: x={x_m:.3f} m, y={y_m:.3f} m")
-        self.nav_status.setStyleSheet("color:#9fb3c8;")
+    # ── Polling ──
 
     def _poll_serial(self) -> None:
-        if self._serial is None:
+        if not self._serial:
             return
-
         try:
             waiting = self._serial.in_waiting
             chunk = self._serial.read(waiting or 1)
         except serial.SerialException as exc:
-            self.status_banner.setText(f"Serial error: {exc}")
-            self.status_banner.setStyleSheet("color:#ff7b72; font-weight:600;")
+            self._set_status(f"Serial error: {exc}", CLR_ERROR)
             self._close_serial()
             return
-
         for frame in self._parser.feed(chunk):
             self._apply_frame(frame)
 
     def _apply_frame(self, frame: MapFrame) -> None:
         self._last_frame = frame
-        self.map_view.set_frame(frame)
 
+        # Update maze graph view
+        self.maze_view.set_frame(frame)
+
+        # Update OGM
+        self.ogm_view.set_frame(frame)
+
+        # Update explore state
+        state_name = MAZE_EXPLORE_STATE_LABELS.get(frame.maze_explore_state, str(frame.maze_explore_state))
+        self.explore_state_label.setText(f"State: {state_name}")
+
+        visited_count = sum(frame.maze_visited)
+        current = frame.maze_current_node
+        cur_col = current % 5 if current >= 0 else -1
+        cur_row = current // 5 if current >= 0 else -1
+        self.explore_info_label.setText(
+            f"Visited: {visited_count}/25 | "
+            f"Current: ({cur_col},{cur_row}) | "
+            f"Mode: {CONTROL_MODE_LABELS.get(frame.control_mode, '?')} "
+            f"Move: {RELATIVE_MOVE_STATE_LABELS.get(frame.relative_move_state, '?')}"
+        )
+        self.explore_info_label.setStyleSheet(f"color:{CLR_TEXT_DIM};")
+
+        # Color the state label
+        if frame.maze_explore_state == 6:  # DONE
+            self.explore_state_label.setStyleSheet(f"font-size:14px; font-weight:bold; color:{CLR_SUCCESS};")
+        elif frame.maze_explore_state >= 1:  # active
+            self.explore_state_label.setStyleSheet(f"font-size:14px; font-weight:bold; color:{CLR_ACCENT};")
+        else:
+            self.explore_state_label.setStyleSheet(f"font-size:14px; font-weight:bold; color:{CLR_TEXT_DIM};")
+
+        # Telemetry details
         skip_reason = SKIP_REASON_LABELS.get(frame.last_skip_reason, str(frame.last_skip_reason))
-        loc_mode = LOCALIZATION_MODE_LABELS.get(frame.last_localization_mode, str(frame.last_localization_mode))
         nav_status = NAVIGATION_STATUS_LABELS.get(frame.nav_status, str(frame.nav_status))
-        control_mode = CONTROL_MODE_LABELS.get(frame.control_mode, str(frame.control_mode))
-        move_state = RELATIVE_MOVE_STATE_LABELS.get(frame.relative_move_state, str(frame.relative_move_state))
-        left_direction = MOTOR_DIRECTION_LABELS.get(frame.left_motor_direction, str(frame.left_motor_direction))
-        right_direction = MOTOR_DIRECTION_LABELS.get(frame.right_motor_direction, str(frame.right_motor_direction))
+        ctrl_mode = CONTROL_MODE_LABELS.get(frame.control_mode, str(frame.control_mode))
+        move_st = RELATIVE_MOVE_STATE_LABELS.get(frame.relative_move_state, str(frame.relative_move_state))
 
-        self.nav_telemetry.setText(
-            f"fw_status={nav_status} goal_valid={frame.nav_goal_valid} target_valid={frame.nav_target_valid}\n"
-            f"goal=({frame.nav_goal_x_m:.3f}, {frame.nav_goal_y_m:.3f}) "
-            f"target=({frame.nav_target_x_m:.3f}, {frame.nav_target_y_m:.3f})\n"
-            f"distance={frame.nav_distance_to_goal_m:.3f} m "
-            f"path raw/smooth={frame.nav_raw_path_len}/{frame.nav_smooth_path_len} "
-            f"points={len(frame.nav_path_points)} fail={frame.nav_fail_count}"
-        )
-        self.control_telemetry.setText(
-            f"mode={control_mode} move={move_state}\n"
-            f"PWM L/R={frame.left_pwm:5d}/{frame.right_pwm:5d} "
-            f"dir={left_direction}/{right_direction}\n"
-            f"PID pos={frame.position_pid_output_mps:+.3f} m/s "
-            f"angle={frame.angle_pid_output_mps:+.3f} m/s\n"
-            f"PID speed L/R={frame.left_speed_pid_output:+6d}/{frame.right_speed_pid_output:+6d}"
-        )
+        self.telemetry_box.setPlainText("\n".join([
+            f"─── Pose & Grid ───",
+            f"pose          : ({frame.pose_x_m:.3f}, {frame.pose_y_m:.3f}, {frame.pose_theta_deg:.1f}°)",
+            f"grid          : {frame.width}×{frame.height} @ {frame.resolution_m_per_cell:.3f} m/cell",
+            f"robot_cell    : ({frame.robot_cell_x}, {frame.robot_cell_y})",
+            f"skip_reason   : {skip_reason}",
+            f"tick_ms       : {frame.tick_ms}",
+            f"",
+            f"─── Control ───",
+            f"mode          : {ctrl_mode}",
+            f"move_state    : {move_st}",
+            f"base_speed    : {frame.base_speed_mps:+.4f} m/s",
+            f"angle_error   : {frame.angle_error_deg:+.2f}°",
+            f"pos_error     : {frame.position_error_m:.4f} m",
+            f"PWM L/R       : {frame.left_pwm}/{frame.right_pwm}",
+            f"",
+            f"─── Navigation ───",
+            f"nav_status    : {nav_status}",
+            f"update_count  : {frame.nav_update_count}",
+            f"",
+            f"─── Maze Graph ───",
+            f"explore_state : {MAZE_EXPLORE_STATE_LABELS.get(frame.maze_explore_state, '?')}",
+            f"current_node  : {frame.maze_current_node}",
+            f"start_node    : {frame.maze_start_node}",
+            f"visited       : {visited_count}/25",
+        ]))
 
-        self.frame_info.setText(
-            f"frame={frame.sequence} update={frame.update_count} scan={frame.last_scan_sequence}\n"
-            f"pose=({frame.pose_x_m:.3f}, {frame.pose_y_m:.3f}, {frame.pose_theta_deg:.2f} deg)\n"
-            f"grid={frame.width}x{frame.height} res={frame.resolution_m_per_cell:.3f} m/cell"
-        )
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        self._close_serial()
+        super().closeEvent(event)
 
-        self.stats_box.setPlainText(
-            "\n".join(
-                [
-                    f"tick_ms                 : {frame.tick_ms}",
-                    f"usable_points           : {frame.usable_points}",
-                    f"endpoints_written       : {frame.endpoints_written}",
-                    f"localization_mode       : {loc_mode}",
-                    f"map_update_active       : {frame.map_update_active}",
-                    f"skip_reason             : {skip_reason}",
-                    f"robot_inside_grid       : {frame.robot_inside_grid}",
-                    f"robot_cell              : ({frame.robot_cell_x}, {frame.robot_cell_y})",
-                    f"odom_delta_theta_deg    : {frame.odom_delta_theta_deg:.3f}",
-                    f"odom_delta_translation  : {frame.odom_delta_translation_m:.4f}",
-                    f"skip_turning_count      : {frame.skipped_turning_count}",
-                    f"skip_settle_count       : {frame.skipped_settle_count}",
-                    f"skip_quality_count      : {frame.skipped_quality_count}",
-                    f"nav_status              : {nav_status}",
-                    f"nav_goal_valid          : {frame.nav_goal_valid}",
-                    f"nav_target_valid        : {frame.nav_target_valid}",
-                    f"nav_update_count        : {frame.nav_update_count}",
-                    f"nav_fail_count          : {frame.nav_fail_count}",
-                    f"nav_path_raw_smooth     : {frame.nav_raw_path_len}/{frame.nav_smooth_path_len}",
-                    f"nav_path_points         : {len(frame.nav_path_points)}",
-                    f"nav_distance_to_goal_m  : {frame.nav_distance_to_goal_m:.3f}",
-                    f"nav_goal                : ({frame.nav_goal_x_m:.3f}, {frame.nav_goal_y_m:.3f})",
-                    f"nav_target              : ({frame.nav_target_x_m:.3f}, {frame.nav_target_y_m:.3f})",
-                    f"control_mode            : {control_mode}",
-                    f"relative_move_state     : {move_state}",
-                    f"pwm_left_right          : {frame.left_pwm} / {frame.right_pwm}",
-                    f"motor_dir_left_right    : {left_direction} / {right_direction}",
-                    f"pid_position_output     : {frame.position_pid_output_mps:+.4f} m/s",
-                    f"pid_position_error      : {frame.position_error_m:.4f} m",
-                    f"pid_angle_output        : {frame.angle_pid_output_mps:+.4f} m/s",
-                    f"pid_angle_error         : {frame.angle_error_deg:+.3f} deg",
-                    f"pid_speed_output_l_r    : {frame.left_speed_pid_output:+d} / {frame.right_speed_pid_output:+d}",
-                    f"base_speed              : {frame.base_speed_mps:+.4f} m/s",
-                    f"wheel_setpoint_l_r      : {frame.left_speed_setpoint_mps:+.4f} / {frame.right_speed_setpoint_mps:+.4f} m/s",
-                    f"wheel_feedback_l_r      : {frame.left_speed_feedback_mps:+.4f} / {frame.right_speed_feedback_mps:+.4f} m/s",
-                    "",
-                    "Legend:",
-                    "dark   = occupied",
-                    "light  = free",
-                    "gray   = unknown / weak evidence",
-                    "red    = robot pose",
-                    "blue   = navigation goal",
-                    "green  = firmware path points",
-                ]
-            )
-        )
 
+# ── Entry Point ─────────────────────────────────────────────────────────────
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Display live occupancy-grid telemetry from UART5.")
-    parser.add_argument("--port", help="Serial port, for example COM5")
+    parser = argparse.ArgumentParser(description="5×5 Maze Graph Explorer Host App")
+    parser.add_argument("--port", help="Serial port, e.g. COM5")
     parser.add_argument("--baud", type=int, default=921600, help="Serial baud rate")
     args = parser.parse_args()
 

@@ -85,8 +85,10 @@ void StartNavigationTask(void *argument);
 
 /* ── 迷宫探索 API ── */
 void NavigationTask_SetStartCell(uint8_t col, uint8_t row);
-void NavigationTask_GetMazeGraph(MazeGraph_t *graph_out);
+void NavigationTask_GetMazeGraph(MazeGraph_t *graph_out);   /* 遥测用 */
 MazeExploreState_t NavigationTask_GetExploreState(void);
+int8_t NavigationTask_GetMazeCurrentNode(void);
+int8_t NavigationTask_GetMazeStartNode(void);
 
 /* ── 原有 API（保留兼容） ── */
 void NavigationTask_SetGoal(float goal_x_m, float goal_y_m);

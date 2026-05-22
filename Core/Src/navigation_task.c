@@ -46,7 +46,7 @@
 #define MOVE_TIMEOUT_MS                    15000U
 
 /* 扫墙前的稳定等待（毫秒），让 LiDAR 完成至少一帧完整扫描 */
-#define SCAN_SETTLE_MS                     400U
+#define SCAN_SETTLE_MS                     100U
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  方向 ↔ 位移/角度 映射表
@@ -743,6 +743,16 @@ void NavigationTask_GetMazeGraph(MazeGraph_t *graph_out)
 MazeExploreState_t NavigationTask_GetExploreState(void)
 {
     return s_explore_state;
+}
+
+int8_t NavigationTask_GetMazeCurrentNode(void)
+{
+    return s_current_node;
+}
+
+int8_t NavigationTask_GetMazeStartNode(void)
+{
+    return s_start_node;
 }
 
 void NavigationTask_SetGoal(float goal_x_m, float goal_y_m)

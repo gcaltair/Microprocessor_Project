@@ -14,14 +14,14 @@
 #define UART5_TX_TIMEOUT_MS      1000U
 #define TELEMETRY_FRAME_MAGIC_1          0xC3U
 #define TELEMETRY_FRAME_MAGIC_2          0x3CU
-#define TELEMETRY_PROTOCOL_VERSION       6U
+#define TELEMETRY_PROTOCOL_VERSION       7U
 #define TELEMETRY_FRAME_TYPE_MAP_GRID    1U
 #define TELEMETRY_FRAME_HEADER_SIZE      8U
 #define TELEMETRY_FRAME_CRC_SIZE         2U
 #define TELEMETRY_TASK_PERIOD_MS         250U
 #define TELEMETRY_KEEPALIVE_MS           1000U
 #define TELEMETRY_UART_TIMEOUT_MS        250U
-#define TELEMETRY_FIXED_PAYLOAD_SIZE     159U
+#define TELEMETRY_FIXED_PAYLOAD_SIZE     288U
 #define TELEMETRY_PATH_POINT_SIZE        8U
 #define TELEMETRY_MAX_FRAME_SIZE         (TELEMETRY_FRAME_HEADER_SIZE + \
                                           TELEMETRY_FIXED_PAYLOAD_SIZE + \
@@ -148,6 +148,7 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     MappingTaskStats_t stats;
     NavigationTaskStats_t nav_stats;
     ControlDebugSnapshot_t control_stats;
+    MazeGraph_t maze_graph;
     uint16_t offset = 0U;
     uint16_t payload_offset;
     uint16_t payload_len;
@@ -156,6 +157,8 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     uint16_t path_idx;
     uint16_t frame_len;
     uint16_t crc;
+    uint8_t maze_node_idx;
+    uint8_t maze_dir_idx;
 
     if (MappingTask_GetGridMeta(&meta) == 0U) {
         return 0U;
@@ -252,6 +255,22 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     telemetry_write_f32(&offset, control_stats.right_speed_setpoint_mps);
     telemetry_write_f32(&offset, control_stats.left_speed_feedback_mps);
     telemetry_write_f32(&offset, control_stats.right_speed_feedback_mps);
+
+    /* ── 迷宫图数据（V7 新增，129 字节） ── */
+    NavigationTask_GetMazeGraph(&maze_graph);
+    telemetry_write_u8(&offset, (uint8_t)NavigationTask_GetExploreState());
+    telemetry_write_u8(&offset, (uint8_t)NavigationTask_GetMazeCurrentNode());
+    telemetry_write_u8(&offset, (uint8_t)NavigationTask_GetMazeStartNode());
+    telemetry_write_u8(&offset, 0U);  /* reserved */
+    for (maze_node_idx = 0U; maze_node_idx < MAZE_NODE_COUNT; maze_node_idx++) {
+        for (maze_dir_idx = 0U; maze_dir_idx < MAZE_DIR_COUNT; maze_dir_idx++) {
+            telemetry_write_u8(&offset, (uint8_t)maze_graph.edges[maze_node_idx][maze_dir_idx]);
+        }
+    }
+    for (maze_node_idx = 0U; maze_node_idx < MAZE_NODE_COUNT; maze_node_idx++) {
+        telemetry_write_u8(&offset, maze_graph.visited[maze_node_idx]);
+    }
+
     (void)memcpy(&g_telemetryFrameBuffer[offset], g_telemetryCellBuffer, cell_count);
     offset = (uint16_t)(offset + cell_count);
 

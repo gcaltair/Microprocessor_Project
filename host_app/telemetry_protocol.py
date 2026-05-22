@@ -1,19 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import struct
 from typing import List
 
 import numpy as np
 
 FRAME_MAGIC = b"\xC3\x3C"
-PROTOCOL_VERSION = 6
+PROTOCOL_VERSION = 7
 FRAME_TYPE_MAP_GRID = 1
 FREE_THRESHOLD = -10
 OCCUPIED_THRESHOLD = 10
 
+MAZE_NODE_COUNT = 25
+MAZE_DIR_COUNT = 4
+
 _HEADER_STRUCT = struct.Struct("<2sBBHH")
-_SUPPORTED_PROTOCOL_VERSIONS = {PROTOCOL_VERSION}
+_SUPPORTED_PROTOCOL_VERSIONS = {6, 7}
 
 
 @dataclass(slots=True)
@@ -75,6 +78,12 @@ class MapFrame:
     right_speed_setpoint_mps: float = 0.0
     left_speed_feedback_mps: float = 0.0
     right_speed_feedback_mps: float = 0.0
+    # V7 maze graph fields
+    maze_explore_state: int = 0
+    maze_current_node: int = -1
+    maze_start_node: int = -1
+    maze_edges: list = field(default_factory=lambda: [[0]*4 for _ in range(25)])
+    maze_visited: list = field(default_factory=lambda: [0]*25)
 
 
 class TelemetryParser:
@@ -114,7 +123,7 @@ class TelemetryParser:
                 continue
 
             if version in _SUPPORTED_PROTOCOL_VERSIONS and frame_type == FRAME_TYPE_MAP_GRID:
-                frames.append(_parse_map_frame(sequence, frame_bytes[_HEADER_STRUCT.size:-2]))
+                frames.append(_parse_map_frame(sequence, version, frame_bytes[_HEADER_STRUCT.size:-2]))
 
             del self._buffer[:total_len]
 
@@ -133,7 +142,7 @@ def _crc16_ccitt(data: bytes) -> int:
     return crc
 
 
-def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
+def _parse_map_frame(sequence: int, version: int, payload: bytes) -> MapFrame:
     offset = 0
 
     def take(fmt: str):
@@ -182,6 +191,8 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     nav_target_y = take("<f")
     nav_path_point_count = take("<H")
     nav_path_points = tuple((take("<f"), take("<f")) for _ in range(nav_path_point_count))
+
+    # Control debug block (48 bytes)
     control_mode = 0
     relative_move_state = 0
     left_motor_direction = 2
@@ -199,8 +210,14 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     right_speed_setpoint = 0.0
     left_speed_feedback = 0.0
     right_speed_feedback = 0.0
+
     cell_count = width * height
-    if len(payload) - offset >= cell_count + 48:
+    remaining = len(payload) - offset
+
+    # V6: control(48) + cells
+    # V7: control(48) + maze(129) + cells
+    if version >= 7 and remaining >= cell_count + 48 + 129:
+        # control debug
         control_mode = take("<B")
         relative_move_state = take("<B")
         left_motor_direction = take("<B")
@@ -218,6 +235,45 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         right_speed_setpoint = take("<f")
         left_speed_feedback = take("<f")
         right_speed_feedback = take("<f")
+        # maze graph (129 bytes)
+        maze_explore_state = take("<B")
+        maze_current_node = take("<b")  # signed
+        maze_start_node = take("<b")    # signed
+        _maze_reserved = take("<B")
+        maze_edges = []
+        for _ in range(MAZE_NODE_COUNT):
+            maze_edges.append([take("<B") for _ in range(MAZE_DIR_COUNT)])
+        maze_visited = [take("<B") for _ in range(MAZE_NODE_COUNT)]
+    elif remaining >= cell_count + 48:
+        # V6 compatible: control debug only
+        control_mode = take("<B")
+        relative_move_state = take("<B")
+        left_motor_direction = take("<B")
+        right_motor_direction = take("<B")
+        left_pwm = take("<H")
+        right_pwm = take("<H")
+        left_speed_pid_output = take("<h")
+        right_speed_pid_output = take("<h")
+        position_pid_output = take("<f")
+        angle_pid_output = take("<f")
+        angle_error = take("<f")
+        position_error = take("<f")
+        base_speed = take("<f")
+        left_speed_setpoint = take("<f")
+        right_speed_setpoint = take("<f")
+        left_speed_feedback = take("<f")
+        right_speed_feedback = take("<f")
+        maze_explore_state = 0
+        maze_current_node = -1
+        maze_start_node = -1
+        maze_edges = [[0]*4 for _ in range(25)]
+        maze_visited = [0]*25
+    else:
+        maze_explore_state = 0
+        maze_current_node = -1
+        maze_start_node = -1
+        maze_edges = [[0]*4 for _ in range(25)]
+        maze_visited = [0]*25
 
     cells = np.frombuffer(payload, dtype=np.int8, count=cell_count, offset=offset).copy()
     cells = cells.reshape((height, width))
@@ -280,4 +336,9 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         right_speed_setpoint_mps=right_speed_setpoint,
         left_speed_feedback_mps=left_speed_feedback,
         right_speed_feedback_mps=right_speed_feedback,
+        maze_explore_state=maze_explore_state,
+        maze_current_node=maze_current_node,
+        maze_start_node=maze_start_node,
+        maze_edges=maze_edges,
+        maze_visited=maze_visited,
     )

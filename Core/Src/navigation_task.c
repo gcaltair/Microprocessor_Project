@@ -1136,7 +1136,7 @@ NavigationStatus_t NavigationTask_Update(void)
     plan_only = g_navigationPlanOnlyMode;
     navigation_unlock();
 
-    LocalizationTask_GetEstimatedPoseSnapshot(&current_pose);
+    LocalizationTask_GetPoseSnapshot(&current_pose);
     dx_goal = goal_pose.x_m - current_pose.x_m;
     dy_goal = goal_pose.y_m - current_pose.y_m;
     distance_to_goal_m = sqrtf((dx_goal * dx_goal) + (dy_goal * dy_goal));

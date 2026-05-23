@@ -563,29 +563,6 @@ void Control_SetManualCommand(float command_base_speed, float angle_setpoint)
     unlock_pid_and_control();
 }
 
-/*
- * 相对转向命令。
- *
- * 读取当前里程计航向，把 delta_angle 转换为绝对目标航向；base_car_speed 置 0，
- * 所以控制任务会通过角度环原地转向。
- */
-void Control_SetRelativeTurn(float delta_angle)
-{
-    SlamPose2D_t pose;
-
-    lock_odom_control_and_pid();
-    pid_get_odometry_pose_snapshot(&pose);
-
-    g_relative_move_state = RELATIVE_MOVE_IDLE;
-    g_control_mode = CONTROL_MODE_MANUAL;
-    base_car_speed = 0.0f;
-    g_pid_angle.setpoint = ControlLogic_ResolveAbsoluteSetpointFromCurrentHeading(pose.theta_deg,
-                                                                                  delta_angle);
-    s_angle_control_active = 0U;
-
-    unlock_pid_control_and_odom();
-}
-
 /* 只修改基础速度，不改变当前角度目标；适合在保持航向的同时调整前进/后退速度。 */
 void Control_SetBaseSpeed(float command_base_speed)
 {

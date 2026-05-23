@@ -11,11 +11,6 @@ uint8_t ControlLogic_ShouldPauseMappingForTurn(float current_heading_deg,
                                                float left_speed_mps,
                                                float right_speed_mps,
                                                uint8_t move_state);
-uint8_t ControlLogic_ShouldFuseCorrectedControlPose(float current_heading_deg,
-                                                    float heading_setpoint_deg,
-                                                    float base_speed_mps,
-                                                    float left_speed_mps,
-                                                    float right_speed_mps,
-                                                    uint8_t move_state);
+
 
 #endif /* CONTROL_LOGIC_H */

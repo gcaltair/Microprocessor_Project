@@ -5,8 +5,8 @@
 #define CONTROL_LOGIC_BASE_SPEED_ACTIVE_THRESHOLD_MPS   0.001f
 #define CONTROL_LOGIC_TURN_WHEEL_SPEED_THRESHOLD_MPS    0.02f
 #define CONTROL_LOGIC_TURN_HEADING_ERROR_THRESHOLD_DEG  3.0f
-#define CONTROL_LOGIC_MOVE_STATE_IDLE                   0U
 #define CONTROL_LOGIC_MOVE_STATE_TURNING                1U
+#define CONTROL_LOGIC_MOVE_STATE_IDLE                   0U
 
 float ControlLogic_WrapAngleDeg(float angle_deg)
 {
@@ -64,6 +64,7 @@ uint8_t ControlLogic_ShouldPauseMappingForTurn(float current_heading_deg,
                                                float right_speed_mps,
                                                uint8_t move_state)
 {
+    //第一层：状态机判断
     if (move_state == CONTROL_LOGIC_MOVE_STATE_TURNING) {
         return 1U;
     }
@@ -79,34 +80,3 @@ uint8_t ControlLogic_ShouldPauseMappingForTurn(float current_heading_deg,
                                                    right_speed_mps);
 }
 
-uint8_t ControlLogic_ShouldFuseCorrectedControlPose(float current_heading_deg,
-                                                    float heading_setpoint_deg,
-                                                    float base_speed_mps,
-                                                    float left_speed_mps,
-                                                    float right_speed_mps,
-                                                    uint8_t move_state)
-{
-    if (ControlLogic_ShouldPauseMappingForTurn(current_heading_deg,
-                                               heading_setpoint_deg,
-                                               base_speed_mps,
-                                               left_speed_mps,
-                                               right_speed_mps,
-                                               move_state) != 0U) {
-        return 1U;
-    }
-
-    if (move_state != CONTROL_LOGIC_MOVE_STATE_IDLE) {
-        return 1U;
-    }
-
-    if (fabsf(base_speed_mps) > CONTROL_LOGIC_BASE_SPEED_ACTIVE_THRESHOLD_MPS) {
-        return 1U;
-    }
-
-    if ((fabsf(left_speed_mps) > CONTROL_LOGIC_TURN_WHEEL_SPEED_THRESHOLD_MPS) ||
-        (fabsf(right_speed_mps) > CONTROL_LOGIC_TURN_WHEEL_SPEED_THRESHOLD_MPS)) {
-        return 1U;
-    }
-
-    return 0U;
-}

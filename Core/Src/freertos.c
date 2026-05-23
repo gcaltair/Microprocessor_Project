@@ -355,7 +355,7 @@ void StartControlTask(void *argument)
 
     Odometry_Update(dt);
     Odometry_GetPoseSnapshot(&odom_pose);
-    LocalizationTask_UpdatePredictedPose(&odom_pose);
+    LocalizationTask_UpdatePose(&odom_pose);
 
     if (g_controlMutex != NULL) {
       (void)osMutexAcquire(g_controlMutex, osWaitForever);

@@ -12,14 +12,8 @@
 #define LOCALIZATION_MAP_MIN_USABLE_POINTS         24U
 #define LOCALIZATION_MAP_SETTLE_MS                 200U
 
-/* 纯里程计定位状态；这些快照会被控制、建图和遥测共同读取。 */
+/* 定位状态；这些快照会被控制、建图和遥测共同读取。 */
 static LocalizationTaskStats_t g_localizationStats;
-static SlamPose2D_t g_estimatedPose;
-static SlamPose2D_t g_controlPose;
-static SlamPose2D_t g_lastOdomPose;
-static SlamPose2D_t g_lastScanOdomPose;
-static uint8_t g_estimatedPoseInitialized = 0U;
-static uint8_t g_lastScanOdomPoseValid = 0U;
 static uint8_t g_lastMappingTurnDetected = 0U;
 static uint32_t g_mapSettleUntilMs = 0U;
 
@@ -83,14 +77,14 @@ static void localization_update_mapping_gate(LidarScanMsg_t *scan_msg)
                                                               (uint8_t)g_relative_move_state);
     now_ms = HAL_GetTick();
 
-    /* 比较两帧已接收雷达的里程计差值，而不是比较每个控制周期的微小变化。 */
-    if (g_lastScanOdomPoseValid != 0U) {
-        odom_delta_x_m = scan_msg->pose_snapshot.x_m - g_lastScanOdomPose.x_m;
-        odom_delta_y_m = scan_msg->pose_snapshot.y_m - g_lastScanOdomPose.y_m;
+    /* 如果已收到过雷达帧，就比较两帧之间的里程计差值。 */
+    if (g_localizationStats.update_count > 0U) {
+        odom_delta_x_m = scan_msg->pose_snapshot.x_m - g_localizationStats.last_pose.x_m;
+        odom_delta_y_m = scan_msg->pose_snapshot.y_m - g_localizationStats.last_pose.y_m;
         odom_delta_translation_m = sqrtf((odom_delta_x_m * odom_delta_x_m) +
                                          (odom_delta_y_m * odom_delta_y_m));
         odom_delta_theta_deg = fabsf(localization_wrap_angle_deg(scan_msg->pose_snapshot.theta_deg -
-                                                                 g_lastScanOdomPose.theta_deg));
+                                                                 g_localizationStats.last_pose.theta_deg));
     }
 
     /* 转弯刚结束时短暂等待，让底盘和雷达扫描几何关系稳定下来。 */
@@ -124,79 +118,51 @@ static void localization_update_mapping_gate(LidarScanMsg_t *scan_msg)
 
     /* 记录本帧状态，下一帧用于判断转弯结束和里程计跳变。 */
     g_lastMappingTurnDetected = turning_detected;
-    g_lastScanOdomPose = scan_msg->pose_snapshot;
-    g_lastScanOdomPoseValid = 1U;
 }
 
-void LocalizationTask_UpdatePredictedPose(const SlamPose2D_t *odom_pose)
+void LocalizationTask_UpdatePose(const SlamPose2D_t *odom_pose)
 {
     /* 外部传入新的编码器里程计位姿时，同步更新定位快照。 */
     if (odom_pose == NULL) {
         return;
     }
 
-    /* 去掉 ICP 后，预测位姿和修正位姿都直接等于编码器里程计位姿。 */
     localization_lock();
-    g_estimatedPose = *odom_pose;
-    g_controlPose = *odom_pose;
-    g_lastOdomPose = *odom_pose;
-    g_estimatedPoseInitialized = 1U;
-    g_localizationStats.current_estimated_pose = g_estimatedPose;
-    g_localizationStats.current_control_pose = g_controlPose;
+    g_localizationStats.current_pose = *odom_pose;
+    g_localizationStats.initialized = 1U;
     localization_unlock();
 }
 
-void LocalizationTask_GetEstimatedPoseSnapshot(SlamPose2D_t *pose)
+void LocalizationTask_GetPoseSnapshot(SlamPose2D_t *pose)
 {
-    /* 给其他模块提供当前估计位姿的线程安全快照。 */
+    /* 给其他模块提供当前位姿的线程安全快照。 */
     if (pose == NULL) {
         return;
     }
 
     localization_lock();
-    /* 若定位尚未初始化，则返回零位姿，避免外部读到未定义数据。 */
-    if (g_estimatedPoseInitialized != 0U) {
-        *pose = g_estimatedPose;
+    if (g_localizationStats.initialized != 0U) {
+        *pose = g_localizationStats.current_pose;
     } else {
         (void)memset(pose, 0, sizeof(*pose));
     }
     localization_unlock();
 }
 
-void LocalizationTask_GetControlPoseSnapshot(SlamPose2D_t *pose)
-{
-    /* 给控制逻辑提供当前控制用位姿的线程安全快照。 */
-    if (pose == NULL) {
-        return;
-    }
 
-    localization_lock();
-    /* 纯里程计模式下，控制位姿和估计位姿一致。 */
-    if (g_estimatedPoseInitialized != 0U) {
-        *pose = g_controlPose;
-    } else {
-        (void)memset(pose, 0, sizeof(*pose));
-    }
-    localization_unlock();
-}
 
 static void localization_update_stats(const LidarScanMsg_t *scan_msg)
 {
     /* 更新定位统计信息，供遥测协议和上位机显示当前定位状态。 */
     localization_lock();
     g_localizationStats.update_count++;
-    g_localizationStats.odom_only_count++;
     g_localizationStats.initialized = 1U;
-    g_localizationStats.last_predicted_pose = scan_msg->pose_snapshot;
-    g_localizationStats.last_corrected_pose = scan_msg->corrected_pose;
-    g_localizationStats.current_estimated_pose = g_estimatedPose;
-    g_localizationStats.current_control_pose = g_controlPose;
+    g_localizationStats.last_pose = scan_msg->pose_snapshot;
     g_localizationStats.last_odom_delta_theta_deg = scan_msg->odom_delta_theta_deg;
     g_localizationStats.last_odom_delta_translation_m = scan_msg->odom_delta_translation_m;
     g_localizationStats.last_map_update_allowed = scan_msg->map_update_allowed;
     g_localizationStats.last_map_skip_reason = scan_msg->map_skip_reason;
     g_localizationStats.last_turning_detected = scan_msg->turning_detected;
-    g_localizationStats.last_mode = (LocalizationMode_t)scan_msg->localization_mode;
     localization_unlock();
 }
 
@@ -212,24 +178,16 @@ void StartLocalizationTask(void *argument)
             continue;
         }
 
-        // 1. 只使用原始里程计定位
-        scan_msg.corrected_pose = scan_msg.pose_snapshot;
-        scan_msg.localization_mode = LOCALIZATION_MODE_ODOMETRY_ONLY;
-
-        // 2. 线程安全地更新发布位姿（让位置环和遥测拿到最新的里程计）
+        // 1. 线程安全地更新发布位姿
         localization_lock();
-        g_estimatedPose = scan_msg.corrected_pose;
-        g_controlPose = scan_msg.corrected_pose;
-        g_lastOdomPose = scan_msg.pose_snapshot;
-        g_estimatedPoseInitialized = 1U;
-        g_localizationStats.current_estimated_pose = g_estimatedPose;
-        g_localizationStats.current_control_pose = g_controlPose;
+        g_localizationStats.current_pose = scan_msg.pose_snapshot;
+        g_localizationStats.initialized = 1U;
         localization_unlock();
 
-        // 3. 运行真正的建图门控（计算转弯、跳变，动态给 map_update_allowed 赋值）
+        // 2. 运行建图门控（计算转弯、跳变，动态给 map_update_allowed 赋值）
         localization_update_mapping_gate(&scan_msg);
 
-        // 4. 更新统计并发送给建图任务
+        // 3. 更新统计并发送给建图任务
         localization_update_stats(&scan_msg);
 
         if (g_localizedScanQueue != NULL) {
@@ -243,15 +201,9 @@ void StartLocalizationTask(void *argument)
 }
 void LocalizationTask_Reset(void)
 {
-    /* 清空定位统计、位姿快照和建图门控历史。 */
+    /* 清空定位统计和建图门控历史。 */
     localization_lock();
     (void)memset(&g_localizationStats, 0, sizeof(g_localizationStats));
-    (void)memset(&g_estimatedPose, 0, sizeof(g_estimatedPose));
-    (void)memset(&g_controlPose, 0, sizeof(g_controlPose));
-    (void)memset(&g_lastOdomPose, 0, sizeof(g_lastOdomPose));
-    (void)memset(&g_lastScanOdomPose, 0, sizeof(g_lastScanOdomPose));
-    g_estimatedPoseInitialized = 0U;
-    g_lastScanOdomPoseValid = 0U;
     g_lastMappingTurnDetected = 0U;
     g_mapSettleUntilMs = 0U;
     localization_unlock();

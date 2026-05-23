@@ -10,9 +10,6 @@
 #define LIDAR_SCAN_BUFFER_COUNT  4U
 #define LIDAR_DMA_BLOCK_QUEUE_LENGTH  16U
 
-typedef enum {
-    LOCALIZATION_MODE_ODOMETRY_ONLY = 0
-} LocalizationMode_t;
 
 typedef struct {
     uint16_t offset;
@@ -25,9 +22,7 @@ typedef struct {
     uint16_t point_count;
     uint32_t scan_sequence;
     SlamPose2D_t pose_snapshot;
-    SlamPose2D_t corrected_pose;
     LidarScanQuality_t quality;
-    uint8_t localization_mode;
     uint8_t map_update_allowed;
     uint8_t turning_detected;
     uint8_t map_skip_reason;

@@ -189,14 +189,19 @@ void StartDefaultTask(void *argument)
   /* USER CODE BEGIN StartDefaultTask */
   (void)argument;
 
-  /*
-   * Start the lidar stream after the RTOS objects and worker threads exist.
-   * RPLIDAR_StartRaw() resets the lidar pipeline and arms USART6 DMA, so
-   * calling it here avoids starting the stream before the FreeRTOS queues
-   * used by the parser/localization/mapping pipeline are ready.
-   */
+  // 1. 启动雷达
   osDelay(50U);
   RPLIDAR_StartRaw();
+
+  // 2. 准备时间
+  osDelay(6000U);
+
+  // 3. 赋值指定的终点
+  g_target_x = 2.0f; // 前进 2 米 (现场根据要求改)
+  g_target_y = 1.0f; // 向左 1 米 (现场根据要求改)
+
+  // 4. 触发导航标志位，或者切换控制模式，依据你的底层写法而定
+  // g_control_mode = CONTROL_MODE_POSITION;
 
   for (;;) {
     osDelay(1000U);
@@ -454,7 +459,7 @@ void StartTelemetryTask(void *argument)
 {
   for(;;)
   {
-    osDelay(1000); // 什么都不做，每秒睡一次
+    osDelay(1000);
   }
 }
 

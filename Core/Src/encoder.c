@@ -6,13 +6,12 @@
 #define PULSE_TO_SPEED_FACTOR   (PI * DIAMETER / ENCODER_PULSES_PER_REV / ENCODER_SAMPLING_PERIOD)
 #define MAX_REASONABLE_SPEED    0.8f
 
-/* 对外提供的里程计位置估计，坐标单位为米。 */
-volatile float g_x = 0.0f;
-volatile float g_y = 0.0f;
+/* 里程计位置估计，坐标单位为米。通过 Odometry_GetPoseSnapshot() 对外读取。 */
+static float s_odom_x = 0.0f;
+static float s_odom_y = 0.0f;
 /* 连续航向角，单位为度，不限制在 [-180, 180] 范围内。 */
-volatile float g_th_continuous = 0.0f;
+static float s_odom_theta_deg = 0.0f;
 
-/* 低通滤波后的左右轮速度，单位 m/s，供速度 PID 和定位逻辑使用。 */
 volatile float g_left_speed = 0.0f;
 volatile float g_right_speed = 0.0f;
 
@@ -130,9 +129,9 @@ void encoder_Reset(void)
 
 void Odometry_ResetPose(void)
 {
-    g_x = 0.0f;
-    g_y = 0.0f;
-    g_th_continuous = 0.0f;
+    s_odom_x = 0.0f;
+    s_odom_y = 0.0f;
+    s_odom_theta_deg = 0.0f;
     s_heading_wrapped_deg = 0.0f;
     s_left_delta_acc_m = 0.0f;
     s_right_delta_acc_m = 0.0f;
@@ -163,7 +162,7 @@ void Odometry_Update(float dt)
     if (fabsf(g_gyro_data.gz) > 1.0f) {
         dth = g_gyro_data.gz * dt;
         theta_mid_deg = s_heading_wrapped_deg + dth * 0.5f;
-        g_th_continuous += dth;
+        s_odom_theta_deg += dth;
         s_heading_wrapped_deg += dth;
     }
 
@@ -175,8 +174,8 @@ void Odometry_Update(float dt)
         s_heading_wrapped_deg += 360.0f;
     }
 
-    g_x += ds * cosf(theta_mid_deg * PI / 180.0f);
-    g_y += ds * sinf(theta_mid_deg * PI / 180.0f);
+    s_odom_x += ds * cosf(theta_mid_deg * PI / 180.0f);
+    s_odom_y += ds * sinf(theta_mid_deg * PI / 180.0f);
 }
 
 void Odometry_GetPoseSnapshot(SlamPose2D_t *pose)
@@ -185,9 +184,9 @@ void Odometry_GetPoseSnapshot(SlamPose2D_t *pose)
         return;
     }
 
-    pose->x_m = g_x;
-    pose->y_m = g_y;
-    pose->theta_deg = g_th_continuous;
+    pose->x_m = s_odom_x;
+    pose->y_m = s_odom_y;
+    pose->theta_deg = s_odom_theta_deg;
     pose->timestamp_ms = HAL_GetTick();
 }
 

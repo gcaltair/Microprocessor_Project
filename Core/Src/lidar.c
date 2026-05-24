@@ -255,6 +255,7 @@ HAL_StatusTypeDef send_binary_packaged_data_from_buffer(const LidarScanBuffer_t 
 {
     BinaryPacketHeader_t header;
     OdometryData_t odom_data;
+    SlamPose2D_t pose;
     uint16_t odom_size = sizeof(OdometryData_t);
     uint16_t lidar_points_size;
     uint16_t total_payload_len;
@@ -280,9 +281,10 @@ HAL_StatusTypeDef send_binary_packaged_data_from_buffer(const LidarScanBuffer_t 
     (void)memcpy(current_cpu_buffer + buffer_offset, &header, sizeof(header));
     buffer_offset += sizeof(header);
 
-    odom_data.x = g_x;
-    odom_data.y = g_y;
-    odom_data.theta_continuous = g_th_continuous;
+    Odometry_GetPoseSnapshot(&pose);
+    odom_data.x = pose.x_m;
+    odom_data.y = pose.y_m;
+    odom_data.theta_continuous = pose.theta_deg;
     (void)memcpy(current_cpu_buffer + buffer_offset, &odom_data, sizeof(odom_data));
     buffer_offset += sizeof(odom_data);
 

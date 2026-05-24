@@ -18,7 +18,6 @@
  * 5. Speed_Control_Loop() 是最内层速度环：
  *    左右轮速度 setpoint - 编码器实测速度 -> PWM -> Motor_Control()。
  */
-
 #define ANGLE_TOLERANCE_FOR_MOVING  0.8f
 #define ANGLE_CONTROL_DEADBAND_ENTER_DEG  0.3f
 #define ANGLE_CONTROL_DEADBAND_EXIT_DEG   0.5f
@@ -134,21 +133,6 @@ static void pid_set_drive_axis_from_heading_deg(float heading_deg)
 
     s_drive_axis_x = cosf(heading_rad);
     s_drive_axis_y = sinf(heading_rad);
-}
-
-static void pid_get_odometry_pose_snapshot(SlamPose2D_t *pose)
-{
-    if (pose == NULL) {
-        return;
-    }
-
-    Odometry_GetPoseSnapshot(pose);
-    if (pose->timestamp_ms == 0U) {
-        pose->x_m = g_x;
-        pose->y_m = g_y;
-        pose->theta_deg = g_th_continuous;
-        pose->timestamp_ms = HAL_GetTick();
-    }
 }
 
 static void lock_control_and_pid(void)
@@ -574,7 +558,57 @@ uint8_t Control_SetWheelSpeedTest(float left_speed_mps, float right_speed_mps)
 
     return 1U;
 }
+void Start_Relative_Turn(float angle_delta)
+{
+    lock_odom_control_and_pid();
+    if (g_relative_move_state != RELATIVE_MOVE_IDLE) {
+        unlock_pid_control_and_odom();
+        return;
+    }
+    s_target_distance = 0.0f;
+    g_pid_angle.setpoint += angle_delta;
+    pid_set_drive_axis_from_heading_deg(g_pid_angle.setpoint);
 
+    g_pid_position.integral = 0.0f;
+    g_pid_position.last_error = 0.0f;
+    base_car_speed = 0.0f;
+    g_control_mode = CONTROL_MODE_POSITION;
+    g_relative_move_state = RELATIVE_MOVE_TURNING;
+    s_angle_control_active = 0U;
+    unlock_pid_control_and_odom();
+}
+void Start_Relative_Drive(float distance_m)
+{
+    SlamPose2D_t pose;
+
+    lock_odom_control_and_pid();
+    Odometry_GetPoseSnapshot(&pose);
+
+    if (g_relative_move_state != RELATIVE_MOVE_IDLE) {
+        unlock_pid_control_and_odom();
+        return;
+    }
+
+    s_target_distance = fabsf(distance_m);
+    if (s_target_distance < POSITION_REACHED_THRESHOLD) {
+        unlock_pid_control_and_odom();
+        return;
+    }
+
+    s_drive_direction = (distance_m >= 0.0f) ? 1.0f : -1.0f;
+
+    s_initial_x = pose.x_m;
+    s_initial_y = pose.y_m;
+
+    g_pid_position.integral = 0.0f;
+    g_pid_position.last_error = 0.0f;
+    base_car_speed = 0.0f;
+    g_control_mode = CONTROL_MODE_POSITION;
+    g_relative_move_state = RELATIVE_MOVE_DRIVING; // 直接进入直行状态
+    s_angle_control_active = 0U;
+
+    unlock_pid_control_and_odom();
+}
 /*
  * 启动一次相对位移运动。
  *
@@ -586,21 +620,17 @@ void Start_Relative_Move(float dx, float dy)
     SlamPose2D_t pose;
     float target_heading_deg;
 
-    lock_odom_control_and_pid();
-    pid_get_odometry_pose_snapshot(&pose);
-
     if (g_relative_move_state != RELATIVE_MOVE_IDLE) {
-        unlock_pid_control_and_odom();
         return;
     }
 
     s_target_distance = sqrtf(dx * dx + dy * dy);
-    if (s_target_distance < 0.01f) {
-        unlock_pid_control_and_odom();
+    if (s_target_distance < POSITION_REACHED_THRESHOLD) {
         return;
     }
 
     target_heading_deg = atan2f(dy, dx) * 180.0f / PI;
+
     s_drive_direction = 1.0f;
     if (target_heading_deg > 90.0f) {
         target_heading_deg -= 180.0f;
@@ -610,27 +640,7 @@ void Start_Relative_Move(float dx, float dy)
         s_drive_direction = -1.0f;
     }
 
-    // 检查当前是不是正在直行或旋转，如果是，说明是在连续下发
-    if (g_relative_move_state != RELATIVE_MOVE_IDLE) {
-        // 如果是连续动态下发（比如导航任务周期性刷新），目标角度直接等于本次计算的绝对航向
-        g_pid_angle.setpoint = target_heading_deg;
-    } else {
-        // 如果是从完全静止（IDLE）状态第一次启动：
-        // 目标航向 = 小车目前应该在的【目标角度】 + 相对本次增量的绝对航向
-        // 这样可以确保就算小车物理上偏了，也只会去追标准的角度线，而不是去迁就物理误差
-        g_pid_angle.setpoint = g_pid_angle.setpoint + target_heading_deg;
-    }
-    s_initial_x = pose.x_m;
-    s_initial_y = pose.y_m;
-    pid_set_drive_axis_from_heading_deg(g_pid_angle.setpoint);
-    g_pid_position.integral = 0.0f;
-    g_pid_position.last_error = 0.0f;
-    base_car_speed = 0.0f;
-    g_control_mode = CONTROL_MODE_POSITION;
-    g_relative_move_state = RELATIVE_MOVE_TURNING;
-    s_angle_control_active = 0U;
 
-    unlock_pid_control_and_odom();
 }
 
 /*
@@ -668,22 +678,21 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
     float current_angle_deg;
     float current_x_m;
     float current_y_m;
+    SlamPose2D_t local_pose;
 
-    if (pose != NULL) {
-        current_angle_deg = pose->theta_deg;
-    } else {
-        current_angle_deg = g_th_continuous;
+    if (pose == NULL) {
+        Odometry_GetPoseSnapshot(&local_pose);
+        pose = &local_pose;
     }
 
-    current_x_m = g_x;
-    current_y_m = g_y;
+    current_angle_deg = pose->theta_deg;
+    current_x_m = pose->x_m;
+    current_y_m = pose->y_m;
 
     switch (g_relative_move_state)
     {
         case RELATIVE_MOVE_IDLE:
             base_car_speed = 0.0f;
-            s_control_debug_snapshot.position_pid_output_mps = 0.0f;
-            s_control_debug_snapshot.position_error_m = 0.0f;
             break;
 
         case RELATIVE_MOVE_TURNING:
@@ -692,8 +701,6 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
 
             base_car_speed = 0.0f;
             angle_error = pid_normalize_angle_deg(g_pid_angle.setpoint - current_angle_deg);
-            s_control_debug_snapshot.position_pid_output_mps = 0.0f;
-            s_control_debug_snapshot.position_error_m = s_target_distance;
 
             if (fabsf(angle_error) < ANGLE_TOLERANCE_FOR_MOVING) {
                 s_initial_x = current_x_m;
@@ -717,33 +724,22 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
             if (distance_progress < 0.0f) {
                 distance_progress = 0.0f;
             }
-
-            /*
-             * Use commanded-path progress instead of start-to-current Euclidean distance.
-             * When the robot drives while trimming heading, arc motion makes straight-line
-             * displacement smaller than real path progress and causes consistent overshoot.
-             */
             distance_error = s_target_distance - distance_progress;
 
             if (distance_error < POSITION_REACHED_THRESHOLD) {
                 g_relative_move_state = RELATIVE_MOVE_IDLE;
                 g_control_mode = CONTROL_MODE_MANUAL;
                 base_car_speed = 0.0f;
-                s_control_debug_snapshot.position_pid_output_mps = 0.0f;
-                s_control_debug_snapshot.position_error_m = 0.0f;
                 s_drive_direction = 1.0f;
                 g_pid_position.integral = 0.0f;
                 g_pid_position.last_error = 0.0f;
-                // pid_set_drive_axis_from_heading_deg(current_angle_deg);
-                // g_pid_angle.setpoint = current_angle_deg;
                 s_angle_control_active = 0U;
                 break;
             }
 
             g_pid_position.setpoint = 0.0f;
             raw_base_speed = s_drive_direction * PID_Calculate((PID_Controller *)&g_pid_position, -distance_error, dt);
-            s_control_debug_snapshot.position_pid_output_mps = raw_base_speed;
-            s_control_debug_snapshot.position_error_m = distance_error;
+
             base_car_speed = raw_base_speed;
 
             if (base_car_speed > MAX_BASE_SPEED) {

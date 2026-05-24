@@ -27,10 +27,6 @@ extern volatile PID_Controller g_pid_angle;
 
 extern volatile uint32_t overflow_count;
 extern volatile float base_car_speed;
-extern volatile float g_dl_acc;
-extern volatile float g_dr_acc;
-extern volatile float g_th;
-extern volatile float g_th_continuous;
 
 typedef enum {
     CONTROL_MODE_MANUAL = 0,
@@ -41,7 +37,7 @@ typedef enum {
 typedef enum {
     RELATIVE_MOVE_IDLE = 0,
     RELATIVE_MOVE_TURNING = 1,
-    RELATIVE_MOVE_DRIVING = 2
+    RELATIVE_MOVE_DRIVING = 2,
 } RelativeMoveState;
 
 extern volatile RelativeMoveState g_relative_move_state;

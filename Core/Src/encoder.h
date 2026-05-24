@@ -19,10 +19,6 @@
 #define PULSE_TO_DIST_FACTOR    (PI * DIAMETER / ENCODER_PULSES_PER_REV)
 
 
-// 可选累计姿态(若你在别处要用, 否则可以忽略)
-extern volatile float g_x;  // 对外提供的里程计 x 坐标估计，单位为米。
-extern volatile float g_y;  // 对外提供的里程计 y 坐标估计，单位为米。
-
 // 过滤后当前轮速(米/秒)
 extern volatile float g_left_speed;   // 低通滤波后的左轮速度，单位 m/s。
 extern volatile float g_right_speed;  // 低通滤波后的右轮速度，单位 m/s。

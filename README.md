@@ -1,1 +1,1 @@
-除了上位机，手写代码
+STM32_Programmer_CLI -c port=SWD -w build/Debug/FInal_fina.elf -v -rst

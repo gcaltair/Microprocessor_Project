@@ -25,9 +25,6 @@
 #define TURN_OUTPUT_LIMIT_MOVING    0.10f
 #define TURN_OUTPUT_LIMIT_INPLACE   0.12f
 #define TURN_OUTPUT_MOVING_BASE_RATIO     1.00f
-#define POSITION_SLOWDOWN_DISTANCE_M      0.05f
-#define POSITION_TERMINAL_MAX_SPEED_MPS   0.18f
-#define POSITION_TERMINAL_MIN_SPEED_MPS   0.05f
 
 volatile PID_Controller g_pid_speed_left;
 volatile PID_Controller g_pid_speed_right;
@@ -129,42 +126,6 @@ static float pid_clamp_float(float value, float min_value, float max_value)
     }
 
     return value;
-}
-
-static float pid_apply_magnitude_limit(float value, float max_magnitude)
-{
-    if (max_magnitude < 0.0f) {
-        max_magnitude = 0.0f;
-    }
-
-    if (value > max_magnitude) {
-        return max_magnitude;
-    }
-
-    if (value < -max_magnitude) {
-        return -max_magnitude;
-    }
-
-    return value;
-}
-
-static float pid_terminal_speed_limit_from_distance(float distance_error_m)
-{
-    float ramp;
-
-    if (distance_error_m <= POSITION_REACHED_THRESHOLD) {
-        return 0.0f;
-    }
-
-    if (distance_error_m >= POSITION_SLOWDOWN_DISTANCE_M) {
-        return POSITION_TERMINAL_MAX_SPEED_MPS;
-    }
-
-    ramp = (distance_error_m - POSITION_REACHED_THRESHOLD) /
-           (POSITION_SLOWDOWN_DISTANCE_M - POSITION_REACHED_THRESHOLD);
-
-    return POSITION_TERMINAL_MIN_SPEED_MPS +
-           ramp * (POSITION_TERMINAL_MAX_SPEED_MPS - POSITION_TERMINAL_MIN_SPEED_MPS);
 }
 
 static void pid_set_drive_axis_from_heading_deg(float heading_deg)
@@ -752,7 +713,6 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
             float distance_progress = (dx_traveled * s_drive_axis_x + dy_traveled * s_drive_axis_y) * s_drive_direction;
             float distance_error;
             float raw_base_speed;
-            float terminal_speed_limit = 0.0f;
 
             if (distance_progress < 0.0f) {
                 distance_progress = 0.0f;
@@ -790,17 +750,6 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
                 base_car_speed = MAX_BASE_SPEED;
             } else if (base_car_speed < -MAX_BASE_SPEED) {
                 base_car_speed = -MAX_BASE_SPEED;
-            }
-
-            if (distance_error <= POSITION_SLOWDOWN_DISTANCE_M) {
-                terminal_speed_limit = pid_terminal_speed_limit_from_distance(distance_error);
-                base_car_speed = pid_apply_magnitude_limit(base_car_speed, terminal_speed_limit);
-            } else {
-                if ((base_car_speed > 0.0f) && (base_car_speed < MIN_BASE_SPEED)) {
-                    base_car_speed = MIN_BASE_SPEED;
-                } else if ((base_car_speed < 0.0f) && (base_car_speed > -MIN_BASE_SPEED)) {
-                    base_car_speed = -MIN_BASE_SPEED;
-                }
             }
             break;
         }

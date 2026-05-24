@@ -44,7 +44,8 @@ static float s_initial_y = 0.0f;
 
 /*
  * 行驶方向标志：1 表示向前走，-1 表示倒车走。
- * 当目标方向相对车头超过 90 度时，代码会选择不大角度掉头，而是保持较小转角后倒车。
+ * Start_Relative_Move() 始终使用 1，让目标在后方时先掉头再前进；
+ * Start_Relative_Drive() 仍可通过负距离单独启动倒车直行。
  */
 static float s_drive_direction = 1.0f;
 
@@ -612,35 +613,45 @@ void Start_Relative_Drive(float distance_m)
 /*
  * 启动一次相对位移运动。
  *
- * dx/dy 表示相对位移向量，函数会计算目标距离和目标航向。若目标方向在车身后方，
- * 会选择较小转角后倒车行驶，而不是强制掉头。
+ * dx/dy 表示相对位移向量，函数会计算目标距离和目标航向。
+ * 相对移动只允许向前走；若目标方向在车身后方，先原地掉头，再向前直行。
  */
 void Start_Relative_Move(float dx, float dy)
 {
     SlamPose2D_t pose;
     float target_heading_deg;
 
+    lock_odom_control_and_pid();
+    Odometry_GetPoseSnapshot(&pose);
+
     if (g_relative_move_state != RELATIVE_MOVE_IDLE) {
+        unlock_pid_control_and_odom();
         return;
     }
 
     s_target_distance = sqrtf(dx * dx + dy * dy);
     if (s_target_distance < POSITION_REACHED_THRESHOLD) {
+        unlock_pid_control_and_odom();
         return;
     }
 
     target_heading_deg = atan2f(dy, dx) * 180.0f / PI;
 
     s_drive_direction = 1.0f;
-    if (target_heading_deg > 90.0f) {
-        target_heading_deg -= 180.0f;
-        s_drive_direction = -1.0f;
-    } else if (target_heading_deg < -90.0f) {
-        target_heading_deg += 180.0f;
-        s_drive_direction = -1.0f;
-    }
+    g_pid_angle.setpoint = target_heading_deg;
+    pid_set_drive_axis_from_heading_deg(g_pid_angle.setpoint);
 
+    s_initial_x = pose.x_m;
+    s_initial_y = pose.y_m;
 
+    g_pid_position.integral = 0.0f;
+    g_pid_position.last_error = 0.0f;
+    base_car_speed = 0.0f;
+    g_control_mode = CONTROL_MODE_POSITION;
+    g_relative_move_state = RELATIVE_MOVE_TURNING;
+    s_angle_control_active = 0U;
+
+    unlock_pid_control_and_odom();
 }
 
 /*

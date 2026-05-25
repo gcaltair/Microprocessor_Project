@@ -1231,12 +1231,22 @@ NavigationStatus_t NavigationTask_Update(void)
         return NAVIGATION_STATUS_FAILED;
     }
 
+    target_pose.x_m = goal_pose.x_m;
+    target_pose.y_m = goal_pose.y_m;
     if (g_navigationSmoothPathLen >= 2U) {
-        target_pose.x_m = g_navigationSmoothPath[1].x_m;
-        target_pose.y_m = g_navigationSmoothPath[1].y_m;
-    } else {
-        target_pose.x_m = goal_pose.x_m;
-        target_pose.y_m = goal_pose.y_m;
+        uint16_t path_index;
+
+        for (path_index = 1U; path_index < g_navigationSmoothPathLen; ++path_index) {
+            float dx_path = g_navigationSmoothPath[path_index].x_m - current_pose.x_m;
+            float dy_path = g_navigationSmoothPath[path_index].y_m - current_pose.y_m;
+            float path_distance_m = sqrtf((dx_path * dx_path) + (dy_path * dy_path));
+
+            if (path_distance_m >= NAVIGATION_MIN_SEGMENT_M) {
+                target_pose.x_m = g_navigationSmoothPath[path_index].x_m;
+                target_pose.y_m = g_navigationSmoothPath[path_index].y_m;
+                break;
+            }
+        }
     }
     target_pose.theta_deg = current_pose.theta_deg;
     target_pose.timestamp_ms = HAL_GetTick();

@@ -36,6 +36,16 @@ NAVIGATION_STATUS_LABELS = {
     4: "busy",
 }
 
+NAVIGATION_PHASE_LABELS = {
+    0: "idle",
+    1: "planning",
+    2: "turning",
+    3: "driving",
+    4: "reached",
+    5: "failed",
+    6: "speed_test",
+}
+
 CONTROL_MODE_LABELS = {
     0: "manual",
     1: "position",
@@ -468,13 +478,14 @@ class MainWindow(QtWidgets.QWidget):
         skip_reason = SKIP_REASON_LABELS.get(frame.last_skip_reason, str(frame.last_skip_reason))
         loc_mode = LOCALIZATION_MODE_LABELS.get(frame.last_localization_mode, str(frame.last_localization_mode))
         nav_status = NAVIGATION_STATUS_LABELS.get(frame.nav_status, str(frame.nav_status))
+        nav_phase = NAVIGATION_PHASE_LABELS.get(frame.nav_phase, str(frame.nav_phase))
         control_mode = CONTROL_MODE_LABELS.get(frame.control_mode, str(frame.control_mode))
         move_state = RELATIVE_MOVE_STATE_LABELS.get(frame.relative_move_state, str(frame.relative_move_state))
         left_direction = MOTOR_DIRECTION_LABELS.get(frame.left_motor_direction, str(frame.left_motor_direction))
         right_direction = MOTOR_DIRECTION_LABELS.get(frame.right_motor_direction, str(frame.right_motor_direction))
 
         self.nav_telemetry.setText(
-            f"fw_status={nav_status} goal_valid={frame.nav_goal_valid} target_valid={frame.nav_target_valid}\n"
+            f"fw_status={nav_phase} goal_valid={frame.nav_goal_valid} target_valid={frame.nav_target_valid}\n"
             f"goal=({frame.nav_goal_x_m:.3f}, {frame.nav_goal_y_m:.3f}) "
             f"target=({frame.nav_target_x_m:.3f}, {frame.nav_target_y_m:.3f})\n"
             f"distance={frame.nav_distance_to_goal_m:.3f} m "
@@ -513,6 +524,7 @@ class MainWindow(QtWidgets.QWidget):
                     f"skip_settle_count       : {frame.skipped_settle_count}",
                     f"skip_quality_count      : {frame.skipped_quality_count}",
                     f"nav_status              : {nav_status}",
+                    f"nav_phase               : {nav_phase}",
                     f"nav_goal_valid          : {frame.nav_goal_valid}",
                     f"nav_target_valid        : {frame.nav_target_valid}",
                     f"nav_update_count        : {frame.nav_update_count}",

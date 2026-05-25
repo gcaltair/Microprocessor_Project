@@ -15,6 +15,16 @@ typedef enum {
     NAVIGATION_STATUS_BUSY = 4
 } NavigationStatus_t;
 
+typedef enum {
+    NAVIGATION_PHASE_IDLE = 0,
+    NAVIGATION_PHASE_PLANNING = 1,
+    NAVIGATION_PHASE_TURNING = 2,
+    NAVIGATION_PHASE_DRIVING = 3,
+    NAVIGATION_PHASE_REACHED = 4,
+    NAVIGATION_PHASE_FAILED = 5,
+    NAVIGATION_PHASE_SPEED_TEST = 6
+} NavigationPhase_t;
+
 typedef struct {
     float x_m;
     float y_m;
@@ -24,6 +34,7 @@ typedef struct {
     uint8_t goal_valid;
     uint8_t target_valid;
     NavigationStatus_t last_status;
+    NavigationPhase_t phase;
     uint32_t update_count;
     uint32_t fail_count;
     uint16_t raw_path_len;

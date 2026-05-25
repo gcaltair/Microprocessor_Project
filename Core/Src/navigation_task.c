@@ -896,6 +896,7 @@ static uint8_t navigation_build_smooth_path_from_raw_path(void)
  * 计数，方便 UI、遥测或调试接口读取一致的 NavigationTaskStats_t 快照。
  */
 static void navigation_update_stats_locked(NavigationStatus_t status,
+                                           NavigationPhase_t phase,
                                            const SlamPose2D_t *current_pose,
                                            const SlamPose2D_t *goal_pose,
                                            const SlamPose2D_t *target_pose,
@@ -907,6 +908,7 @@ static void navigation_update_stats_locked(NavigationStatus_t status,
     g_navigationStats.goal_valid = g_navigationGoalValid;
     g_navigationStats.target_valid = target_valid;
     g_navigationStats.last_status = status;
+    g_navigationStats.phase = phase;
     g_navigationStats.raw_path_len = g_navigationRawPathLen;
     g_navigationStats.smooth_path_len = g_navigationSmoothPathLen;
     g_navigationStats.distance_to_goal_m = distance_to_goal_m;
@@ -928,6 +930,42 @@ static void navigation_update_stats_locked(NavigationStatus_t status,
     } else {
         (void)memset(&g_navigationStats.target_pose, 0, sizeof(g_navigationStats.target_pose));
     }
+}
+
+static void navigation_set_phase_snapshot_locked(NavigationStatus_t status,
+                                                 NavigationPhase_t phase,
+                                                 const SlamPose2D_t *current_pose,
+                                                 const SlamPose2D_t *goal_pose,
+                                                 float distance_to_goal_m)
+{
+    g_navigationStats.goal_valid = g_navigationGoalValid;
+    g_navigationStats.target_valid = 0U;
+    g_navigationStats.last_status = status;
+    g_navigationStats.phase = phase;
+    g_navigationStats.distance_to_goal_m = distance_to_goal_m;
+
+    if (current_pose != NULL) {
+        g_navigationStats.current_pose = *current_pose;
+    }
+
+    if (goal_pose != NULL) {
+        g_navigationStats.goal_pose = *goal_pose;
+    }
+
+    (void)memset(&g_navigationStats.target_pose, 0, sizeof(g_navigationStats.target_pose));
+}
+
+static NavigationPhase_t navigation_phase_from_relative_move_state(void)
+{
+    if (g_relative_move_state == RELATIVE_MOVE_TURNING) {
+        return NAVIGATION_PHASE_TURNING;
+    }
+
+    if (g_relative_move_state == RELATIVE_MOVE_DRIVING) {
+        return NAVIGATION_PHASE_DRIVING;
+    }
+
+    return NAVIGATION_PHASE_IDLE;
 }
 
 static void navigation_clear_published_path_locked(void)
@@ -963,6 +1001,7 @@ static void navigation_set_goal_mode(float goal_x_m, float goal_y_m, uint8_t pla
     g_navigationStats.goal_valid = 1U;
     g_navigationStats.goal_pose = g_navigationGoal;
     g_navigationStats.last_status = NAVIGATION_STATUS_IDLE;
+    g_navigationStats.phase = NAVIGATION_PHASE_IDLE;
     g_navigationStats.raw_path_len = 0U;
     g_navigationStats.smooth_path_len = 0U;
     navigation_clear_published_path_locked();
@@ -1002,6 +1041,7 @@ void NavigationTask_ClearGoal(void)
     g_navigationStats.goal_valid = 0U;
     g_navigationStats.target_valid = 0U;
     g_navigationStats.last_status = NAVIGATION_STATUS_IDLE;
+    g_navigationStats.phase = NAVIGATION_PHASE_IDLE;
     g_navigationStats.raw_path_len = 0U;
     g_navigationStats.smooth_path_len = 0U;
     navigation_clear_published_path_locked();
@@ -1117,6 +1157,7 @@ NavigationStatus_t NavigationTask_Update(void)
     SlamPose2D_t target_pose;
     NavigationGridPoint_t start_cell;
     NavigationGridPoint_t goal_cell;
+    NavigationPhase_t phase = NAVIGATION_PHASE_FAILED;
     float dx_goal;
     float dy_goal;
     float distance_to_goal_m;
@@ -1128,7 +1169,13 @@ NavigationStatus_t NavigationTask_Update(void)
     navigation_lock();
     if (g_navigationGoalValid == 0U) {
         navigation_clear_published_path_locked();
-        navigation_update_stats_locked(NAVIGATION_STATUS_IDLE, NULL, NULL, NULL, 0.0f, 0U);
+        navigation_update_stats_locked(NAVIGATION_STATUS_IDLE,
+                                       NAVIGATION_PHASE_IDLE,
+                                       NULL,
+                                       NULL,
+                                       NULL,
+                                       0.0f,
+                                       0U);
         navigation_unlock();
         return NAVIGATION_STATUS_IDLE;
     }
@@ -1148,6 +1195,7 @@ NavigationStatus_t NavigationTask_Update(void)
         g_navigationPlanOnlyMode = 0U;
         navigation_clear_published_path_locked();
         navigation_update_stats_locked(NAVIGATION_STATUS_REACHED,
+                                       NAVIGATION_PHASE_REACHED,
                                        &current_pose,
                                        &goal_pose,
                                        NULL,
@@ -1157,6 +1205,14 @@ NavigationStatus_t NavigationTask_Update(void)
         return NAVIGATION_STATUS_REACHED;
     }
 
+    navigation_lock();
+    navigation_set_phase_snapshot_locked(NAVIGATION_STATUS_BUSY,
+                                         NAVIGATION_PHASE_PLANNING,
+                                         &current_pose,
+                                         &goal_pose,
+                                         distance_to_goal_m);
+    navigation_unlock();
+
     if ((navigation_load_map_snapshot() == 0U) ||
         (navigation_world_to_nav_cell(current_pose.x_m, current_pose.y_m, &start_cell) == 0U) ||
         (navigation_world_to_nav_cell(goal_pose.x_m, goal_pose.y_m, &goal_cell) == 0U) ||
@@ -1165,6 +1221,7 @@ NavigationStatus_t NavigationTask_Update(void)
         navigation_lock();
         navigation_clear_published_path_locked();
         navigation_update_stats_locked(NAVIGATION_STATUS_FAILED,
+                                       NAVIGATION_PHASE_FAILED,
                                        &current_pose,
                                        &goal_pose,
                                        NULL,
@@ -1187,8 +1244,10 @@ NavigationStatus_t NavigationTask_Update(void)
 
     if (plan_only != 0U) {
         status = NAVIGATION_STATUS_OK;
+        phase = NAVIGATION_PHASE_PLANNING;
     } else if (g_control_mode == CONTROL_MODE_SPEED_TEST) {
         status = NAVIGATION_STATUS_BUSY;
+        phase = NAVIGATION_PHASE_SPEED_TEST;
     } else {
         float dx_target = target_pose.x_m - current_pose.x_m;
         float dy_target = target_pose.y_m - current_pose.y_m;
@@ -1200,6 +1259,7 @@ NavigationStatus_t NavigationTask_Update(void)
                 Start_Relative_Move(dx_target, dy_target);
             }
             status = NAVIGATION_STATUS_OK;
+            phase = navigation_phase_from_relative_move_state();
         } else if (navigation_should_preempt(dx_target, dy_target) != 0U) {
             /*
              * 新规划路径方向与当前运动方向偏差过大，抢占当前运动：
@@ -1210,15 +1270,18 @@ NavigationStatus_t NavigationTask_Update(void)
                 Start_Relative_Move(dx_target, dy_target);
             }
             status = NAVIGATION_STATUS_OK;
+            phase = navigation_phase_from_relative_move_state();
         } else {
             /* 方向偏差在容许范围内，等待当前运动完成。 */
             status = NAVIGATION_STATUS_BUSY;
+            phase = navigation_phase_from_relative_move_state();
         }
     }
 
     navigation_lock();
     navigation_publish_smooth_path_locked();
     navigation_update_stats_locked(status,
+                                   phase,
                                    &current_pose,
                                    &goal_pose,
                                    &target_pose,

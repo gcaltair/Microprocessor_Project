@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from telemetry_protocol import FRAME_MAGIC, TelemetryParser
+from telemetry_protocol import FRAME_MAGIC, PROTOCOL_VERSION, TelemetryParser
 
 
 def _crc16_ccitt(data: bytes) -> int:
@@ -60,7 +60,7 @@ def test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise() -> Non
             struct.pack("<B", 1),
             struct.pack("<B", 1),
             struct.pack("<B", 4),
-            struct.pack("<B", 0),
+            struct.pack("<B", 3),
             struct.pack("<I", 6),
             struct.pack("<I", 7),
             struct.pack("<H", 8),
@@ -74,7 +74,7 @@ def test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise() -> Non
             cells,
         ]
     )
-    header = struct.pack("<2sBBHH", FRAME_MAGIC, 6, 1, 9, len(payload))
+    header = struct.pack("<2sBBHH", FRAME_MAGIC, PROTOCOL_VERSION, 1, 9, len(payload))
     frame_without_crc = header + payload
     frame = frame_without_crc + struct.pack("<H", _crc16_ccitt(frame_without_crc))
 
@@ -90,6 +90,7 @@ def test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise() -> Non
     assert result.robot_cell_x == 1
     assert result.robot_cell_y == 2
     assert result.nav_status == 4
+    assert result.nav_phase == 3
     assert result.nav_raw_path_len == 8
     assert result.nav_smooth_path_len == 9
     assert result.nav_path_points == ()
@@ -98,7 +99,7 @@ def test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise() -> Non
     assert int(result.cells[2, 3]) == -16
 
 
-def test_parser_reads_control_diagnostics_from_v6_map_frame() -> None:
+def test_parser_reads_control_diagnostics_from_v7_map_frame() -> None:
     width = 2
     height = 2
     cells = bytes([0, 10, 0xF6, 20])
@@ -133,7 +134,7 @@ def test_parser_reads_control_diagnostics_from_v6_map_frame() -> None:
             struct.pack("<B", 0),
             struct.pack("<B", 0),
             struct.pack("<B", 0),
-            struct.pack("<B", 0),
+            struct.pack("<B", 1),
             struct.pack("<I", 0),
             struct.pack("<I", 0),
             struct.pack("<H", 0),
@@ -168,7 +169,7 @@ def test_parser_reads_control_diagnostics_from_v6_map_frame() -> None:
             cells,
         ]
     )
-    header = struct.pack("<2sBBHH", FRAME_MAGIC, 6, 1, 11, len(payload))
+    header = struct.pack("<2sBBHH", FRAME_MAGIC, PROTOCOL_VERSION, 1, 11, len(payload))
     frame_without_crc = header + payload
     frame = frame_without_crc + struct.pack("<H", _crc16_ccitt(frame_without_crc))
 
@@ -176,6 +177,7 @@ def test_parser_reads_control_diagnostics_from_v6_map_frame() -> None:
 
     assert len(parsed) == 1
     result = parsed[0]
+    assert result.nav_phase == 1
     assert result.control_mode == 1
     assert result.relative_move_state == 2
     assert result.left_motor_direction == 0
@@ -200,5 +202,5 @@ def test_parser_reads_control_diagnostics_from_v6_map_frame() -> None:
 
 if __name__ == "__main__":
     test_parser_accepts_firmware_compatible_map_frame_and_ignores_noise()
-    test_parser_reads_control_diagnostics_from_v6_map_frame()
+    test_parser_reads_control_diagnostics_from_v7_map_frame()
     print("protocol_smoke_ok")

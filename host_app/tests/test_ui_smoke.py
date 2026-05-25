@@ -51,6 +51,7 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         nav_goal_valid=1,
         nav_target_valid=1,
         nav_status=1,
+        nav_phase=1,
         nav_update_count=3,
         nav_fail_count=0,
         nav_raw_path_len=4,
@@ -96,6 +97,7 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
         nav_goal_valid=1,
         nav_target_valid=1,
         nav_status=4,
+        nav_phase=3,
         nav_update_count=4,
         nav_fail_count=1,
         nav_raw_path_len=5,
@@ -140,12 +142,14 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
     assert "skip_reason             : quality" in stats_text
     assert "localization_mode       : odometry" in stats_text
     assert "nav_status              : busy" in stats_text
+    assert "nav_phase               : driving" in stats_text
     assert "nav_path_points         : 3" in stats_text
     assert "control_mode            : position" in stats_text
     assert "relative_move_state     : driving" in stats_text
     assert "pwm_left_right          : 1200 / 1300" in stats_text
     assert "pid_speed_output_l_r    : +514 / -615" in stats_text
     assert "PWM L/R= 1200/ 1300" in window.control_telemetry.text()
+    assert "fw_status=driving" in window.nav_telemetry.text()
     assert window.send_goal_button.text() == "Send Goal"
     assert window.plan_button.text() == "Plan"
     assert window.clear_goal_button.text() == "Clear Goal"

@@ -7,7 +7,7 @@ from typing import List
 import numpy as np
 
 FRAME_MAGIC = b"\xC3\x3C"
-PROTOCOL_VERSION = 6
+PROTOCOL_VERSION = 7
 FRAME_TYPE_MAP_GRID = 1
 FREE_THRESHOLD = -10
 OCCUPIED_THRESHOLD = 10
@@ -47,6 +47,7 @@ class MapFrame:
     nav_goal_valid: int
     nav_target_valid: int
     nav_status: int
+    nav_phase: int
     nav_update_count: int
     nav_fail_count: int
     nav_raw_path_len: int
@@ -170,7 +171,7 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     nav_goal_valid = take("<B")
     nav_target_valid = take("<B")
     nav_status = take("<B")
-    _nav_reserved = take("<B")
+    nav_phase = take("<B")
     nav_update_count = take("<I")
     nav_fail_count = take("<I")
     nav_raw_path_len = take("<H")
@@ -252,6 +253,7 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         nav_goal_valid=nav_goal_valid,
         nav_target_valid=nav_target_valid,
         nav_status=nav_status,
+        nav_phase=nav_phase,
         nav_update_count=nav_update_count,
         nav_fail_count=nav_fail_count,
         nav_raw_path_len=nav_raw_path_len,

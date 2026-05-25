@@ -14,7 +14,7 @@
 #define UART5_TX_TIMEOUT_MS      1000U
 #define TELEMETRY_FRAME_MAGIC_1          0xC3U
 #define TELEMETRY_FRAME_MAGIC_2          0x3CU
-#define TELEMETRY_PROTOCOL_VERSION       6U
+#define TELEMETRY_PROTOCOL_VERSION       7U
 #define TELEMETRY_FRAME_TYPE_MAP_GRID    1U
 #define TELEMETRY_FRAME_HEADER_SIZE      8U
 #define TELEMETRY_FRAME_CRC_SIZE         2U
@@ -220,7 +220,7 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     telemetry_write_u8(&offset, nav_stats.goal_valid);
     telemetry_write_u8(&offset, nav_stats.target_valid);
     telemetry_write_u8(&offset, (uint8_t)nav_stats.last_status);
-    telemetry_write_u8(&offset, 0U);
+    telemetry_write_u8(&offset, (uint8_t)nav_stats.phase);
     telemetry_write_u32(&offset, nav_stats.update_count);
     telemetry_write_u32(&offset, nav_stats.fail_count);
     telemetry_write_u16(&offset, nav_stats.raw_path_len);

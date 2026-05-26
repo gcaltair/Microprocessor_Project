@@ -11,6 +11,7 @@
 #include "../Inc/occupancy_grid.h"
 #include "../Inc/usart.h"
 #include "pid.h"
+#include "robot_app.h"
 #include "system.h"
 
 #define NAVIGATION_TASK_PERIOD_MS          300U
@@ -179,7 +180,11 @@ static void navigation_process_pending_command(void)
              */
             NavigationTask_ClearGoal();
             Start_Relative_Move(dx_m, dy_m);
+        } else {
+            (void)RobotApp_ProcessDebugCommand(command);
         }
+    } else {
+        (void)RobotApp_ProcessDebugCommand(command);
     }
 }
 

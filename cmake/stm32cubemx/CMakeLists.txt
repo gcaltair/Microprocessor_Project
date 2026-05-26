@@ -23,10 +23,12 @@ set(MX_Include_Dirs
 # STM32CubeMX generated application sources
 set(MX_Application_Src
     ${CMAKE_SOURCE_DIR}/Core/Src/main.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/adc.c
     ${CMAKE_SOURCE_DIR}/Core/Src/gpio.c
     ${CMAKE_SOURCE_DIR}/Core/Src/freertos.c
     ${CMAKE_SOURCE_DIR}/Core/Src/dma.c
     ${CMAKE_SOURCE_DIR}/Core/Src/i2c.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/iwdg.c
     ${CMAKE_SOURCE_DIR}/Core/Src/spi.c
     ${CMAKE_SOURCE_DIR}/Core/Src/tim.c
     ${CMAKE_SOURCE_DIR}/Core/Src/usart.c
@@ -56,7 +58,10 @@ set(STM32_Drivers_Src
     ${CMAKE_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr_ex.c
     ${CMAKE_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c
     ${CMAKE_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c
+    ${CMAKE_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc.c
+    ${CMAKE_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc_ex.c
     ${CMAKE_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_exti.c
+    ${CMAKE_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_iwdg.c
     ${CMAKE_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_i2c.c
     ${CMAKE_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_i2c_ex.c
     ${CMAKE_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_spi.c

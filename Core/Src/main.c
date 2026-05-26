@@ -19,8 +19,10 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "adc.h"
 #include "dma.h"
 #include "i2c.h"
+#include "iwdg.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
@@ -32,6 +34,7 @@
 #include "system.h"
 #include "encoder.h"
 #include "motor.h"
+#include "robot_app.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -132,6 +135,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_ADC1_Init();
   MX_DMA_Init();
   MX_TIM3_Init();
   MX_UART5_Init();
@@ -144,6 +148,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
   system_init();
   PID_system_init();
+  RobotApp_Init();
+  MX_IWDG_Init();
   /* USER CODE END 2 */
 
   /* Init scheduler */

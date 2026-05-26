@@ -30,7 +30,6 @@
                                           TELEMETRY_FRAME_CRC_SIZE)
 
 static char g_uart_printf_buffer[UART_PRINTF_BUFFER_SIZE];
-static int8_t g_telemetryCellBuffer[OGM_MAX_CELL_COUNT];
 static NavigationPathPoint_t g_telemetryPathBuffer[NAVIGATION_PATH_TELEMETRY_MAX_POINTS];
 static uint8_t g_telemetryFrameBuffer[TELEMETRY_MAX_FRAME_SIZE];
 static uint16_t g_telemetrySequence = 0U;
@@ -166,10 +165,6 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
         return 0U;
     }
 
-    if (MappingTask_CopyGridCells(g_telemetryCellBuffer, OGM_MAX_CELL_COUNT) == 0U) {
-        return 0U;
-    }
-
     MappingTask_GetStatsSnapshot(&stats);
     NavigationTask_GetStatsSnapshot(&nav_stats);
     path_point_count = NavigationTask_CopySmoothPathPoints(g_telemetryPathBuffer,
@@ -252,7 +247,9 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     telemetry_write_f32(&offset, control_stats.right_speed_setpoint_mps);
     telemetry_write_f32(&offset, control_stats.left_speed_feedback_mps);
     telemetry_write_f32(&offset, control_stats.right_speed_feedback_mps);
-    (void)memcpy(&g_telemetryFrameBuffer[offset], g_telemetryCellBuffer, cell_count);
+    if (MappingTask_CopyGridCells((int8_t *)&g_telemetryFrameBuffer[offset], OGM_MAX_CELL_COUNT) == 0U) {
+        return 0U;
+    }
     offset = (uint16_t)(offset + cell_count);
 
     payload_len = (uint16_t)(offset - payload_offset);
@@ -297,10 +294,9 @@ void StartTelemetryTask(void *argument)
             uint16_t frame_len = telemetry_build_map_frame(now_ms);
 
             if ((frame_len > 0U) &&
-                (HAL_UART_Transmit(&huart5,
-                                   g_telemetryFrameBuffer,
-                                   frame_len,
-                                   TELEMETRY_UART_TIMEOUT_MS) == HAL_OK)) {
+                (HAL_UART_Transmit_DMA(&huart5,
+                                       g_telemetryFrameBuffer,
+                                       frame_len) == HAL_OK)) {
                 has_sent_frame = 1U;
                 last_sent_update_count = stats.update_count;
                 last_sent_tick_ms = now_ms;

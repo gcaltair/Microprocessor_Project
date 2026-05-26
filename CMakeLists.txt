@@ -61,6 +61,13 @@ add_executable(${CMAKE_PROJECT_NAME}
         Core/Inc/navigation_task.h
         Core/Src/control_logic.c
         Core/Inc/control_logic.h
+        Core/Src/oled_ssd1306.c
+        Core/Inc/oled_ssd1306.h
+        Core/Src/robot_app.c
+        Core/Inc/robot_app.h
+        Core/Inc/robot_config.h
+        Core/Src/ui_task.c
+        Core/Inc/ui_task.h
 )
 
 # Add STM32CubeMX generated sources

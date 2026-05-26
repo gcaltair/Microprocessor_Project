@@ -35,9 +35,6 @@
 #include "app_ui.h"
 #include "encoder.h"
 #include "motor.h"
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -69,26 +66,6 @@ void MX_FREERTOS_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static void uart5_printf(const char *format, ...)
-{
-  char buffer[160];
-  va_list args;
-  int length;
-
-  va_start(args, format);
-  length = vsnprintf(buffer, sizeof(buffer), format, args);
-  va_end(args);
-
-  if (length < 0) {
-    return;
-  }
-  if (length > (int)sizeof(buffer)) {
-    length = (int)sizeof(buffer);
-  }
-
-  (void)HAL_UART_Transmit(&huart5, (uint8_t *)buffer, (uint16_t)length, 50U);
-}
-
 void system_init(void)
 {
   Motor_Init();
@@ -177,13 +154,6 @@ int main(void)
     //
     // encoder_update_speed();
     // Encoder_GetDebugSnapshot(&encoder_debug);
-    // uart5_printf("cnt L/R=%d/%d delta=%d/%d raw=%.3f/%.3f\r\n",
-    //              encoder_debug.left_counter_raw,
-    //              encoder_debug.right_counter_raw,
-    //              encoder_debug.left_pulse_delta,
-    //              encoder_debug.right_pulse_delta,
-    //              encoder_debug.raw_left_speed_mps,
-    //              encoder_debug.raw_right_speed_mps);
     // HAL_Delay(100);
 
     /* USER CODE BEGIN 3 */

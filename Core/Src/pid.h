@@ -56,6 +56,7 @@ void Cancel_Relative_Move(void);
 void Control_SetManualCommand(float base_speed, float angle_setpoint);
 void Control_SetRelativeTurn(float delta_angle);
 void Control_SetBaseSpeed(float base_speed);
+void Control_SetSpeedLimit(float speed_limit_mps);
 uint8_t Control_SetWheelSpeedTest(float left_speed_mps, float right_speed_mps);
 uint8_t Control_GetPidTunings(char loop_id, float *kp, float *ki, float *kd);
 uint8_t Control_SetPidTunings(char loop_id, float kp, float ki, float kd);

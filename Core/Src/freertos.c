@@ -119,7 +119,7 @@ const osThreadAttr_t navigationTask_attributes = {
 
 const osThreadAttr_t safetyTask_attributes = {
   .name = "safetyTask",
-  .stack_size = 512,
+  .stack_size = 1536,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 
@@ -341,6 +341,7 @@ void StartControlTask(void *argument)
 
   for (;;) {
     (void)osSemaphoreAcquire(g_controlTickSem, osWaitForever);
+    App_RecordControlTick();
 
     /*
      * 控制周期入口：
@@ -391,7 +392,6 @@ void StartControlTask(void *argument)
       (void)osMutexRelease(g_odomMutex);
     }
 
-    App_Task10ms(dt);
     g_runtimeStats.control_cycles++;
   }
 }
@@ -477,28 +477,34 @@ void StartLiDARParseTask(void *argument)
 
 void StartSafetyTask(void *argument)
 {
+  uint32_t last_stats_tick = 0U;
+
   (void)argument;
 
   for (;;) {
-    App_BackgroundTask();
-    g_runtimeStats.free_heap_bytes = (uint32_t)xPortGetFreeHeapSize();
-    g_runtimeStats.min_ever_free_heap_bytes = (uint32_t)xPortGetMinimumEverFreeHeapSize();
-    g_runtimeStats.lidar_dma_drop_count = overflow_count;
-    g_runtimeStats.default_task_stack_free_bytes =
-        (uint32_t)uxTaskGetStackHighWaterMark(defaultTaskHandle) * sizeof(StackType_t);
-    g_runtimeStats.control_task_stack_free_bytes =
-        (uint32_t)uxTaskGetStackHighWaterMark(controlTaskHandle) * sizeof(StackType_t);
-    g_runtimeStats.lidar_task_stack_free_bytes =
-        (uint32_t)uxTaskGetStackHighWaterMark(lidarParseTaskHandle) * sizeof(StackType_t);
-    g_runtimeStats.localization_task_stack_free_bytes =
-        (uint32_t)uxTaskGetStackHighWaterMark(localizationTaskHandle) * sizeof(StackType_t);
-    g_runtimeStats.mapping_task_stack_free_bytes =
-        (uint32_t)uxTaskGetStackHighWaterMark(mappingTaskHandle) * sizeof(StackType_t);
-    g_runtimeStats.safety_task_stack_free_bytes =
-        (uint32_t)uxTaskGetStackHighWaterMark(safetyTaskHandle) * sizeof(StackType_t);
+    uint32_t now_ms = HAL_GetTick();
 
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    osDelay(100U);
+    App_ServiceTask();
+    if ((now_ms - last_stats_tick) >= 100U) {
+      last_stats_tick = now_ms;
+      g_runtimeStats.free_heap_bytes = (uint32_t)xPortGetFreeHeapSize();
+      g_runtimeStats.min_ever_free_heap_bytes = (uint32_t)xPortGetMinimumEverFreeHeapSize();
+      g_runtimeStats.lidar_dma_drop_count = overflow_count;
+      g_runtimeStats.default_task_stack_free_bytes =
+          (uint32_t)uxTaskGetStackHighWaterMark(defaultTaskHandle) * sizeof(StackType_t);
+      g_runtimeStats.control_task_stack_free_bytes =
+          (uint32_t)uxTaskGetStackHighWaterMark(controlTaskHandle) * sizeof(StackType_t);
+      g_runtimeStats.lidar_task_stack_free_bytes =
+          (uint32_t)uxTaskGetStackHighWaterMark(lidarParseTaskHandle) * sizeof(StackType_t);
+      g_runtimeStats.localization_task_stack_free_bytes =
+          (uint32_t)uxTaskGetStackHighWaterMark(localizationTaskHandle) * sizeof(StackType_t);
+      g_runtimeStats.mapping_task_stack_free_bytes =
+          (uint32_t)uxTaskGetStackHighWaterMark(mappingTaskHandle) * sizeof(StackType_t);
+      g_runtimeStats.safety_task_stack_free_bytes =
+          (uint32_t)uxTaskGetStackHighWaterMark(safetyTaskHandle) * sizeof(StackType_t);
+      HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    }
+    osDelay(20U);
   }
 }
 

@@ -1,40 +1,54 @@
 # Mapping Host App
 
-This host app reads binary telemetry frames from `UART5` and renders the live occupancy grid.
-It can also send simple navigation commands back to the firmware on the same serial port.
+This desktop application reads the UART5 binary telemetry stream, renders the live
+occupancy grid, sends navigation/debug commands, and records benchmark CSV evidence.
 
-## Firmware side
+## Firmware Interface
 
-- Telemetry port: `UART5`
-- Baud rate: `921600`
-- Frame format: `magic(2) + version(1) + type(1) + seq(2) + payload_len(2) + payload + crc16(2)`
-- Current frame type:
-  - `0x01`: full occupancy-grid snapshot plus mapping and navigation statistics
-- Host-to-firmware navigation commands:
-  - `NAV <x_m> <y_m>\n`: set a navigation goal in map/world coordinates, meters
-  - `NAVC\n`: clear the current navigation goal
-- The `Debug Command` panel sends one raw ASCII line, with `\n` appended automatically.
-  It includes a `P1,0` preset; firmware interprets `P<dx_m>,<dy_m>` as a direct
-  relative move command for the base position loop, bypassing A* navigation.
+- Port: UART5 Bluetooth link, `921600` baud
+- Frame envelope: `magic(2) + version(1) + type(1) + seq(2) + payload_len(2) + payload + crc16(2)`
+- Accepted protocol versions: v7 and v8
+- Frame type `0x01`: occupancy-grid snapshot plus map, navigation, and control stats
+- Protocol v8 additional status: battery, speed limit, safety/stop state, LiDAR
+  activity/recovery count, control heartbeat age, and benchmark elapsed/exit/return
+  times
 
 ## Run
 
-Use the project virtual environment:
+Install host dependencies in the project environment, then launch:
 
 ```powershell
-.\.venv\Scripts\python.exe .\host_app\main.py --port COM5
+python .\host_app\main.py --port COM5
 ```
 
-If you do not pass `--port`, the UI will let you choose one manually.
+Without `--port`, select the COM port in the application.
 
-## Notes
+## Operation
 
-- `USART6` remains dedicated to the lidar.
-- The host app ignores unrelated `UART5` debug text and only parses valid telemetry frames.
-- Click the map to fill the navigation goal coordinates, then press `Send Goal`.
-- Grid colors:
-  - dark: occupied
-  - light: free
-  - gray: unknown / weak evidence
-  - red: robot pose
-  - blue: navigation goal
+- Click the map to fill goal coordinates, then select **Send Goal** to send
+  `NAV x,y`. A driving goal starts timing and firmware automatically returns home
+  after reaching it.
+- Select **Plan** for a non-driving plan request and **Clear Goal** to send `NAVC`.
+- Use **Start Recording** before a timed run, then **Stop Recording** and **Save CSV**.
+  Output is stored under `host_app/logs/`.
+- The debug command field appends `\n` automatically. Useful commands are:
+
+| Command | Function |
+| --- | --- |
+| `P` / `Q` | Enable / disable periodic binary telemetry |
+| `P1,0` | Direct relative move, bypassing A* navigation |
+| `E` or `STOP` | Emergency stop |
+| `C` | Clear a permitted stop latch |
+| `G` or `HOME` | Return home |
+| `START` | Clear permitted stop state, reset map, and restart LiDAR |
+
+## Map Colors
+
+- dark: occupied
+- light: free
+- gray: unknown or weak evidence
+- red: current robot pose
+- blue: navigation goal
+
+`USART6` remains dedicated to the LiDAR; UART5 telemetry frames use DMA on the
+firmware side to avoid delaying the real-time motor-control task.

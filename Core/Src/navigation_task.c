@@ -168,6 +168,7 @@ static void navigation_process_pending_command(void)
         float goal_y_m;
 
         if (navigation_parse_float_pair(&command[4], &goal_x_m, &goal_y_m) != 0U) {
+            App_BeginBenchmark();
             NavigationTask_SetGoal(goal_x_m, goal_y_m);
         }
     } else if ((command[0] == 'N') && (command[1] == 'A') && (command[2] == 'V') && (command[3] == 'C')) {
@@ -176,13 +177,17 @@ static void navigation_process_pending_command(void)
         App_RequestEmergencyStop("BTEMG");
     } else if (((command[0] == 'C') || (command[0] == 'c')) && (command[1] == '\0')) {
         App_ClearEmergencyStop();
-    } else if (((command[0] == 'G') || (command[0] == 'g')) && (command[1] == '\0')) {
-        NavigationTask_ClearGoal();
+    } else if ((((command[0] == 'G') || (command[0] == 'g')) && (command[1] == '\0')) ||
+               (strcmp(command, "HOME") == 0)) {
         App_StartReturnHome();
     } else if (((command[0] == 'P') || (command[0] == 'p')) && (command[1] == '\0')) {
         App_SetTelemetryEnabled(true);
     } else if (((command[0] == 'Q') || (command[0] == 'q')) && (command[1] == '\0')) {
         App_SetTelemetryEnabled(false);
+    } else if (strcmp(command, "STOP") == 0) {
+        App_RequestEmergencyStop("BTEMG");
+    } else if (strcmp(command, "START") == 0) {
+        App_StartExploration();
     } else if ((command[0] == 'P') || (command[0] == 'p')) {
         float dx_m;
         float dy_m;
@@ -1036,6 +1041,19 @@ void NavigationTask_SetGoal(float goal_x_m, float goal_y_m)
     navigation_set_goal_mode(goal_x_m, goal_y_m, 0U);
 }
 
+void NavigationTask_RequestReturnHome(void)
+{
+    navigation_lock();
+    g_navigationGoal.x_m = NAVIGATION_HOME_X_M;
+    g_navigationGoal.y_m = NAVIGATION_HOME_Y_M;
+    g_navigationGoal.theta_deg = 0.0f;
+    g_navigationGoal.timestamp_ms = HAL_GetTick();
+    g_navigationGoalValid = 1U;
+    g_navigationPlanOnlyMode = 0U;
+    g_navigationReturningHome = 1U;
+    navigation_unlock();
+}
+
 void NavigationTask_SetPlanGoal(float goal_x_m, float goal_y_m)
 {
     navigation_set_goal_mode(goal_x_m, goal_y_m, 1U);
@@ -1211,6 +1229,7 @@ NavigationStatus_t NavigationTask_Update(void)
         /* 到达终点后清除目标，避免后续周期重复下发微小移动。 */
         navigation_lock();
         if ((plan_only == 0U) && (returning_home == 0U)) {
+            App_RecordExitReached();
             g_navigationGoal.x_m = NAVIGATION_HOME_X_M;
             g_navigationGoal.y_m = NAVIGATION_HOME_Y_M;
             g_navigationGoal.theta_deg = 0.0f;
@@ -1219,6 +1238,9 @@ NavigationStatus_t NavigationTask_Update(void)
             g_navigationPlanOnlyMode = 0U;
             g_navigationReturningHome = 1U;
         } else {
+            if (returning_home != 0U) {
+                App_RecordReturnReached();
+            }
             g_navigationGoalValid = 0U;
             g_navigationPlanOnlyMode = 0U;
             g_navigationReturningHome = 0U;

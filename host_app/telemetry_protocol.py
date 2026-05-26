@@ -7,13 +7,13 @@ from typing import List
 import numpy as np
 
 FRAME_MAGIC = b"\xC3\x3C"
-PROTOCOL_VERSION = 7
+PROTOCOL_VERSION = 8
 FRAME_TYPE_MAP_GRID = 1
 FREE_THRESHOLD = -10
 OCCUPIED_THRESHOLD = 10
 
 _HEADER_STRUCT = struct.Struct("<2sBBHH")
-_SUPPORTED_PROTOCOL_VERSIONS = {PROTOCOL_VERSION}
+_SUPPORTED_PROTOCOL_VERSIONS = {7, PROTOCOL_VERSION}
 
 
 @dataclass(slots=True)
@@ -76,6 +76,17 @@ class MapFrame:
     right_speed_setpoint_mps: float = 0.0
     left_speed_feedback_mps: float = 0.0
     right_speed_feedback_mps: float = 0.0
+    battery_mv: int = 0
+    speed_limit_cmps: int = 0
+    safety_code: int = 0
+    emergency_stop: int = 0
+    lidar_stream_active: int = 0
+    benchmark_state: int = 0
+    lidar_recovery_count: int = 0
+    control_age_ms: int = 0
+    mission_elapsed_ms: int = 0
+    exit_time_ms: int = 0
+    return_time_ms: int = 0
 
 
 class TelemetryParser:
@@ -115,7 +126,7 @@ class TelemetryParser:
                 continue
 
             if version in _SUPPORTED_PROTOCOL_VERSIONS and frame_type == FRAME_TYPE_MAP_GRID:
-                frames.append(_parse_map_frame(sequence, frame_bytes[_HEADER_STRUCT.size:-2]))
+                frames.append(_parse_map_frame(sequence, version, frame_bytes[_HEADER_STRUCT.size:-2]))
 
             del self._buffer[:total_len]
 
@@ -134,7 +145,7 @@ def _crc16_ccitt(data: bytes) -> int:
     return crc
 
 
-def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
+def _parse_map_frame(sequence: int, version: int, payload: bytes) -> MapFrame:
     offset = 0
 
     def take(fmt: str):
@@ -200,6 +211,17 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
     right_speed_setpoint = 0.0
     left_speed_feedback = 0.0
     right_speed_feedback = 0.0
+    battery_mv = 0
+    speed_limit_cmps = 0
+    safety_code = 0
+    emergency_stop = 0
+    lidar_stream_active = 0
+    benchmark_state = 0
+    lidar_recovery_count = 0
+    control_age_ms = 0
+    mission_elapsed_ms = 0
+    exit_time_ms = 0
+    return_time_ms = 0
     cell_count = width * height
     if len(payload) - offset >= cell_count + 48:
         control_mode = take("<B")
@@ -219,6 +241,18 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         right_speed_setpoint = take("<f")
         left_speed_feedback = take("<f")
         right_speed_feedback = take("<f")
+    if version >= 8 and len(payload) - offset >= cell_count + 28:
+        battery_mv = take("<H")
+        speed_limit_cmps = take("<H")
+        safety_code = take("<B")
+        emergency_stop = take("<B")
+        lidar_stream_active = take("<B")
+        benchmark_state = take("<B")
+        lidar_recovery_count = take("<I")
+        control_age_ms = take("<I")
+        mission_elapsed_ms = take("<I")
+        exit_time_ms = take("<I")
+        return_time_ms = take("<I")
 
     cells = np.frombuffer(payload, dtype=np.int8, count=cell_count, offset=offset).copy()
     cells = cells.reshape((height, width))
@@ -282,4 +316,15 @@ def _parse_map_frame(sequence: int, payload: bytes) -> MapFrame:
         right_speed_setpoint_mps=right_speed_setpoint,
         left_speed_feedback_mps=left_speed_feedback,
         right_speed_feedback_mps=right_speed_feedback,
+        battery_mv=battery_mv,
+        speed_limit_cmps=speed_limit_cmps,
+        safety_code=safety_code,
+        emergency_stop=emergency_stop,
+        lidar_stream_active=lidar_stream_active,
+        benchmark_state=benchmark_state,
+        lidar_recovery_count=lidar_recovery_count,
+        control_age_ms=control_age_ms,
+        mission_elapsed_ms=mission_elapsed_ms,
+        exit_time_ms=exit_time_ms,
+        return_time_ms=return_time_ms,
     )

@@ -5,7 +5,9 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PySide6 import QtWidgets
+import pytest
+
+QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -155,6 +157,8 @@ def test_main_window_refreshes_when_new_frames_arrive() -> None:
     assert window.clear_goal_button.text() == "Clear Goal"
     assert window.send_debug_command_button.text() == "Send Debug"
     assert window.debug_command_edit.text() == "P1,0"
+    assert window.record_button.text() == "Start Recording"
+    assert window.save_button.text() == "Save CSV"
     assert window.map_view._pixmap is not None
 
     window.close()

@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file    adc.h
-  * @brief   ADC1 configuration for battery/knob telemetry.
+  * @brief   ADC1 configuration for battery and speed knob telemetry.
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -19,6 +19,7 @@ extern "C" {
 extern ADC_HandleTypeDef hadc1;
 
 void MX_ADC1_Init(void);
+uint16_t ADC_ReadRawChannel(uint32_t channel);
 
 #ifdef __cplusplus
 }

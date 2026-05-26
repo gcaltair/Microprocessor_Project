@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import csv
+from datetime import datetime
+from pathlib import Path
 import sys
 
 import numpy as np
@@ -62,6 +65,23 @@ MOTOR_DIRECTION_LABELS = {
     0: "forward",
     1: "backward",
     2: "stop",
+}
+
+SAFETY_LABELS = {
+    0: "ok",
+    1: "stop",
+    2: "emergency",
+    3: "low_battery",
+    4: "watchdog",
+    5: "motor_stall",
+    6: "lidar_recovery",
+}
+
+BENCHMARK_LABELS = {
+    0: "idle",
+    1: "outbound",
+    2: "returning",
+    3: "complete",
 }
 
 
@@ -191,6 +211,8 @@ class MainWindow(QtWidgets.QWidget):
         self._serial: serial.Serial | None = None
         self._parser = TelemetryParser()
         self._last_frame: MapFrame | None = None
+        self._recording = False
+        self._recorded_frames: list[MapFrame] = []
 
         self.setWindowTitle("Car Mapping Host App")
         self.resize(1180, 760)
@@ -243,6 +265,12 @@ class MainWindow(QtWidgets.QWidget):
         self.stats_box.setStyleSheet(
             "background:#0e1216; color:#dce3ea; font-family:Consolas, monospace; border:1px solid #2f3944;"
         )
+        self.record_button = QtWidgets.QPushButton("Start Recording")
+        self.save_button = QtWidgets.QPushButton("Save CSV")
+        self.save_button.setEnabled(False)
+        self.validation_status = QtWidgets.QLabel("Validation logging idle")
+        self.validation_status.setWordWrap(True)
+        self.validation_status.setStyleSheet("color:#9fb3c8;")
 
         self._build_layout()
         self._wire_events()
@@ -276,6 +304,7 @@ class MainWindow(QtWidgets.QWidget):
         side_panel.addWidget(self.frame_info)
         side_panel.addWidget(self._build_navigation_panel())
         side_panel.addWidget(self._build_debug_panel())
+        side_panel.addWidget(self._build_validation_panel())
         side_panel.addWidget(QtWidgets.QLabel("Telemetry Details"))
         side_panel.addWidget(self.stats_box, 1)
 
@@ -301,6 +330,8 @@ class MainWindow(QtWidgets.QWidget):
         self.preset_p10_button.clicked.connect(lambda: self._set_debug_command("P1,0"))
         self.debug_command_edit.returnPressed.connect(self._send_debug_command)
         self.map_view.goalPicked.connect(self._set_goal_from_map)
+        self.record_button.clicked.connect(self._toggle_recording)
+        self.save_button.clicked.connect(self._save_recording)
 
     def _build_navigation_panel(self) -> QtWidgets.QGroupBox:
         group = QtWidgets.QGroupBox("Navigation")
@@ -341,6 +372,17 @@ class MainWindow(QtWidgets.QWidget):
         layout.addLayout(row)
         layout.addLayout(presets)
         layout.addWidget(self.debug_status)
+        return group
+
+    def _build_validation_panel(self) -> QtWidgets.QGroupBox:
+        group = QtWidgets.QGroupBox("Performance Validation")
+        group.setStyleSheet("QGroupBox{border:1px solid #2f3944; margin-top:8px; padding:8px;}")
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.addWidget(self.record_button)
+        buttons.addWidget(self.save_button)
+        layout = QtWidgets.QVBoxLayout(group)
+        layout.addLayout(buttons)
+        layout.addWidget(self.validation_status)
         return group
 
     def _refresh_ports(self, preferred: str | None) -> None:
@@ -455,6 +497,61 @@ class MainWindow(QtWidgets.QWidget):
         self.nav_status.setText(f"Goal selected from map: x={x_m:.3f} m, y={y_m:.3f} m")
         self.nav_status.setStyleSheet("color:#9fb3c8;")
 
+    def _toggle_recording(self) -> None:
+        if self._recording:
+            self._recording = False
+            self.record_button.setText("Start Recording")
+            self.save_button.setEnabled(bool(self._recorded_frames))
+            self.validation_status.setText(f"Recording stopped: {len(self._recorded_frames)} frames captured")
+            return
+
+        self._recorded_frames.clear()
+        self._recording = True
+        self.record_button.setText("Stop Recording")
+        self.save_button.setEnabled(False)
+        self.validation_status.setText("Recording telemetry for benchmark run...")
+
+    def _save_recording(self) -> None:
+        if not self._recorded_frames:
+            return
+        output_dir = Path(__file__).resolve().parent / "logs"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"benchmark_{datetime.now():%Y%m%d_%H%M%S}.csv"
+        fields = [
+            "sequence", "tick_ms", "pose_x_m", "pose_y_m", "pose_theta_deg",
+            "battery_mv", "speed_limit_cmps", "safety", "emergency_stop",
+            "lidar_stream_active", "lidar_recovery_count", "control_age_ms",
+            "benchmark_state", "mission_elapsed_ms", "exit_time_ms", "return_time_ms",
+            "left_pwm", "right_pwm", "nav_status", "nav_phase",
+        ]
+        with output_path.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=fields)
+            writer.writeheader()
+            for frame in self._recorded_frames:
+                writer.writerow({
+                    "sequence": frame.sequence,
+                    "tick_ms": frame.tick_ms,
+                    "pose_x_m": f"{frame.pose_x_m:.4f}",
+                    "pose_y_m": f"{frame.pose_y_m:.4f}",
+                    "pose_theta_deg": f"{frame.pose_theta_deg:.3f}",
+                    "battery_mv": frame.battery_mv,
+                    "speed_limit_cmps": frame.speed_limit_cmps,
+                    "safety": SAFETY_LABELS.get(frame.safety_code, str(frame.safety_code)),
+                    "emergency_stop": frame.emergency_stop,
+                    "lidar_stream_active": frame.lidar_stream_active,
+                    "lidar_recovery_count": frame.lidar_recovery_count,
+                    "control_age_ms": frame.control_age_ms,
+                    "benchmark_state": BENCHMARK_LABELS.get(frame.benchmark_state, str(frame.benchmark_state)),
+                    "mission_elapsed_ms": frame.mission_elapsed_ms,
+                    "exit_time_ms": frame.exit_time_ms,
+                    "return_time_ms": frame.return_time_ms,
+                    "left_pwm": frame.left_pwm,
+                    "right_pwm": frame.right_pwm,
+                    "nav_status": frame.nav_status,
+                    "nav_phase": frame.nav_phase,
+                })
+        self.validation_status.setText(f"CSV saved: {output_path.name}")
+
     def _poll_serial(self) -> None:
         if self._serial is None:
             return
@@ -474,6 +571,8 @@ class MainWindow(QtWidgets.QWidget):
     def _apply_frame(self, frame: MapFrame) -> None:
         self._last_frame = frame
         self.map_view.set_frame(frame)
+        if self._recording:
+            self._recorded_frames.append(frame)
 
         skip_reason = SKIP_REASON_LABELS.get(frame.last_skip_reason, str(frame.last_skip_reason))
         loc_mode = LOCALIZATION_MODE_LABELS.get(frame.last_localization_mode, str(frame.last_localization_mode))
@@ -483,6 +582,8 @@ class MainWindow(QtWidgets.QWidget):
         move_state = RELATIVE_MOVE_STATE_LABELS.get(frame.relative_move_state, str(frame.relative_move_state))
         left_direction = MOTOR_DIRECTION_LABELS.get(frame.left_motor_direction, str(frame.left_motor_direction))
         right_direction = MOTOR_DIRECTION_LABELS.get(frame.right_motor_direction, str(frame.right_motor_direction))
+        safety = SAFETY_LABELS.get(frame.safety_code, str(frame.safety_code))
+        benchmark = BENCHMARK_LABELS.get(frame.benchmark_state, str(frame.benchmark_state))
 
         self.nav_telemetry.setText(
             f"fw_status={nav_phase} goal_valid={frame.nav_goal_valid} target_valid={frame.nav_target_valid}\n"
@@ -496,6 +597,7 @@ class MainWindow(QtWidgets.QWidget):
             f"mode={control_mode} move={move_state}\n"
             f"PWM L/R={frame.left_pwm:5d}/{frame.right_pwm:5d} "
             f"dir={left_direction}/{right_direction}\n"
+            f"safety={safety} battery={frame.battery_mv} mV limit={frame.speed_limit_cmps} cm/s\n"
             f"PID pos={frame.position_pid_output_mps:+.3f} m/s "
             f"angle={frame.angle_pid_output_mps:+.3f} m/s\n"
             f"PID speed L/R={frame.left_speed_pid_output:+6d}/{frame.right_speed_pid_output:+6d}"
@@ -546,6 +648,17 @@ class MainWindow(QtWidgets.QWidget):
                     f"base_speed              : {frame.base_speed_mps:+.4f} m/s",
                     f"wheel_setpoint_l_r      : {frame.left_speed_setpoint_mps:+.4f} / {frame.right_speed_setpoint_mps:+.4f} m/s",
                     f"wheel_feedback_l_r      : {frame.left_speed_feedback_mps:+.4f} / {frame.right_speed_feedback_mps:+.4f} m/s",
+                    f"battery_mv              : {frame.battery_mv}",
+                    f"speed_limit_cmps        : {frame.speed_limit_cmps}",
+                    f"safety                  : {safety}",
+                    f"emergency_stop          : {frame.emergency_stop}",
+                    f"lidar_stream_active     : {frame.lidar_stream_active}",
+                    f"lidar_recovery_count    : {frame.lidar_recovery_count}",
+                    f"control_age_ms          : {frame.control_age_ms}",
+                    f"benchmark_state         : {benchmark}",
+                    f"mission_elapsed_ms      : {frame.mission_elapsed_ms}",
+                    f"exit_time_ms            : {frame.exit_time_ms}",
+                    f"return_time_ms          : {frame.return_time_ms}",
                     "",
                     "Legend:",
                     "dark   = occupied",
@@ -557,6 +670,11 @@ class MainWindow(QtWidgets.QWidget):
                 ]
             )
         )
+        if self._recording:
+            self.validation_status.setText(
+                f"Recording {len(self._recorded_frames)} frames | {benchmark} | "
+                f"exit={frame.exit_time_ms} ms return={frame.return_time_ms} ms"
+            )
 
 
 def main() -> int:

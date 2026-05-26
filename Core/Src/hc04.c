@@ -15,14 +15,13 @@
 #define UART5_TX_TIMEOUT_MS      1000U
 #define TELEMETRY_FRAME_MAGIC_1          0xC3U
 #define TELEMETRY_FRAME_MAGIC_2          0x3CU
-#define TELEMETRY_PROTOCOL_VERSION       7U
+#define TELEMETRY_PROTOCOL_VERSION       8U
 #define TELEMETRY_FRAME_TYPE_MAP_GRID    1U
 #define TELEMETRY_FRAME_HEADER_SIZE      8U
 #define TELEMETRY_FRAME_CRC_SIZE         2U
 #define TELEMETRY_TASK_PERIOD_MS         250U
 #define TELEMETRY_KEEPALIVE_MS           1000U
-#define TELEMETRY_UART_TIMEOUT_MS        250U
-#define TELEMETRY_FIXED_PAYLOAD_SIZE     159U
+#define TELEMETRY_FIXED_PAYLOAD_SIZE     187U
 #define TELEMETRY_PATH_POINT_SIZE        8U
 #define TELEMETRY_MAX_FRAME_SIZE         (TELEMETRY_FRAME_HEADER_SIZE + \
                                           TELEMETRY_FIXED_PAYLOAD_SIZE + \
@@ -149,6 +148,7 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     MappingTaskStats_t stats;
     NavigationTaskStats_t nav_stats;
     ControlDebugSnapshot_t control_stats;
+    AppStatusSnapshot_t app_status;
     uint16_t offset = 0U;
     uint16_t payload_offset;
     uint16_t payload_len;
@@ -176,6 +176,7 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     path_point_count = NavigationTask_CopySmoothPathPoints(g_telemetryPathBuffer,
                                                            NAVIGATION_PATH_TELEMETRY_MAX_POINTS);
     Control_GetDebugSnapshot(&control_stats);
+    App_GetStatusSnapshot(&app_status);
 
     if ((uint32_t)TELEMETRY_FRAME_HEADER_SIZE +
         TELEMETRY_FIXED_PAYLOAD_SIZE +
@@ -253,6 +254,17 @@ static uint16_t telemetry_build_map_frame(uint32_t tick_ms)
     telemetry_write_f32(&offset, control_stats.right_speed_setpoint_mps);
     telemetry_write_f32(&offset, control_stats.left_speed_feedback_mps);
     telemetry_write_f32(&offset, control_stats.right_speed_feedback_mps);
+    telemetry_write_u16(&offset, app_status.battery_mv);
+    telemetry_write_u16(&offset, app_status.speed_limit_cmps);
+    telemetry_write_u8(&offset, app_status.safety_code);
+    telemetry_write_u8(&offset, app_status.emergency_stop);
+    telemetry_write_u8(&offset, app_status.lidar_stream_active);
+    telemetry_write_u8(&offset, app_status.benchmark_state);
+    telemetry_write_u32(&offset, app_status.lidar_recovery_count);
+    telemetry_write_u32(&offset, app_status.control_age_ms);
+    telemetry_write_u32(&offset, app_status.mission_elapsed_ms);
+    telemetry_write_u32(&offset, app_status.exit_time_ms);
+    telemetry_write_u32(&offset, app_status.return_time_ms);
     (void)memcpy(&g_telemetryFrameBuffer[offset], g_telemetryCellBuffer, cell_count);
     offset = (uint16_t)(offset + cell_count);
 
@@ -303,10 +315,9 @@ void StartTelemetryTask(void *argument)
             uint16_t frame_len = telemetry_build_map_frame(now_ms);
 
             if ((frame_len > 0U) &&
-                (HAL_UART_Transmit(&huart5,
-                                   g_telemetryFrameBuffer,
-                                   frame_len,
-                                   TELEMETRY_UART_TIMEOUT_MS) == HAL_OK)) {
+                (HAL_UART_Transmit_DMA(&huart5,
+                                       g_telemetryFrameBuffer,
+                                       frame_len) == HAL_OK)) {
                 has_sent_frame = 1U;
                 last_sent_update_count = stats.update_count;
                 last_sent_tick_ms = now_ms;

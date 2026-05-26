@@ -166,6 +166,17 @@ def test_parser_reads_control_diagnostics_from_v7_map_frame() -> None:
             struct.pack("<f", 0.13),
             struct.pack("<f", 0.06),
             struct.pack("<f", 0.11),
+            struct.pack("<H", 7420),
+            struct.pack("<H", 32),
+            struct.pack("<B", 0),
+            struct.pack("<B", 0),
+            struct.pack("<B", 1),
+            struct.pack("<B", 3),
+            struct.pack("<I", 2),
+            struct.pack("<I", 8),
+            struct.pack("<I", 9210),
+            struct.pack("<I", 5000),
+            struct.pack("<I", 4210),
             cells,
         ]
     )
@@ -195,6 +206,15 @@ def test_parser_reads_control_diagnostics_from_v7_map_frame() -> None:
     assert result.right_speed_setpoint_mps == pytest.approx(0.13)
     assert result.left_speed_feedback_mps == pytest.approx(0.06)
     assert result.right_speed_feedback_mps == pytest.approx(0.11)
+    assert result.battery_mv == 7420
+    assert result.speed_limit_cmps == 32
+    assert result.lidar_stream_active == 1
+    assert result.benchmark_state == 3
+    assert result.lidar_recovery_count == 2
+    assert result.control_age_ms == 8
+    assert result.mission_elapsed_ms == 9210
+    assert result.exit_time_ms == 5000
+    assert result.return_time_ms == 4210
     assert result.nav_path_points[0] == pytest.approx((0.10, 0.20))
     assert result.nav_path_points[1] == pytest.approx((0.30, 0.40))
     assert int(result.cells[1, 0]) == -10

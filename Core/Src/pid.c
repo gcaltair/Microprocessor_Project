@@ -62,6 +62,7 @@ static float s_drive_axis_y = 0.0f;
  */
 static uint8_t s_angle_control_active = 0U;
 static ControlDebugSnapshot_t s_control_debug_snapshot;
+static float s_speed_limit_mps = MAX_BASE_SPEED;
 
 static float pid_normalize_angle_deg(float angle_deg)
 {
@@ -344,9 +345,14 @@ void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt
     float turn_output = 0.0f;
     float raw_turn_output = 0.0f;
     float error = pid_normalize_angle_deg(g_pid_angle.setpoint - angle_current);
-    float turn_limit = (fabsf(base_speed) > 0.001f) ? TURN_OUTPUT_LIMIT_MOVING : TURN_OUTPUT_LIMIT_INPLACE;
-    float abs_base_speed = fabsf(base_speed);
+    float turn_limit;
+    float abs_base_speed;
     float abs_error = fabsf(error);
+
+    base_speed = pid_clamp_float(base_speed, -s_speed_limit_mps, s_speed_limit_mps);
+    base_car_speed = base_speed;
+    abs_base_speed = fabsf(base_speed);
+    turn_limit = (abs_base_speed > 0.001f) ? TURN_OUTPUT_LIMIT_MOVING : TURN_OUTPUT_LIMIT_INPLACE;
 
     if (abs_base_speed > 0.001f) {
         float moving_limit = abs_base_speed * TURN_OUTPUT_MOVING_BASE_RATIO;
@@ -396,8 +402,11 @@ void Angle_Speed_Cascade_Control(float angle_current, float base_speed, float dt
  */
 void Control_UpdateWheelSpeedTest(float dt)
 {
-    float left_setpoint = g_pid_speed_left.setpoint;
-    float right_setpoint = g_pid_speed_right.setpoint;
+    float left_setpoint = pid_clamp_float(g_pid_speed_left.setpoint, -s_speed_limit_mps, s_speed_limit_mps);
+    float right_setpoint = pid_clamp_float(g_pid_speed_right.setpoint, -s_speed_limit_mps, s_speed_limit_mps);
+
+    g_pid_speed_left.setpoint = left_setpoint;
+    g_pid_speed_right.setpoint = right_setpoint;
 
     base_car_speed = (left_setpoint + right_setpoint) * 0.5f;
     s_control_debug_snapshot.control_mode = (uint8_t)g_control_mode;
@@ -517,6 +526,25 @@ void Control_SetBaseSpeed(float command_base_speed)
     }
 
     base_car_speed = command_base_speed;
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexRelease(g_pidMutex);
+    }
+}
+
+void Control_SetSpeedLimit(float speed_limit_mps)
+{
+    if (speed_limit_mps < 0.01f) {
+        speed_limit_mps = 0.01f;
+    } else if (speed_limit_mps > MAX_BASE_SPEED) {
+        speed_limit_mps = MAX_BASE_SPEED;
+    }
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexAcquire(g_pidMutex, osWaitForever);
+    }
+
+    s_speed_limit_mps = speed_limit_mps;
 
     if (g_pidMutex != NULL) {
         (void)osMutexRelease(g_pidMutex);

@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file    adc.c
-  * @brief   ADC1 configuration for PA4 battery/knob input.
+  * @brief   ADC1 configuration for PA4 battery and PC0 speed knob inputs.
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -41,6 +41,31 @@ void MX_ADC1_Init(void)
   }
 }
 
+uint16_t ADC_ReadRawChannel(uint32_t channel)
+{
+  ADC_ChannelConfTypeDef sConfig = {0};
+  uint16_t raw_value = 0U;
+
+  sConfig.Channel = channel;
+  sConfig.Rank = 1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_84CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    return 0U;
+  }
+
+  if (HAL_ADC_Start(&hadc1) != HAL_OK)
+  {
+    return 0U;
+  }
+  if (HAL_ADC_PollForConversion(&hadc1, 2U) == HAL_OK)
+  {
+    raw_value = (uint16_t)HAL_ADC_GetValue(&hadc1);
+  }
+  (void)HAL_ADC_Stop(&hadc1);
+  return raw_value;
+}
+
 void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -48,11 +73,16 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
   {
     __HAL_RCC_ADC1_CLK_ENABLE();
     __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
 
     GPIO_InitStruct.Pin = GPIO_PIN_4;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    /* PC0 is the speed-limit potentiometer input (ADC1 channel 10). */
+    GPIO_InitStruct.Pin = GPIO_PIN_0;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
   }
 }
 
@@ -62,5 +92,6 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
   {
     __HAL_RCC_ADC1_CLK_DISABLE();
     HAL_GPIO_DeInit(GPIOA, GPIO_PIN_4);
+    HAL_GPIO_DeInit(GPIOC, GPIO_PIN_0);
   }
 }

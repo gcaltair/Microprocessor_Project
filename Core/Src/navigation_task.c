@@ -33,6 +33,8 @@
 #define NAVIGATION_COMMAND_MAX_LEN         64U
 #define NAVIGATION_INFLATED_BLOCKED_BYTES  ((OGM_MAX_CELL_COUNT + 7U) / 8U)
 #define NAVIGATION_PREEMPT_ANGLE_DEG       45.0f
+#define NAVIGATION_HOME_X_M                0.0f
+#define NAVIGATION_HOME_Y_M                0.0f
 
 typedef struct {
     int16_t x;
@@ -75,6 +77,7 @@ static uint16_t g_navigationSmoothPathLen = 0U;
 static NavigationPathPoint_t g_navigationPublishedPath[NAVIGATION_PATH_TELEMETRY_MAX_POINTS];
 static uint16_t g_navigationPublishedPathLen = 0U;
 static uint8_t g_navigationPlanOnlyMode = 0U;
+static uint8_t g_navigationReturningHome = 0U;
 
 static void navigation_lock(void);
 static void navigation_unlock(void);
@@ -998,6 +1001,7 @@ static void navigation_set_goal_mode(float goal_x_m, float goal_y_m, uint8_t pla
     g_navigationGoal.y_m = goal_y_m;
     g_navigationGoalValid = 1U;
     g_navigationPlanOnlyMode = plan_only;
+    g_navigationReturningHome = 0U;
     g_navigationStats.goal_valid = 1U;
     g_navigationStats.goal_pose = g_navigationGoal;
     g_navigationStats.last_status = NAVIGATION_STATUS_IDLE;
@@ -1037,6 +1041,7 @@ void NavigationTask_ClearGoal(void)
     navigation_lock();
     g_navigationGoalValid = 0U;
     g_navigationPlanOnlyMode = 0U;
+    g_navigationReturningHome = 0U;
     (void)memset(&g_navigationGoal, 0, sizeof(g_navigationGoal));
     g_navigationStats.goal_valid = 0U;
     g_navigationStats.target_valid = 0U;
@@ -1164,6 +1169,7 @@ NavigationStatus_t NavigationTask_Update(void)
     NavigationStatus_t status = NAVIGATION_STATUS_FAILED;
     uint8_t target_valid = 0U;
     uint8_t plan_only = 0U;
+    uint8_t returning_home = 0U;
 
     /* 读取目标快照；没有目标时保持空闲，不干预控制。 */
     navigation_lock();
@@ -1181,6 +1187,7 @@ NavigationStatus_t NavigationTask_Update(void)
     }
     goal_pose = g_navigationGoal;
     plan_only = g_navigationPlanOnlyMode;
+    returning_home = g_navigationReturningHome;
     navigation_unlock();
 
     LocalizationTask_GetPoseSnapshot(&current_pose);
@@ -1191,8 +1198,19 @@ NavigationStatus_t NavigationTask_Update(void)
     if (distance_to_goal_m <= NAVIGATION_REACH_DISTANCE_M) {
         /* 到达终点后清除目标，避免后续周期重复下发微小移动。 */
         navigation_lock();
-        g_navigationGoalValid = 0U;
-        g_navigationPlanOnlyMode = 0U;
+        if ((plan_only == 0U) && (returning_home == 0U)) {
+            g_navigationGoal.x_m = NAVIGATION_HOME_X_M;
+            g_navigationGoal.y_m = NAVIGATION_HOME_Y_M;
+            g_navigationGoal.theta_deg = 0.0f;
+            g_navigationGoal.timestamp_ms = HAL_GetTick();
+            g_navigationGoalValid = 1U;
+            g_navigationPlanOnlyMode = 0U;
+            g_navigationReturningHome = 1U;
+        } else {
+            g_navigationGoalValid = 0U;
+            g_navigationPlanOnlyMode = 0U;
+            g_navigationReturningHome = 0U;
+        }
         navigation_clear_published_path_locked();
         navigation_update_stats_locked(NAVIGATION_STATUS_REACHED,
                                        NAVIGATION_PHASE_REACHED,

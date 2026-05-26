@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 #include "dma.h"
 #include "i2c.h"
 #include "spi.h"
@@ -29,11 +30,14 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <math.h>
-
+#include "freertos_app.h"
 #include "system.h"
 #include "app_ui.h"
-#include "lidar.h"  // 新增
+#include "encoder.h"
+#include "motor.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,48 +58,53 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
-uint8_t buffer[100]; // 单字节接收缓冲区
-uint8_t rxData[100]; // 接收数据缓冲
-uint16_t rxIndex = 0; // 接收数据索引
-const float dt = 0.01f;
-float angle_z = 0.0f; // 用于积分存储Z轴角度
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void system_init()
+static void uart5_printf(const char *format, ...)
 {
-  Motor_Init();// 初始化电机
-  hc04_init();// 蓝牙初始化
-  encoder_init(); //编码器初始化
+  char buffer[160];
+  va_list args;
+  int length;
+
+  va_start(args, format);
+  length = vsnprintf(buffer, sizeof(buffer), format, args);
+  va_end(args);
+
+  if (length < 0) {
+    return;
+  }
+  if (length > (int)sizeof(buffer)) {
+    length = (int)sizeof(buffer);
+  }
+
+  (void)HAL_UART_Transmit(&huart5, (uint8_t *)buffer, (uint16_t)length, 50U);
+}
+
+void system_init(void)
+{
+  Motor_Init();
+  encoder_init();
   MPU6500_Init();
-  SystemClock_Config();
   RPLIDAR_Init();
-  //RPLIDAR_RequestScan();
-  HAL_TIM_Base_Start_IT(&htim4); //同时使能中断
   HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET);
 }
-void PID_system_init()
-{
-  PID_Init(&g_pid_angle,0.0575f,0.00f,0.001f,-0.4f,0.4f);
-  PID_Init(&g_pid_speed_left,  8000,33705, 33, -10000.0f, 10000.0f);
-  PID_Init(&g_pid_speed_right,  8000,33705, 33, -10000.0f, 10000.0f);
-  PID_Init(&g_pid_position, 0.8f, 0.00f, 0.0f, 0.0f, MAX_BASE_SPEED);
-  //PID_Init(&g_pid_speed_right,  4251, 675.0f, 0.0f,-10000.0f, 10000.0f);
-  //PID_Init(&g_pid_speed_left,  10801, 1895, 0, -10000.0f, 10000.0f);
-  //PID_Init(&g_pid_speed_right,  10801, 1895, 0, -10000.0f, 10000.0f);
 
-  // PID_Init(&g_pid_speed_left,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-  // PID_Init(&g_pid_speed_right,  1251, 375.0f, 0.0f, -10000.0f, 10000.0f);
-  // PID_Init(&g_pid_angle,0.15f,0.00f,0.05f,-3.0f,3.0f);
-}
+  void PID_system_init(void)
+  {
+    PID_Init((PID_Controller *)&g_pid_angle, 0.009f, 0.00f, 0.000f, -0.6f, 0.6f);
+    PID_Init((PID_Controller *)&g_pid_speed_left, 3500, 6000, 0, -10000.0f, 10000.0f);
+    PID_Init((PID_Controller *)&g_pid_speed_right, 3500, 6000, 0, -10000.0f, 10000.0f);
+    PID_Init((PID_Controller *)&g_pid_position, 1.0f, 0.5f, 0.0f, 0.0f, MAX_BASE_SPEED);
+  }
 /* USER CODE END 0 */
 
 /**
@@ -141,54 +150,46 @@ int main(void)
   PID_system_init();
   MX_IWDG_Init();
   App_Init();
-
   /* USER CODE END 2 */
+
+  /* Init scheduler */
+
+  /* Call init function for freertos objects (in cmsis_os2.c) */
+
+  /* Start scheduler */
+  osKernelInitialize();
+
+  MX_FREERTOS_Init();
+
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
+    // /* USER CODE END WHILE */
+    // EncoderDebugSnapshot_t encoder_debug;
+    //
+    // // __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
+    // // __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 1000);
+    //
+    // encoder_update_speed();
+    // Encoder_GetDebugSnapshot(&encoder_debug);
+    // uart5_printf("cnt L/R=%d/%d delta=%d/%d raw=%.3f/%.3f\r\n",
+    //              encoder_debug.left_counter_raw,
+    //              encoder_debug.right_counter_raw,
+    //              encoder_debug.left_pulse_delta,
+    //              encoder_debug.right_pulse_delta,
+    //              encoder_debug.raw_left_speed_mps,
+    //              encoder_debug.raw_right_speed_mps);
+    // HAL_Delay(100);
 
     /* USER CODE BEGIN 3 */
-      if(g_system_update_flag)
-      {
-        MPU_update();
-        encoder_update_speed();
-        Odometry_Update(dt);
-        App_Task10ms(dt);
-        if (!App_MotorsAllowed())
-        {
-          Motor_StopAll();
-        }
-        else if (g_control_mode == CONTROL_MODE_POSITION)
-        {
-          Update_Relative_Move_PID(dt);
-        }
-        else
-        {
-          Angle_Speed_Cascade_Control(g_th_continuous, base_car_speed, dt);
-        }
-        //uart_printf("%.4lf,%.2lf,%.4lf,%.2lf,%.2lf,%.2lf,%d,%d\n", g_left_speed, g_pid_speed_left.setpoint,g_right_speed,g_pid_speed_right.setpoint,g_pid_angle.setpoint,angle_z,pwm_output_left,pwm_output_right);
-        g_system_update_flag=false;
-      }
-
-      App_BackgroundTask();
-      LIDAR_ParseTask();
-
-    if (scan_data_ready_flag)
-    {
-      // 调用新的、在蓝牙模块中实现的、非阻塞的DMA发送函数
-      //send_packaged_data();
-      send_binary_packaged_data();
-      point_count = 0;
-      scan_data_ready_flag = 0;
-    }
   }
-
-
-}
   /* USER CODE END 3 */
+}
 
 /**
   * @brief System Clock Configuration
@@ -242,13 +243,38 @@ void SystemClock_Config(void)
 /* USER CODE END 4 */
 
 /**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM5 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM5)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+  if (htim->Instance == TIM4)
+  {
+    (void)Freertos_NotifyControlTickFromISR();
+  }
+
+  /* USER CODE END Callback 1 */
+}
+
+/**
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)
   {

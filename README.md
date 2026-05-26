@@ -4,11 +4,12 @@ STM32F446 robot firmware for motor control, LiDAR telemetry, Bluetooth commands,
 
 ## Code Structure
 
-- `Core/Src/main.c`: system startup and main loop scheduling.
+- `Core/Src/main.c`: peripheral startup and FreeRTOS initialization.
 - `Core/Src/app_ui.c`: OLED pages, button handling, battery/speed limit sampling, telemetry switch, emergency stop, return-home request, and watchdog refresh.
 - `Core/Src/adc.c`: ADC1 PA4 sampling for battery divider or knob input.
 - `Core/Src/iwdg.c`: independent watchdog setup.
-- `Core/Src/hc04.c`: UART5 Bluetooth command parser.
+- `Core/Src/hc04.c`: UART5 telemetry transport.
+- `Core/Src/navigation_task.c`: line-based UART5 command parsing and navigation.
 - `Core/Src/lidar.c`: RPLIDAR parsing and DMA packet transmission.
 - `Core/Src/pid.c`: speed, angle, and relative-position PID control.
 - `Core/Src/encoder.c`: wheel speed and odometry update.
@@ -31,6 +32,12 @@ cmake --build --preset Debug
 
 If CMake is not in `PATH`, build from CLion or add the CMake binary directory to `PATH`.
 
+Flash the resulting ELF with STM32CubeProgrammer:
+
+```powershell
+STM32_Programmer_CLI -c port=SWD -w build/Debug/FInal_fina.elf -v -rst
+```
+
 ## Hardware Mapping
 
 - UART5: Bluetooth status/commands, 9600 baud in generated `usart.c`.
@@ -41,23 +48,20 @@ If CMake is not in `PATH`, build from CLion or add the CMake binary directory to
 - PC13: user button, short press toggles stop latch, long press latches emergency stop.
 - PB2: auxiliary button, short press switches OLED page, long press requests return-home.
 
-## Bluetooth Commands
+## UART5 Commands
 
-- `F`, `B`, `L`, `R`, `S`: manual forward/back/left/right/stop.
-- `V<number>`: set requested manual speed. Runtime safety clamps it to the ADC-derived speed limit.
-- `A<number>`: relative angle adjustment.
-- `P<x>,<y>`: start relative move.
-- `M`, `N`: start/stop LiDAR.
-- `P`: enable periodic non-blocking status telemetry.
-- `Q`: disable periodic status telemetry.
+- `NAV x,y`: set an autonomous navigation goal in world coordinates.
+- `NAVC`: clear the current navigation goal.
+- `P<x>,<y>`: start a relative move directly through the position controller.
+- `P`: enable periodic binary map/status telemetry.
+- `Q`: disable periodic binary map/status telemetry.
 - `E`: latch emergency stop and cut PWM.
 - `C`: clear emergency stop latch.
 - `G`: request return-home from current odometry.
-- `H`: show command help.
 
 ## OLED Pages
 
-The UI is updated from the main loop, not from the timer interrupt. It flushes one SSD1306 page per 10 ms tick to avoid blocking the motor-control ISR/timing path.
+The UI is updated from the 10 ms FreeRTOS control task, not from the timer interrupt. It flushes one SSD1306 page per tick.
 
 - Main page: mode, safety state, battery voltage, speed limit, LiDAR points, PWM output.
 - Pose page: `x`, `y`, heading, relative-move state, return-home hint.

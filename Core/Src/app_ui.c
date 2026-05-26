@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "adc.h"
+#include "freertos_app.h"
 #include "i2c.h"
 #include "iwdg.h"
 #include "system.h"
@@ -19,7 +20,6 @@
 #define BUTTON_LONG_MS         800U
 #define BUTTON_DEBOUNCE_MS     40U
 
-#define STATUS_TX_INTERVAL_MS  500U
 #define ADC_SAMPLE_MS          100U
 #define CONTROL_TIMEOUT_MS     250U
 
@@ -30,7 +30,6 @@
 #define SPEED_LIMIT_MAX_CMPS   60U
 
 extern UART_HandleTypeDef huart5;
-extern volatile uint8_t is_dma_tx_busy;
 
 static uint8_t oled_buf[OLED_WIDTH * OLED_PAGES];
 static uint8_t oled_present = 0;
@@ -38,19 +37,15 @@ static uint8_t oled_dirty = 0;
 static uint8_t oled_flush_page = 0;
 
 static AppDisplayPage display_page = APP_PAGE_MAIN;
-static bool telemetry_enabled = false;
-static bool emergency_stop = false;
+static bool telemetry_enabled = true;
+static volatile bool emergency_stop = false;
 static bool low_battery_latched = false;
 static const char *safety_reason = "OK";
 static uint16_t battery_mv = 0;
 static uint16_t speed_limit_cmps = SPEED_LIMIT_MAX_CMPS;
 static uint32_t last_control_tick = 0;
 static uint32_t last_oled_render_tick = 0;
-static uint32_t last_status_tx_tick = 0;
 static uint32_t last_adc_tick = 0;
-static uint32_t app_tick_ms = 0;
-
-static uint8_t status_tx_buffer[160];
 
 typedef struct {
     GPIO_TypeDef *port;
@@ -146,6 +141,13 @@ static void oled_puts(uint8_t x, uint8_t y, const char *text)
 static void render_oled(void)
 {
     char line[32];
+    SlamPose2D_t pose;
+    ControlDebugSnapshot_t control;
+    FreertosRuntimeStats_t runtime;
+
+    Odometry_GetPoseSnapshot(&pose);
+    Control_GetDebugSnapshot(&control);
+    Freertos_GetRuntimeStatsSnapshot(&runtime);
     memset(oled_buf, 0, sizeof(oled_buf));
 
     if (display_page == APP_PAGE_MAIN) {
@@ -157,16 +159,16 @@ static void render_oled(void)
         oled_puts(0, 2, line);
         snprintf(line, sizeof(line), "SPD:%ucm/s", speed_limit_cmps);
         oled_puts(0, 3, line);
-        snprintf(line, sizeof(line), "LIDAR:%u", point_count);
+        snprintf(line, sizeof(line), "LIDAR:%u", runtime.last_scan_raw_point_count);
         oled_puts(0, 4, line);
-        snprintf(line, sizeof(line), "PWM:%d/%d", pwm_output_left, pwm_output_right);
+        snprintf(line, sizeof(line), "PWM:%u/%u", control.left_pwm, control.right_pwm);
         oled_puts(0, 5, line);
     } else if (display_page == APP_PAGE_POSE) {
-        snprintf(line, sizeof(line), "X:%ldmm", (long)(g_x * 1000.0f));
+        snprintf(line, sizeof(line), "X:%ldmm", (long)(pose.x_m * 1000.0f));
         oled_puts(0, 0, line);
-        snprintf(line, sizeof(line), "Y:%ldmm", (long)(g_y * 1000.0f));
+        snprintf(line, sizeof(line), "Y:%ldmm", (long)(pose.y_m * 1000.0f));
         oled_puts(0, 1, line);
-        snprintf(line, sizeof(line), "TH:%lddeg", (long)g_th_continuous);
+        snprintf(line, sizeof(line), "TH:%lddeg", (long)pose.theta_deg);
         oled_puts(0, 2, line);
         snprintf(line, sizeof(line), "STATE:%d", (int)g_relative_move_state);
         oled_puts(0, 3, line);
@@ -175,7 +177,7 @@ static void render_oled(void)
     } else {
         snprintf(line, sizeof(line), "VL:%ld/%ld", (long)(g_left_speed * 1000.0f), (long)(g_right_speed * 1000.0f));
         oled_puts(0, 0, line);
-        snprintf(line, sizeof(line), "ANG:%ld", (long)g_pid_angle.setpoint);
+        snprintf(line, sizeof(line), "ANG:%ld", (long)control.angle_error_deg);
         oled_puts(0, 1, line);
         snprintf(line, sizeof(line), "BASE:%ld", (long)(base_car_speed * 100.0f));
         oled_puts(0, 2, line);
@@ -273,34 +275,6 @@ static void update_battery_and_limit(uint32_t now)
     }
 }
 
-static void send_status_if_due(uint32_t now)
-{
-    int len;
-    if (!telemetry_enabled || (now - last_status_tx_tick) < STATUS_TX_INTERVAL_MS) return;
-    if (is_dma_tx_busy) return;
-
-    len = snprintf((char*)status_tx_buffer, sizeof(status_tx_buffer),
-                   "STAT,%s,%s,%u,%ld,%ld,%ld,%d,%d,%u\r\n",
-                   g_control_mode == CONTROL_MODE_POSITION ? "AUTO" : "MAN",
-                   App_MotorsAllowed() ? "OK" : safety_reason,
-                   battery_mv,
-                   (long)(g_x * 1000.0f),
-                   (long)(g_y * 1000.0f),
-                   (long)g_th_continuous,
-                   pwm_output_left,
-                   pwm_output_right,
-                   point_count);
-    if (len <= 0) return;
-    if (len > (int)sizeof(status_tx_buffer)) len = sizeof(status_tx_buffer);
-
-    is_dma_tx_busy = 1;
-    if (HAL_UART_Transmit_DMA(&huart5, status_tx_buffer, (uint16_t)len) == HAL_OK) {
-        last_status_tx_tick = now;
-    } else {
-        is_dma_tx_busy = 0;
-    }
-}
-
 void App_Init(void)
 {
     last_control_tick = HAL_GetTick();
@@ -316,7 +290,6 @@ void App_Task10ms(float dt)
     AppButtonEvent aux_event;
     (void)dt;
 
-    app_tick_ms = now;
     last_control_tick = now;
     update_battery_and_limit(now);
 
@@ -327,10 +300,7 @@ void App_Task10ms(float dt)
         if (emergency_stop) {
             App_ClearEmergencyStop();
         } else {
-            emergency_stop = true;
-            safety_reason = "STOP";
-            base_car_speed = 0.0f;
-            g_pid_angle.setpoint = g_th_continuous;
+            App_RequestEmergencyStop("STOP");
         }
     } else if (user_event == APP_BUTTON_LONG) {
         App_RequestEmergencyStop("EMG");
@@ -350,7 +320,6 @@ void App_Task10ms(float dt)
     }
 
     oled_flush_step();
-    send_status_if_due(now);
     HAL_IWDG_Refresh(&hiwdg);
 }
 
@@ -370,18 +339,20 @@ bool App_MotorsAllowed(void)
 void App_ApplySpeedLimit(void)
 {
     float limit = (float)speed_limit_cmps / 100.0f;
-    if (base_car_speed > limit) base_car_speed = limit;
-    if (base_car_speed < -limit) base_car_speed = -limit;
+    float limited_speed = base_car_speed;
+
+    if (limited_speed > limit) limited_speed = limit;
+    if (limited_speed < -limit) limited_speed = -limit;
+    if (limited_speed != base_car_speed) {
+        Control_SetBaseSpeed(limited_speed);
+    }
 }
 
 void App_RequestEmergencyStop(const char *reason)
 {
     emergency_stop = true;
     safety_reason = reason;
-    base_car_speed = 0.0f;
-    g_pid_speed_left.setpoint = 0.0f;
-    g_pid_speed_right.setpoint = 0.0f;
-    g_pid_angle.setpoint = g_th_continuous;
+    Control_SetBaseSpeed(0.0f);
     Motor_StopAll();
 }
 
@@ -393,15 +364,18 @@ void App_ClearEmergencyStop(void)
 
 void App_StartReturnHome(void)
 {
-    float th = g_th_continuous * PI / 180.0f;
-    float wx = -g_x;
-    float wy = -g_y;
-    float dx = cosf(th) * wx + sinf(th) * wy;
-    float dy = -sinf(th) * wx + cosf(th) * wy;
+    SlamPose2D_t pose;
+
+    if (g_odomMutex != NULL) {
+        (void)osMutexAcquire(g_odomMutex, osWaitForever);
+    }
+    Odometry_GetPoseSnapshot(&pose);
+    if (g_odomMutex != NULL) {
+        (void)osMutexRelease(g_odomMutex);
+    }
 
     if (emergency_stop) return;
-    Start_Relative_Move(dx, dy);
-    g_control_mode = CONTROL_MODE_POSITION;
+    Start_Relative_Move(-pose.x_m, -pose.y_m);
 }
 
 void App_SetTelemetryEnabled(bool enabled)

@@ -8,8 +8,8 @@
 #define MAPPING_GRID_WIDTH_CELLS        96U
 #define MAPPING_GRID_HEIGHT_CELLS       96U
 #define MAPPING_GRID_RESOLUTION_M       0.05f
-#define MAPPING_GRID_ORIGIN_X_M         (-0.5f)
-#define MAPPING_GRID_ORIGIN_Y_M         (-0.5f)
+#define MAPPING_GRID_ORIGIN_X_M         (-0.8f)
+#define MAPPING_GRID_ORIGIN_Y_M         (-0.8f)
 #define MAPPING_POINT_STRIDE            4U
 #define MAPPING_FREE_CELL_THRESHOLD     (-3)
 #define MAPPING_OCCUPIED_CELL_THRESHOLD 5

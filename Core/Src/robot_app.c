@@ -46,11 +46,32 @@ static float adc_to_battery_voltage(uint16_t raw)
          ROBOT_BATTERY_DIVIDER_RATIO;
 }
 
+#if (ROBOT_POT_SPEED_LIMIT_ENABLED != 0U)
 static float pot_to_max_speed(uint16_t raw)
 {
   float ratio = (float)raw / 4095.0f;
   return ROBOT_POT_MIN_SPEED_MPS +
-         (ratio * (ROBOT_POT_MAX_SPEED_MPS - ROBOT_POT_MIN_SPEED_MPS));
+         (ratio * (MAX_BASE_SPEED - ROBOT_POT_MIN_SPEED_MPS));
+}
+#endif
+
+static float app_default_max_speed(void)
+{
+  return MAX_BASE_SPEED;
+}
+
+static float app_command_min_speed(void)
+{
+#if (ROBOT_POT_SPEED_LIMIT_ENABLED != 0U)
+  return ROBOT_POT_MIN_SPEED_MPS;
+#else
+  return 0.01f;
+#endif
+}
+
+static float app_command_max_speed(void)
+{
+  return MAX_BASE_SPEED;
 }
 
 static void str_to_upper_copy(char *dst, const char *src, uint16_t dst_size)
@@ -91,9 +112,11 @@ static uint8_t starts_with(const char *text, const char *prefix)
 
 void RobotApp_Init(void)
 {
+  float default_max_speed = app_default_max_speed();
+
   (void)memset(&s_robotStatus, 0, sizeof(s_robotStatus));
   s_robotStatus.mode = ROBOT_MODE_IDLE;
-  s_robotStatus.max_speed_mps = ROBOT_POT_MAX_SPEED_MPS;
+  s_robotStatus.max_speed_mps = default_max_speed;
   s_robotStatus.last_lidar_update_ms = HAL_GetTick();
   Control_SetMaxBaseSpeed(s_robotStatus.max_speed_mps);
 }
@@ -250,17 +273,23 @@ void RobotApp_RecordButtonEvent(void)
 void RobotApp_UpdateAnalogInputs(uint16_t battery_raw, uint16_t potentiometer_raw)
 {
   float battery_v = adc_to_battery_voltage(battery_raw);
+#if (ROBOT_POT_SPEED_LIMIT_ENABLED != 0U)
   float max_speed = pot_to_max_speed(potentiometer_raw);
+#endif
   uint8_t need_return_home = 0U;
   uint8_t need_critical_stop = 0U;
 
+#if (ROBOT_POT_SPEED_LIMIT_ENABLED != 0U)
   Control_SetMaxBaseSpeed(max_speed);
+#endif
 
   app_lock();
   s_robotStatus.battery_adc_raw = battery_raw;
   s_robotStatus.potentiometer_adc_raw = potentiometer_raw;
   s_robotStatus.battery_voltage_v = battery_v;
+#if (ROBOT_POT_SPEED_LIMIT_ENABLED != 0U)
   s_robotStatus.max_speed_mps = max_speed;
+#endif
 
   if (battery_v <= ROBOT_BATTERY_CRITICAL_VOLTAGE) {
     if (s_robotStatus.critical_battery_stop == 0U) {
@@ -419,7 +448,7 @@ uint8_t RobotApp_ProcessDebugCommand(const char *command)
   if ((starts_with(upper, "SPD ") != 0U) || (starts_with(upper, "SPEED ") != 0U)) {
     const char *arg = (starts_with(upper, "SPD ") != 0U) ? &upper[4] : &upper[6];
     float speed = strtof(arg, NULL);
-    if ((speed >= ROBOT_POT_MIN_SPEED_MPS) && (speed <= ROBOT_POT_MAX_SPEED_MPS)) {
+    if ((speed >= app_command_min_speed()) && (speed <= app_command_max_speed())) {
       Control_SetMaxBaseSpeed(speed);
       app_lock();
       s_robotStatus.max_speed_mps = speed;

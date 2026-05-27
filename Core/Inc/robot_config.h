@@ -18,8 +18,8 @@
 #define ROBOT_BATTERY_LOW_VOLTAGE            7.00f
 #define ROBOT_BATTERY_CRITICAL_VOLTAGE       6.60f
 
+#define ROBOT_POT_SPEED_LIMIT_ENABLED        0U
 #define ROBOT_POT_MIN_SPEED_MPS              0.06f
-#define ROBOT_POT_MAX_SPEED_MPS              0.22f
 
 #define ROBOT_LIDAR_TIMEOUT_MS               3000U
 #define ROBOT_LIDAR_RESTART_INTERVAL_MS      5000U

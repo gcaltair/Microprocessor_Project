@@ -7,6 +7,16 @@
 // 外部变量声明
 extern TIM_HandleTypeDef htim3;
 
+static volatile uint8_t s_motor_emergency_stop = 0U;
+
+static void Motor_ForcePwmZero(void)
+{
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
+}
+
 // 电机引脚映射（根据实际硬件连接修改）
 // 假设：
 // 左电机使用 TIM3 的 CH1(PWM1) 和 CH2(PWM2)
@@ -40,7 +50,14 @@ void Motor_Control(uint8_t motor, uint8_t direction, int speed)
 {
 //左电机CHANNEL4是IN1 CHANEEL3 是IN2
 
+    if (s_motor_emergency_stop != 0U) {
+        Motor_ForcePwmZero();
+        return;
+    }
+
     // 限制速度范围
+    if (speed < 0)
+        speed = 0;
     if (speed > 10000)
         speed = 10000;
     
@@ -101,8 +118,26 @@ void Motor_Stop(uint8_t motor)
  */
 void Motor_StopAll(void)
 {
-    Motor_Stop(MOTOR_LEFT);
-    Motor_Stop(MOTOR_RIGHT);
+    Motor_ForcePwmZero();
+}
+
+void Motor_SetEmergencyStop(uint8_t active)
+{
+    s_motor_emergency_stop = (active != 0U) ? 1U : 0U;
+    if (active != 0U) {
+        Motor_ForcePwmZero();
+    }
+}
+
+void Motor_EmergencyStopFromIsr(void)
+{
+    s_motor_emergency_stop = 1U;
+    Motor_ForcePwmZero();
+}
+
+uint8_t Motor_IsEmergencyStopped(void)
+{
+    return s_motor_emergency_stop;
 }
 
 /**

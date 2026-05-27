@@ -31,6 +31,7 @@ volatile PID_Controller g_pid_angle;
 volatile PID_Controller g_pid_position;
 
 volatile float base_car_speed = 0.0f;
+static float s_runtime_max_base_speed = MAX_BASE_SPEED;
 
 volatile RelativeMoveState g_relative_move_state = RELATIVE_MOVE_IDLE;
 volatile ControlMode g_control_mode = CONTROL_MODE_MANUAL;
@@ -126,6 +127,21 @@ static float pid_clamp_float(float value, float min_value, float max_value)
     }
 
     return value;
+}
+
+static float pid_clamp_base_speed(float command_base_speed)
+{
+    float max_speed = s_runtime_max_base_speed;
+
+    if (command_base_speed > max_speed) {
+        return max_speed;
+    }
+
+    if (command_base_speed < -max_speed) {
+        return -max_speed;
+    }
+
+    return command_base_speed;
 }
 
 static void pid_set_drive_axis_from_heading_deg(float heading_deg)
@@ -502,7 +518,7 @@ void Control_SetManualCommand(float command_base_speed, float angle_setpoint)
 
     g_relative_move_state = RELATIVE_MOVE_IDLE;
     g_control_mode = CONTROL_MODE_MANUAL;
-    base_car_speed = command_base_speed;
+    base_car_speed = pid_clamp_base_speed(command_base_speed);
     g_pid_angle.setpoint = ControlLogic_WrapAngleDeg(angle_setpoint);
     s_angle_control_active = 0U;
 
@@ -516,11 +532,53 @@ void Control_SetBaseSpeed(float command_base_speed)
         (void)osMutexAcquire(g_pidMutex, osWaitForever);
     }
 
-    base_car_speed = command_base_speed;
+    base_car_speed = pid_clamp_base_speed(command_base_speed);
 
     if (g_pidMutex != NULL) {
         (void)osMutexRelease(g_pidMutex);
     }
+}
+
+void Control_SetMaxBaseSpeed(float max_base_speed)
+{
+    if ((isfinite(max_base_speed) == 0) ||
+        (max_base_speed < 0.01f) ||
+        (max_base_speed > MAX_BASE_SPEED)) {
+        return;
+    }
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexAcquire(g_pidMutex, osWaitForever);
+    }
+
+    s_runtime_max_base_speed = max_base_speed;
+    g_pid_position.output_max = max_base_speed;
+    if (base_car_speed > max_base_speed) {
+        base_car_speed = max_base_speed;
+    } else if (base_car_speed < -max_base_speed) {
+        base_car_speed = -max_base_speed;
+    }
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexRelease(g_pidMutex);
+    }
+}
+
+float Control_GetMaxBaseSpeed(void)
+{
+    float max_speed;
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexAcquire(g_pidMutex, osWaitForever);
+    }
+
+    max_speed = s_runtime_max_base_speed;
+
+    if (g_pidMutex != NULL) {
+        (void)osMutexRelease(g_pidMutex);
+    }
+
+    return max_speed;
 }
 
 /*
@@ -753,10 +811,10 @@ void Update_Relative_Move_PID(float dt, const SlamPose2D_t *pose)
 
             base_car_speed = raw_base_speed;
 
-            if (base_car_speed > MAX_BASE_SPEED) {
-                base_car_speed = MAX_BASE_SPEED;
-            } else if (base_car_speed < -MAX_BASE_SPEED) {
-                base_car_speed = -MAX_BASE_SPEED;
+            if (base_car_speed > s_runtime_max_base_speed) {
+                base_car_speed = s_runtime_max_base_speed;
+            } else if (base_car_speed < -s_runtime_max_base_speed) {
+                base_car_speed = -s_runtime_max_base_speed;
             }
             break;
         }

@@ -1,0 +1,4 @@
+run_id,date,firmware_commit,battery_voltage_start_v,battery_voltage_end_v,max_speed_mps,exit_time_s,return_time_s,total_time_s,performance_formula,performance_score,success,notes
+1,,,,,,,,=G2+H2,,,"yes/no",
+2,,,,,,,,=G3+H3,,,"yes/no",
+3,,,,,,,,=G4+H4,,,"yes/no",

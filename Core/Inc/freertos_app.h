@@ -72,6 +72,7 @@ extern osMutexId_t g_gridMutex;
 extern osMutexId_t g_navigationMutex;
 extern osMutexId_t g_pidMutex;
 extern osMutexId_t g_controlMutex;
+extern osMutexId_t g_appMutex;
 
 extern LidarScanBuffer_t g_lidarScanBuf[LIDAR_SCAN_BUFFER_COUNT];
 extern FreertosRuntimeStats_t g_runtimeStats;
@@ -83,6 +84,7 @@ void StartMappingTask(void *argument);
 void StartNavigationTask(void *argument);
 void StartSafetyTask(void *argument);
 void StartTelemetryTask(void *argument);
+void StartUiTask(void *argument);
 
 osStatus_t Freertos_NotifyControlTickFromISR(void);
 osStatus_t Freertos_SubmitLidarBlockFromISR(uint16_t offset, uint16_t length);

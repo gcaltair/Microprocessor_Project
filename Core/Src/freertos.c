@@ -27,13 +27,17 @@
 /* USER CODE BEGIN Includes */
 #include <string.h>
 
+#include "adc.h"
 #include "freertos_app.h"
+#include "iwdg.h"
 #include "localization_task.h"
 #include "mapping_task.h"
 #include "navigation_task.h"
+#include "robot_app.h"
 #include "scan_preprocess.h"
 #include "system.h"
 #include "tim.h"
+#include "ui_task.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,6 +66,7 @@ osMutexId_t g_gridMutex = NULL;
 osMutexId_t g_navigationMutex = NULL;
 osMutexId_t g_pidMutex = NULL;
 osMutexId_t g_controlMutex = NULL;
+osMutexId_t g_appMutex = NULL;
 
 LidarScanBuffer_t g_lidarScanBuf[LIDAR_SCAN_BUFFER_COUNT];
 FreertosRuntimeStats_t g_runtimeStats;
@@ -85,6 +90,7 @@ osThreadId_t mappingTaskHandle;
 osThreadId_t navigationTaskHandle;
 osThreadId_t safetyTaskHandle;
 osThreadId_t telemetryTaskHandle;
+osThreadId_t uiTaskHandle;
 
 const osThreadAttr_t controlTask_attributes = {
   .name = "controlTask",
@@ -118,13 +124,19 @@ const osThreadAttr_t navigationTask_attributes = {
 
 const osThreadAttr_t safetyTask_attributes = {
   .name = "safetyTask",
-  .stack_size = 512,
+  .stack_size = 1024,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 
 const osThreadAttr_t telemetryTask_attributes = {
   .name = "telemetryTask",
   .stack_size = 768,
+  .priority = (osPriority_t) osPriorityLow,
+};
+
+const osThreadAttr_t uiTask_attributes = {
+  .name = "uiTask",
+  .stack_size = 1536,
   .priority = (osPriority_t) osPriorityLow,
 };
 
@@ -150,6 +162,10 @@ const osMutexAttr_t pidMutex_attributes = {
 
 const osMutexAttr_t controlMutex_attributes = {
   .name = "controlMutex",
+};
+
+const osMutexAttr_t appMutex_attributes = {
+  .name = "appMutex",
 };
 /* USER CODE END ThreadDefs */
 
@@ -179,6 +195,7 @@ void MX_FREERTOS_Init(void) {
   g_navigationMutex = osMutexNew(&navigationMutex_attributes);
   g_pidMutex = osMutexNew(&pidMutex_attributes);
   g_controlMutex = osMutexNew(&controlMutex_attributes);
+  g_appMutex = osMutexNew(&appMutex_attributes);
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -213,6 +230,7 @@ void MX_FREERTOS_Init(void) {
   navigationTaskHandle = osThreadNew(StartNavigationTask, NULL, &navigationTask_attributes);
   safetyTaskHandle = osThreadNew(StartSafetyTask, NULL, &safetyTask_attributes);
   telemetryTaskHandle = osThreadNew(StartTelemetryTask, NULL, &telemetryTask_attributes);
+  uiTaskHandle = osThreadNew(StartUiTask, NULL, &uiTask_attributes);
 
   if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK) {
     Error_Handler();
@@ -473,7 +491,10 @@ void StartLiDARParseTask(void *argument)
 
 void StartSafetyTask(void *argument)
 {
+  RobotAdcSample_t adc_sample;
+
   (void)argument;
+  (void)memset(&adc_sample, 0, sizeof(adc_sample));
 
   for (;;) {
     g_runtimeStats.free_heap_bytes = (uint32_t)xPortGetFreeHeapSize();
@@ -491,6 +512,13 @@ void StartSafetyTask(void *argument)
         (uint32_t)uxTaskGetStackHighWaterMark(mappingTaskHandle) * sizeof(StackType_t);
     g_runtimeStats.safety_task_stack_free_bytes =
         (uint32_t)uxTaskGetStackHighWaterMark(safetyTaskHandle) * sizeof(StackType_t);
+
+    if (ADC_ReadRobotInputs(&adc_sample) == HAL_OK) {
+      RobotApp_UpdateAnalogInputs(adc_sample.battery_raw, adc_sample.potentiometer_raw);
+    }
+
+    RobotApp_MonitorHealth(&g_runtimeStats);
+    (void)HAL_IWDG_Refresh(&hiwdg);
 
     HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
     osDelay(100U);

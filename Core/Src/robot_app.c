@@ -32,7 +32,11 @@ static void app_unlock(void)
 
 static uint8_t estop_pin_active(void)
 {
+#if (ROBOT_ESTOP_FEATURE_ENABLED != 0U)
   return (HAL_GPIO_ReadPin(ROBOT_ESTOP_GPIO_Port, ROBOT_ESTOP_Pin) == ROBOT_ESTOP_ACTIVE_STATE) ? 1U : 0U;
+#else
+  return 0U;
+#endif
 }
 
 static float adc_to_battery_voltage(uint16_t raw)
@@ -157,6 +161,19 @@ void RobotApp_ReturnHome(void)
 
 void RobotApp_SetEmergencyStop(uint8_t active)
 {
+#if (ROBOT_ESTOP_FEATURE_ENABLED == 0U)
+  (void)active;
+
+  app_lock();
+  s_robotStatus.emergency_stop_active = 0U;
+  if (s_robotStatus.mode == ROBOT_MODE_EMERGENCY_STOP) {
+    s_robotStatus.mode = ROBOT_MODE_IDLE;
+  }
+  app_unlock();
+
+  Motor_SetEmergencyStop(0U);
+  return;
+#else
   if (active != 0U) {
     Motor_SetEmergencyStop(1U);
     NavigationTask_ClearGoal();
@@ -173,6 +190,7 @@ void RobotApp_SetEmergencyStop(uint8_t active)
   }
 
   RobotApp_ClearEmergencyStopRequest();
+#endif
 }
 
 void RobotApp_ClearEmergencyStopRequest(void)
@@ -376,7 +394,7 @@ uint8_t RobotApp_ProcessDebugCommand(const char *command)
 
   if ((starts_with(upper, "ESTOP") != 0U) || (starts_with(upper, "E-STOP") != 0U)) {
     RobotApp_SetEmergencyStop(1U);
-    uart_printf("OK ESTOP\r\n");
+    uart_printf("OK ESTOP DISABLED\r\n");
     return 1U;
   }
 

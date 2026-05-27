@@ -11,6 +11,7 @@
 #define ROBOT_ESTOP_Pin                      GPIO_PIN_2
 #define ROBOT_ESTOP_GPIO_Port                GPIOB
 #define ROBOT_ESTOP_ACTIVE_STATE             GPIO_PIN_RESET
+#define ROBOT_ESTOP_FEATURE_ENABLED          0U
 
 #define ROBOT_BATTERY_ADC_FULL_SCALE_V       3.30f
 #define ROBOT_BATTERY_DIVIDER_RATIO          3.00f

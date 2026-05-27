@@ -150,7 +150,7 @@ static void ui_draw_status_page(const RobotAppStatus_t *app_status)
   OLED_DrawString(0U, 40U, line);
   (void)snprintf(line, sizeof(line), "MAX %.2fm/s", app_status->max_speed_mps);
   OLED_DrawString(0U, 48U, line);
-  OLED_DrawString(0U, 56U, app_status->emergency_stop_active ? "ESTOP ACTIVE" : "B1 start/page");
+  OLED_DrawString(0U, 56U, "B1 start/page");
   OLED_Update();
 }
 
@@ -186,7 +186,7 @@ static void ui_draw_control_page(const RobotAppStatus_t *app_status)
   OLED_DrawString(0U, 40U, line);
   (void)snprintf(line, sizeof(line), "DIST %.2fm", nav_stats.distance_to_goal_m);
   OLED_DrawString(0U, 48U, line);
-  OLED_DrawString(0U, 56U, "PB2 emergency");
+  OLED_DrawString(0U, 56U, "B1 page/home");
   OLED_Update();
 }
 
@@ -209,8 +209,8 @@ static void ui_draw_diagnostics_page(const RobotAppStatus_t *app_status)
   (void)snprintf(line, sizeof(line), "HEAP %lu",
                  (unsigned long)runtime.free_heap_bytes);
   OLED_DrawString(0U, 24U, line);
-  (void)snprintf(line, sizeof(line), "ESTOP %lu",
-                 (unsigned long)app_status->estop_count);
+  (void)snprintf(line, sizeof(line), "REC %lu",
+                 (unsigned long)app_status->fault_recovery_count);
   OLED_DrawString(0U, 32U, line);
   (void)snprintf(line, sizeof(line), "ADC %u %u",
                  app_status->battery_adc_raw,

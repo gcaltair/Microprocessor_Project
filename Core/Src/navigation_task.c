@@ -9,6 +9,7 @@
 #include "../Inc/mapping_task.h"
 #include "../Inc/navigation_task.h"
 #include "../Inc/occupancy_grid.h"
+#include "../Inc/robot_config.h"
 #include "../Inc/usart.h"
 #include "pid.h"
 #include "robot_app.h"
@@ -1374,6 +1375,10 @@ uint16_t NavigationTask_CopySmoothPathPoints(NavigationPathPoint_t *points, uint
 void StartNavigationTask(void *argument)
 {
     (void)argument;
+
+#if (ROBOT_BOOT_GOAL_ENABLED != 0U)
+    NavigationTask_SetGoal(ROBOT_BOOT_GOAL_X_M, ROBOT_BOOT_GOAL_Y_M);
+#endif
 
     /* 固定周期运行导航状态机，对齐参考代码中的 600ms 导航调度节奏。 */
     for (;;) {

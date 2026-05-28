@@ -30,4 +30,8 @@
 #define ROBOT_HOME_GOAL_X_M                  0.0f
 #define ROBOT_HOME_GOAL_Y_M                  0.0f
 
+#define ROBOT_BOOT_GOAL_ENABLED              1U
+#define ROBOT_BOOT_GOAL_X_M                  1.275f
+#define ROBOT_BOOT_GOAL_Y_M                  1.475f
+
 #endif /* ROBOT_CONFIG_H */

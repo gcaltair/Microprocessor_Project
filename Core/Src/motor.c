@@ -7,6 +7,16 @@
 // 外部变量声明
 extern TIM_HandleTypeDef htim3;
 
+static volatile uint8_t s_motor_emergency_stop = 0U;
+
+static void Motor_ForcePwmZero(void)
+{
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
+}
+
 // 电机引脚映射（根据实际硬件连接修改）
 // 假设：
 // 左电机使用 TIM3 的 CH1(PWM1) 和 CH2(PWM2)
@@ -30,72 +40,6 @@ void Motor_Init(void)
 }
 
 /**
- * @brief  设置电机速度
- * @param  motor: 电机选择 (MOTOR_LEFT 或 MOTOR_RIGHT)
- * @param  speed: 速度值 (0-100)
- * @retval None
- */
-void Motor_SetSpeed(uint8_t motor, uint8_t speed)
-{
-    // 限制速度范围
-    if (speed > 10000)
-        speed = 10000;
-    
-    if (motor == MOTOR_LEFT)
-    {
-        __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, speed);
-        __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, speed);
-    }
-    else if (motor == MOTOR_RIGHT)
-    {
-        __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, speed);
-        __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, speed);
-    }
-}
-
-/**
- * @brief  设置电机方向
- * @param  motor: 电机选择 (MOTOR_LEFT 或 MOTOR_RIGHT)
- * @param  direction: 方向 (MOTOR_FORWARD, MOTOR_BACKWARD, MOTOR_STOP)
- * @retval None
- */
-void Motor_SetDirection(uint8_t motor, uint8_t direction)
-{
-    if (motor == MOTOR_LEFT)
-    {
-        switch (direction)
-        {
-            case MOTOR_FORWARD:
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
-                break;
-            case MOTOR_BACKWARD:
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
-                break;
-            case MOTOR_STOP:
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
-                break;
-        }
-    }
-    else if (motor == MOTOR_RIGHT)
-    {
-        switch (direction)
-        {
-            case MOTOR_FORWARD:
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
-                break;
-            case MOTOR_BACKWARD:
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
-                break;
-            case MOTOR_STOP:
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
-                __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
-                break;
-        }
-    }
-}
-
-/**
  * @brief  控制电机速度和方向
  * @param  motor: 电机选择 (MOTOR_LEFT 或 MOTOR_RIGHT)
  * @param  direction: 方向 (MOTOR_FORWARD, MOTOR_BACKWARD, MOTOR_STOP)
@@ -106,7 +50,14 @@ void Motor_Control(uint8_t motor, uint8_t direction, int speed)
 {
 //左电机CHANNEL4是IN1 CHANEEL3 是IN2
 
+    if (s_motor_emergency_stop != 0U) {
+        Motor_ForcePwmZero();
+        return;
+    }
+
     // 限制速度范围
+    if (speed < 0)
+        speed = 0;
     if (speed > 10000)
         speed = 10000;
     
@@ -114,11 +65,11 @@ void Motor_Control(uint8_t motor, uint8_t direction, int speed)
     {
         switch (direction)
         {
-            case MOTOR_FORWARD:
+             case MOTOR_BACKWARD:
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, speed);
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, 0);
                 break;
-            case MOTOR_BACKWARD:
+            case MOTOR_FORWARD:
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_4, speed);
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, 0);
                 break;
@@ -132,12 +83,12 @@ void Motor_Control(uint8_t motor, uint8_t direction, int speed)
     {
         switch (direction)
         {
-            case MOTOR_FORWARD:
+            case MOTOR_BACKWARD:
                 // 修改为实际前进对应的PWM通道
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, speed);
                 break;
-            case MOTOR_BACKWARD:
+            case MOTOR_FORWARD:
                 // 修改为实际后退对应的PWM通道
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
                 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, speed);
@@ -167,8 +118,26 @@ void Motor_Stop(uint8_t motor)
  */
 void Motor_StopAll(void)
 {
-    Motor_Stop(MOTOR_LEFT);
-    Motor_Stop(MOTOR_RIGHT);
+    Motor_ForcePwmZero();
+}
+
+void Motor_SetEmergencyStop(uint8_t active)
+{
+    s_motor_emergency_stop = (active != 0U) ? 1U : 0U;
+    if (active != 0U) {
+        Motor_ForcePwmZero();
+    }
+}
+
+void Motor_EmergencyStopFromIsr(void)
+{
+    s_motor_emergency_stop = 1U;
+    Motor_ForcePwmZero();
+}
+
+uint8_t Motor_IsEmergencyStopped(void)
+{
+    return s_motor_emergency_stop;
 }
 
 /**
@@ -187,7 +156,7 @@ void Car_Forward(uint16_t speed)
  * @param  speed: 速度值 (0-100)
  * @retval None
  */
-void Car_Backward(uint8_t speed)
+void Car_Backward(uint16_t speed)
 {
 
 
@@ -200,7 +169,7 @@ void Car_Backward(uint8_t speed)
  * @param  speed: 速度值 (0-100)
  * @retval None
  */
-void Car_TurnLeft(uint8_t speed)
+void Car_TurnLeft(uint16_t speed)
 {
     Motor_Control(MOTOR_LEFT, MOTOR_STOP, 0); // 左电机前进
     Motor_Control(MOTOR_RIGHT, MOTOR_FORWARD, speed);  // 右电机停止
@@ -211,7 +180,7 @@ void Car_TurnLeft(uint8_t speed)
  * @param  speed: 速度值 (0-100)
  * @retval None
  */
-void Car_TurnRight(uint8_t speed)
+void Car_TurnRight(uint16_t speed)
 {
 
     // 修改为实际左转对应的电机控制

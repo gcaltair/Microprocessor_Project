@@ -19,17 +19,20 @@
 // 电机控制函数声明
 void Car_test(uint8_t speed);
 void Motor_Init(void);
-void Motor_SetSpeed(uint8_t motor, uint8_t speed);
+void Motor_SetSpeed(uint8_t motor, uint16_t speed);
 void Motor_SetDirection(uint8_t motor, uint8_t direction);
 void Motor_Control(uint8_t motor, uint8_t direction, int speed);
 void Motor_Stop(uint8_t motor);
 void Motor_StopAll(void);
+void Motor_SetEmergencyStop(uint8_t active);
+void Motor_EmergencyStopFromIsr(void);
+uint8_t Motor_IsEmergencyStopped(void);
 
 // 小车运动控制函数
 void Car_Forward(uint16_t speed);
-void Car_Backward(uint8_t speed);
-void Car_TurnLeft(uint8_t speed);
-void Car_TurnRight(uint8_t speed);
+void Car_Backward(uint16_t speed);
+void Car_TurnLeft(uint16_t speed);
+void Car_TurnRight(uint16_t speed);
 void Car_Stop(void);
 
 #endif //FINAL_FINA_MOTOR_H
